@@ -30,7 +30,8 @@ param(
   [string[]]$Assets = @(),
   [string]$Target = "main",
   [switch]$Prerelease,
-  [switch]$Draft
+  [switch]$Draft,
+  [switch]$Delete
 )
 
 $ErrorActionPreference = "Stop"
@@ -90,6 +91,26 @@ function Invoke-GHJson {
 }
 
 Write-Host "=== github release: $Repo @ $Tag (as $user) ===" -ForegroundColor Cyan
+
+# --- -Delete: retract a published release (release + its tag) ----------------
+if ($Delete) {
+  try {
+    $old = Invoke-GHJson -Method Get -Uri "https://api.github.com/repos/$Repo/releases/tags/$Tag"
+    Invoke-GHJson -Method Delete -Uri "https://api.github.com/repos/$Repo/releases/$($old.id)" | Out-Null
+    Write-Host ("deleted release id={0}" -f $old.id) -ForegroundColor Green
+  } catch {
+    Write-Host "release not found (nothing to delete)" -ForegroundColor Yellow
+  }
+  try {
+    Invoke-GHJson -Method Delete -Uri "https://api.github.com/repos/$Repo/git/refs/tags/$Tag" | Out-Null
+    Write-Host ("deleted tag {0}" -f $Tag) -ForegroundColor Green
+  } catch {
+    Write-Host "tag not found (nothing to delete)" -ForegroundColor Yellow
+  }
+  Write-Host ""
+  Write-Host "OK (deleted)" -ForegroundColor Green
+  return
+}
 
 # --- create the release, or reuse the one that already exists -----------------
 $rel = $null

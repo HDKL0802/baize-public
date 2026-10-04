@@ -13,7 +13,7 @@ $desk = Join-Path $root "desktop"
 # String.Split, so both scripts fail/succeed exactly the same way.
 $envFile = Join-Path $root "deploy.local.env"
 if (-not (Test-Path $envFile)) { throw "missing deploy.local.env (see deploy.local.env.example)" }
-$nasHost = "192.168.1.100"; $nasUser = "HD"; $nasPass = ""; $token = ""
+$nasHost = ""; $nasUser = ""; $nasPass = ""; $token = ""
 $seen = @()
 Get-Content $envFile | ForEach-Object {
   $line = $_.Trim()

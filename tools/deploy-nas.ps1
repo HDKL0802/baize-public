@@ -6,7 +6,7 @@
 
   Credentials (NEVER hard-coded here; they must not enter the git repo):
      read from environment variables, or from <repo root>\deploy.local.env (git-ignored):
-        BAIZE_NAS_HOST   default 192.168.1.100
+        BAIZE_NAS_HOST   required (no default; e.g. 192.168.1.100)
         BAIZE_NAS_USER   default HD
         BAIZE_NAS_PASS   required
         BAIZE_TOKEN      optional, used for the smoke test
@@ -52,10 +52,13 @@ if (Test-Path $envFile) {
     }
 }
 
-$NasHost = if ($env:BAIZE_NAS_HOST) { $env:BAIZE_NAS_HOST } else { "192.168.1.100" }
+$NasHost = $env:BAIZE_NAS_HOST
 $NasUser = if ($env:BAIZE_NAS_USER) { $env:BAIZE_NAS_USER } else { "HD" }
 $NasPass = $env:BAIZE_NAS_PASS
 $Token   = $env:BAIZE_TOKEN
+if (-not $NasHost) {
+    throw "missing BAIZE_NAS_HOST. Put it in deploy.local.env (see .gitignore) or set the env var."
+}
 if (-not $NasPass) {
     throw "missing BAIZE_NAS_PASS. Put it in deploy.local.env (see .gitignore) or set the env var."
 }

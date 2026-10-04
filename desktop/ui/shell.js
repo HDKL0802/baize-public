@@ -18,13 +18,36 @@ window.Shell = (function () {
     { title: '系统', ids: ['backup', 'settings'] },
   ];
 
+  /* 线性图标（24×24，stroke=currentColor）。emoji 在深色界面里又跳又廉价，换成这套。 */
+  const NAV_ICONS = {
+    chat: '<path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v6a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 12.5z"/>',
+    devices: '<rect x="3" y="4.5" width="18" height="11.5" rx="1.5"/><path d="M9 20h6M12 16v4"/>',
+    tasks: '<rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9.5 4.5h5v2.5h-5z"/><path d="m9.5 12.5 2 2 3.5-4"/>',
+    kb: '<path d="M12 6.6C10.4 5.1 7.9 4.5 4 4.5v13c3.9 0 6.4.6 8 2.1 1.6-1.5 4.1-2.1 8-2.1v-13c-3.9 0-6.4.6-8 2.1z"/><path d="M12 6.6v13"/>',
+    memory: '<rect x="7" y="7" width="10" height="10" rx="1.6"/><path d="M10 3.5v3.5M14 3.5v3.5M10 17v3.5M14 17v3.5M3.5 10h3.5M3.5 14h3.5M17 10h3.5M17 14h3.5"/>',
+    activity: '<path d="M3 12h4l2.5-6 4 12L16 12h5"/>',
+    providers: '<path d="M13.5 3 5.5 13.5H11l-1 7.5 8.5-10.5H13z"/>',
+    mcp: '<path d="M9 3.5v4M15 3.5v4"/><path d="M6.5 7.5h11v3.5a5.5 5.5 0 0 1-11 0z"/><path d="M12 16.5v4"/>',
+    skills: '<path d="M12 3.2l2 5.3 5.3 2-5.3 2-2 5.3-2-5.3-5.3-2 5.3-2z"/><path d="M18.5 16.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+    cron: '<circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3.2 2"/>',
+    backup: '<rect x="3.5" y="4.5" width="17" height="4.6" rx="1.4"/><path d="M5.5 9.1V19a1.4 1.4 0 0 0 1.4 1.4h10.2A1.4 1.4 0 0 0 18.5 19V9.1"/><path d="M10 13h4"/>',
+    settings: '<circle cx="12" cy="12" r="3.2"/><path d="M12 3.4v2.3M12 18.3v2.3M3.4 12h2.3M18.3 12h2.3M5.9 5.9l1.6 1.6M16.5 16.5l1.6 1.6M18.1 5.9l-1.6 1.6M7.5 16.5l-1.6 1.6"/>',
+  };
+
+  function iconSvg(id, cls) {
+    const p = NAV_ICONS[id];
+    if (!p) return '';
+    return '<svg class="' + (cls || 'ic') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+           'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + '</svg>';
+  }
+
   /* ---------------- 导航 ---------------- */
   function buildNav() {
     $('nav').innerHTML = NAV.map(g => {
       const items = g.ids.map(id => {
         const a = window.APP_BY_ID[id];
         if (!a) return '';
-        return '<a data-app="' + a.id + '"><span class="i">' + a.icon + '</span>' +
+        return '<a data-app="' + a.id + '"><span class="i">' + (NAV_ICONS[a.id] || esc(a.icon)) + '</span>' +
                '<span class="n">' + esc(a.name) + '</span></a>';
       }).join('');
       return '<div class="grp">' + g.title + '</div>' + items;
@@ -59,7 +82,7 @@ window.Shell = (function () {
     current = id;
     syncNav();
     $('viewTitle').textContent = app.name;
-    $('viewIcon').textContent = app.icon;
+    $('viewIcon').innerHTML = iconSvg(id) || esc(app.icon);
     if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
     view.scrollTop = 0;
 

@@ -44,7 +44,8 @@ body{
   color:var(--text-2);font-size:13px;cursor:pointer;border:1px solid transparent}
 .nav a:hover{background:var(--surface-2);color:var(--text)}
 .nav a.on{background:var(--accent-soft);color:var(--text);border-color:var(--border-strong)}
-.nav a .i{width:17px;flex:none;text-align:center;font-size:14px}
+.nav a .i{width:18px;flex:none;display:grid;place-items:center;color:currentColor}
+.nav a .i svg{width:16px;height:16px;display:block}
 .nav a .n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nav a .badge{margin-left:auto;font-size:10px;color:var(--warn)}
 .sidefoot{padding:10px 12px;border-top:1px solid var(--border);display:grid;gap:7px}
@@ -55,7 +56,8 @@ body{
 .topbar{height:46px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;
   background:var(--surface);border-bottom:1px solid var(--border)}
 .topbar .crumb{display:flex;align-items:center;gap:9px;min-width:0;font-size:14px}
-.topbar .crumb .ci{font-size:15px}
+.topbar .crumb .ci{display:grid;place-items:center;color:var(--accent)}
+.topbar .crumb .ci svg{width:17px;height:17px;display:block}
 .topbar .crumb b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .topbar .right{margin-left:auto;display:flex;align-items:center;gap:12px;color:var(--text-2);flex:none}
 .view{flex:1;min-height:0;overflow:auto}

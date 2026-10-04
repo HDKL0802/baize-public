@@ -128,6 +128,7 @@ func installShell(w webview2.WebView) {
 		return
 	}
 	mainHWND = hwnd
+	applyDarkTitleBar(hwnd) // 原生标题栏默认是白条，改成深色（对齐界面）
 
 	old, _, callErr := pSetWindowLongPtrW.Call(hwnd, gwlpWndProc, wndProcCb)
 	if old == 0 {

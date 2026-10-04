@@ -57,6 +57,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerAgent(mux)
 	s.registerKB(mux)
 	s.registerVoice(mux)
+	s.registerDL(mux)
 	return mux
 }
 

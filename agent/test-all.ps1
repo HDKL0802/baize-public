@@ -699,6 +699,24 @@ try {
     if (@($r.skills | Where-Object { $_.slug -eq "sweeptest" }).Count -ne 0) { throw "删除后还在清单里" }
   }
 
+  # ================= J. 桌面端分发 =================
+  Step "J. 桌面端分发"
+  Check "J1 /dl/ 能取到升级清单" {
+    $dl = Join-Path $dataDir "dl"
+    New-Item -ItemType Directory -Force -Path $dl | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $dl "latest.json"),
+      '{"version":"9.9.9","url":"/dl/baize-desktop.exe"}', (New-Object System.Text.UTF8Encoding($false)))
+    $r = Get-Json "$base/dl/latest.json" $h
+    if ($r.version -ne "9.9.9") { throw "清单内容不对：$($r | ConvertTo-Json -Compress)" }
+  }
+  Check "J2 /dl/ 挡住隐藏文件/穿越/不存在" {
+    $blocked = 0
+    foreach ($p in @("/dl/.hidden", "/dl/nope.json", "/dl/a/b")) {
+      try { $null = Get-Json "$base$p" $h } catch { $blocked++ }
+    }
+    if ($blocked -ne 3) { throw "三个非法路径只挡住了 $blocked 个" }
+  }
+
   Write-Host ""
   Write-Host ("==== 自检结果：" + $script:pass + " 通过 / " + $script:fail + " 失败 ====") -ForegroundColor $(if ($script:fail -eq 0) { "Green" } else { "Red" })
   if ($script:fail -gt 0) {

@@ -33,8 +33,7 @@ body{
 .sidebar{display:flex;flex-direction:column;min-height:0;
   background:var(--surface);border-right:1px solid var(--border)}
 .brand{display:flex;align-items:center;gap:10px;padding:14px 14px 13px;border-bottom:1px solid var(--border)}
-.brand .mark{width:30px;height:30px;flex:none;display:grid;place-items:center;
-  background:var(--accent);color:var(--accent-ink);font-weight:800;font-size:15px}
+.brand .mark{width:30px;height:30px;flex:none;display:block;object-fit:cover}
 .brand .bt{min-width:0}
 .brand .bt b{display:block;font-size:14px;font-weight:600;letter-spacing:.02em}
 .brand .bt span{display:block;font-size:11px;color:var(--text-3)}

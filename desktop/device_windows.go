@@ -28,7 +28,7 @@ import (
 	"baize/shared/proto"
 )
 
-const desktopAppVersion = "0.1.0"
+const desktopAppVersion = "0.2.0"
 
 /* ---------------- 本机信息（与 agent/internal/sysinfo 同一口径） ---------------- */
 

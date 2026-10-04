@@ -1,7 +1,9 @@
 /* 白泽桌面端 · 数据层 + 应用清单
    - API.call 走本机服务 /api/be/*，由 Go 侧代理到 NAS（令牌不进网页）
-   - APPS 里 each 应用只负责把自己画进给定的容器
-   D1 只做实三个：对话 / 设备 / 设置；其余先占位（D2 接入）。 */
+   - APPS 里每个应用只负责把自己画进给定的容器
+   已做实 12 个：对话 / 设备 / 设置 / 任务与审批 / 知识库 / 记忆 / 模型通道 / MCP 服务 /
+   技能 / 定时任务 / 备份与恢复 / 活动追踪。
+   后 9 个的 render 在 apps2.js 末尾回填（直接写 render: renderXxx 会是前向引用，见那边的说明）。 */
 'use strict';
 
 window.API = {
@@ -65,6 +67,9 @@ window.APPS = [
   { id: 'backup', name: '备份与恢复', icon: '🗄️', w: 820, h: 520 },
   { id: 'activity', name: '活动追踪', icon: '📈', w: 760, h: 520 },
 ];
+/* 注意：这 9 个的 render 由 apps2.js 回填（见那个文件末尾）。
+   写成 render: renderXxx 会是前向引用 —— apps2.js 后加载，这里求值时就 ReferenceError，
+   整个 window.APPS 都建不起来（Dock 空、窗口不开）。 */
 
 window.APP_BY_ID = {};
 window.APPS.forEach(a => { window.APP_BY_ID[a.id] = a; });
@@ -108,8 +113,9 @@ async function renderSettings(root) {
 
       <div class="sect">
         <h3>关于</h3>
-        <div class="sub">白泽桌面端 · D1 外壳（Go + WebView2，纯 Go 无 cgo）<br>
-          控制台功能按「对话 / 设备 / 设置」先行，其余在 D2 接入；本机作为设备的能力在 D3。</div>
+        <div class="sub">白泽桌面端（Go + WebView2，纯 Go 无 cgo）· 界面方案 A 冷灰金属<br>
+          控制台 12 个应用已全部接入；本机作为设备的能力已接（只读）。<br>
+          待做（D3）：安装包、自动更新、开机自启/托盘。</div>
       </div>
     </div>`;
 

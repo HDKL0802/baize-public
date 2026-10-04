@@ -206,9 +206,11 @@ window.Shell = (function () {
     setInterval(conn, 8000);
     setInterval(pollPending, 12000);
 
-    // 首次进入直接开「设备」（最直观），并给一句提示
-    setTimeout(() => openApp('devices'), 250);
-    setTimeout(() => toast('按 ⊞ 或右键桌面可以打开其它应用', 'ok'), 900);
+    // 首次进入开「设备」（最直观）；支持深链 #appid 直接开某个应用
+    const want = (location.hash || '').replace(/^#/, '').trim();
+    const first = window.APP_BY_ID[want] ? want : 'devices';
+    setTimeout(() => openApp(first), 250);
+    if (!window.APP_BY_ID[want]) setTimeout(() => toast('按 ⊞ 或右键桌面可以打开其它应用', 'ok'), 900);
   }
 
   window.addEventListener('DOMContentLoaded', boot);

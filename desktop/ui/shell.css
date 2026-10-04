@@ -88,18 +88,20 @@ h3{margin:0 0 2px;font-size:15px;font-weight:600}
 .sect{margin-top:18px}
 .row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)}
 .row:first-of-type{border-top:0}
-.row .who{min-width:0}
+.row .who{min-width:0;flex:1}
 .row .who b{display:block;font-size:13px;font-weight:600}
 .row .who span{display:block;color:var(--text-3);font-size:11px}
-.row .tags{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.row .tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .tag{font-size:11px;padding:1px 7px;border:1px solid var(--border);color:var(--text-2);background:var(--surface-2);white-space:nowrap}
 .tag.on{border-color:var(--accent);color:var(--accent)}
 .tag.off{color:var(--text-3)}
 .tag.warn{border-color:var(--warn);color:var(--warn)}
 .fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
 label{display:block;font-size:11px;color:var(--text-3);margin-bottom:3px}
-select,input,textarea{width:100%;padding:6px 8px;font:inherit;font-size:13px;color:var(--text);
-  background:var(--surface-2);border:1px solid var(--border)}
+select,input:not([type=checkbox]):not([type=radio]),textarea{width:100%;padding:6px 8px;font:inherit;font-size:13px;color:var(--text);
+  background:var(--surface-2);border:1px solid var(--border);border-radius:0}
+/* 复选框/单选框别吃 width:100%（否则会把同行文本挤成一字一行） */
+input[type=checkbox],input[type=radio]{width:auto;padding:0;margin:0;accent-color:var(--accent);cursor:pointer;flex:none}
 select:focus,input:focus,textarea:focus{outline:1px solid var(--accent);border-color:var(--accent)}
 textarea{resize:vertical;min-height:64px}
 .btn{padding:7px 14px;background:var(--accent);color:var(--accent-ink);border:1px solid var(--accent);

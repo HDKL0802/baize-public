@@ -112,10 +112,31 @@ async function renderSettings(root) {
       </div>
 
       <div class="sect">
+        <h3>常驻与自启</h3>
+        <div class="sub">点窗口的 ✕ <b>不会退出</b> —— 只是隐藏到托盘，设备连接不掉；
+          要真正退出用下面的按钮（或托盘图标右键菜单）。</div>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
+          <label class="sub" style="margin:0"><input type="checkbox" id="setAuto"> 开机自启（写当前用户的 Run 键，不需要管理员）</label>
+          <span class="sub" id="setAutoMsg" style="margin:0"></span>
+        </div>
+        <button class="btn ghost" id="setQuit">退出白泽桌面端</button>
+      </div>
+
+      <div class="sect">
+        <h3>版本与更新</h3>
+        <div class="sub">当前版本 <b id="upCur">…</b> · 更新包由 NAS 分发（后端的 <span class="mono">/dl/</span>）</div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="btn ghost" id="upCheck">检查更新</button>
+          <button class="btn" id="upApply" hidden>下载并重启</button>
+          <span class="sub" id="upMsg" style="margin:0"></span>
+        </div>
+      </div>
+
+      <div class="sect">
         <h3>关于</h3>
         <div class="sub">白泽桌面端（Go + WebView2，纯 Go 无 cgo）· 界面方案 A 冷灰金属<br>
           控制台 12 个应用已全部接入；本机作为设备的能力已接（只读）。<br>
-          待做（D3）：安装包、自动更新、开机自启/托盘。</div>
+          D3：开机自启、关窗隐藏到托盘、自动更新已接；待做 —— 安装包。</div>
       </div>
     </div>`;
 
@@ -133,6 +154,9 @@ async function renderSettings(root) {
       '连接：' + (dv.connected ? '在线（可被派活）' : (dv.enabled ? '未连上' : '未启动')) +
       (dv.lastError ? ' · ' + dv.lastError : '') + '\n' +
       '能力：' + ((dv.caps || []).join(' / ') || '—') + ' · 版本 ' + (dv.version || '—');
+    const auto = await (await fetch('/api/local/autostart')).json().catch(() => ({}));
+    $i('setAuto').checked = !!auto.enabled;
+    $i('upCur').textContent = dv.version || '—';
     if (c.server) await test();
   };
   const test = async () => {
@@ -156,6 +180,52 @@ async function renderSettings(root) {
     refresh();
   };
   $i('setTest').onclick = test;
+
+  $i('setAuto').onchange = async () => {
+    const want = $i('setAuto').checked;
+    const r = await (await fetch('/api/local/autostart', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: want }),
+    })).json().catch(() => ({}));
+    if (r && r.ok) {
+      $i('setAuto').checked = !!r.enabled;
+      $i('setAutoMsg').innerHTML = `<span class="ok">${r.enabled ? '已开启' : '已关闭'}</span>`;
+    } else {
+      $i('setAuto').checked = !want;
+      $i('setAutoMsg').innerHTML = `<span class="err">${esc((r && r.error) || '改不了')}</span>`;
+    }
+  };
+  $i('setQuit').onclick = async () => {
+    if (!confirm('退出白泽桌面端？设备会离线，直到下次启动。')) return;
+    await fetch('/api/local/quit', { method: 'POST' });
+  };
+
+  $i('upCheck').onclick = async () => {
+    $i('upMsg').textContent = '检查中…';
+    const r = await (await fetch('/api/local/update/check')).json().catch(() => ({}));
+    if (!r || !r.ok) {
+      $i('upApply').hidden = true;
+      $i('upMsg').innerHTML = `<span class="err">${esc((r && r.error) || '检查失败')}</span>`;
+      return;
+    }
+    if (r.hasUpdate) {
+      $i('upMsg').innerHTML = `<span class="ok">有新版本 ${esc(r.latest)}</span>${r.notes ? '：' + esc(r.notes) : ''}`;
+      $i('upApply').hidden = false;
+    } else {
+      $i('upApply').hidden = true;
+      $i('upMsg').innerHTML = `<span class="ok">已是最新（${esc(r.latest || '—')}）</span>`;
+    }
+  };
+  $i('upApply').onclick = async () => {
+    if (!confirm('下载并重启到新版本？会短暂断线（设备会先离线再回来）。')) return;
+    $i('upApply').disabled = true;
+    $i('upMsg').textContent = '下载并替换中…';
+    const r = await (await fetch('/api/local/update/apply', { method: 'POST' })).json().catch(() => ({}));
+    if (r && r.ok) { $i('upMsg').innerHTML = `<span class="ok">已升级到 ${esc(r.version || '')}，正在重启…</span>`; return; }
+    $i('upApply').disabled = false;
+    $i('upMsg').innerHTML = `<span class="err">${esc((r && r.error) || '升级失败')}</span>`;
+  };
+
   refresh();
 }
 

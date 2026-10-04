@@ -22,6 +22,7 @@ agent/bin/
 core/bin/
 cli/*.exe
 tools/sshrun/bin/
+tools/.release/
 desktop/bin/
 android-app/*.apk
 android-app/*.apk.idsig

@@ -32,6 +32,13 @@ func main() {
 	debug := flag.Bool("debug", false, "打开 WebView2 调试（可用 CDP 连）")
 	flag.Parse()
 
+	// 单实例：已经有一个在跑就把它的窗口叫到前台（它可能正隐藏在后台）
+	if !ensureSingleInstance() {
+		log.Printf("已经有一个白泽在跑，已把它的窗口叫到前台")
+		os.Exit(0)
+	}
+	cleanupOldVersion() // 上次自动更新留下的 .old 顺手删掉
+
 	loadConfig()
 	if strings.TrimSpace(*server) != "" || strings.TrimSpace(*token) != "" {
 		setConfig(*server, *token)
@@ -61,7 +68,7 @@ func main() {
 		Debug:     *debug,
 		AutoFocus: true,
 		WindowOptions: webview2.WindowOptions{
-			Title:  "白泽",
+			Title:  appWindowTitle,
 			Width:  1280,
 			Height: 800,
 		},
@@ -71,6 +78,10 @@ func main() {
 	}
 	defer w.Destroy()
 	w.Navigate(url)
+
+	// 常驻三件套：托盘图标 + 「关窗=隐藏到后台」（失败只警告，不影响启动）
+	installShell(w)
+
 	w.Run()
 	os.Exit(0)
 }

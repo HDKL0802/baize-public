@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"net/http"
@@ -20,6 +21,12 @@ var (
 	baseCtx        context.Context = context.Background()
 	deviceRestart                  = func(ctx context.Context, trigger string) {}
 	deviceSnapshot                 = func() map[string]any { return map[string]any{"enabled": false, "supported": false} }
+	// 自启与「真正退出」也只有 Windows 桌面端有：关窗只是隐藏到后台，退出得显式来
+	autostartSet = func(bool) error { return errors.New("只有 Windows 桌面端支持开机自启") }
+	autostartGet = func() bool { return false }
+	appQuit      = func() {}
+	// 平台专属路由（Windows 的自动更新接口就挂在这儿）
+	registerPlatformRoutes = func(mux *http.ServeMux) {}
 )
 
 // 代理到 NAS 后端的 HTTP 客户端：Agent 派活/附件可能跑一会儿，给足超时。
@@ -60,6 +67,32 @@ func buildHandler() http.Handler {
 	mux.HandleFunc("/api/local/device", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "device": deviceSnapshot()})
 	})
+
+	// 开机自启（写 HKCU 的 Run 键；不需要管理员）
+	mux.HandleFunc("/api/local/autostart", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req struct {
+				Enabled bool `json:"enabled"`
+			}
+			if r.Body != nil {
+				_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req)
+			}
+			if err := autostartSet(req.Enabled); err != nil {
+				writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "enabled": autostartGet()})
+	})
+
+	// 真正退出。关窗只是隐藏到后台（保住设备连接），所以要退出得显式调这个。
+	mux.HandleFunc("/api/local/quit", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		appQuit()
+	})
+
+	// 平台专属路由（Windows：自动更新）
+	registerPlatformRoutes(mux)
 
 	// 透传后端：/api/be/api/state → {server}/api/state
 	// 与手机内核的 /api/be 前缀同一口径，配对令牌只在这一层加。

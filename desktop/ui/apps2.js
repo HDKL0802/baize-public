@@ -646,92 +646,215 @@ async function renderMCP(root) {
 }
 
 /* ================= 6. 技能 ================= */
-/* 数据：GET /api/agent/state → skills[{name,description,path,body,triggers[],tokens}]
-   说明：后端目前只提供「列出」。技能由 Agent 运行时的 skill_manage 工具创建/改写，
-        没有对外的增删改接口 —— 这里如实只做只读展示。 */
+/* 数据：GET /api/agent/skills → {skills[{...Skill, slug}]}
+        Skill：name(展示名，可中文)、description、body、triggers[]、tokens；slug = 技能目录名（ASCII）
+   动作：POST /api/agent/skills {action: save|patch|writeFile|delete, name(slug 或展示名都行), category, content}
+   说明：与白泽自己的 skill_manage 是同一套实现，所以这里建的技能它立刻能用；删除是归档不是硬删。 */
 async function renderSkills(root) {
   root.innerHTML = `
     <div style="padding:14px 16px">
       <div class="sect" style="margin-top:0">
         <h3>技能库 <span class="sub" id="skN" style="margin:0"></span></h3>
-        <div class="sub">技能是白泽自己攒的「操作手册」，由它在运行时用 skill_manage 创建/改写。<br>
-          后端暂无对外的增删改接口 —— 所以这里只读；想加技能，直接跟白泽说。</div>
+        <div class="sub">技能是白泽自己攒的「操作手册」。这里也能建 / 改 / 删 —— 用的是和它自己同一套实现。</div>
         <div id="skList"></div>
       </div>
-      <div style="display:flex;gap:10px;align-items:center">
-        <button class="btn ghost sm" id="skRefresh">刷新</button>
-        <span class="sub" id="skMsg" style="margin:0"></span>
+
+      <div class="sect">
+        <h3 id="skFormTitle">新建技能</h3>
+        <div class="sub">目录名（slug）只能是字母数字、下划线或短横线，且以字母/数字开头（决定落盘目录）；
+          展示名写在正文的 <span class="mono">name:</span> 里，可以中文。</div>
+        <div class="fields" style="grid-template-columns:180px 150px 1fr">
+          <div><label>目录名（slug）</label><input id="skSlug" placeholder="daily-report"></div>
+          <div><label>分类（可空）</label><input id="skCat" placeholder="report"></div>
+          <div><label>提示</label><span class="sub" style="margin:0">删除会归档到 .archive，不硬删</span></div>
+        </div>
+        <label>SKILL.md 全文（必须带 front-matter，末尾要有正文）</label>
+        <textarea id="skBody" class="mono" style="min-height:160px" placeholder="---&#10;name: 每日汇报&#10;description: 把昨天的运行记录归纳成三点&#10;---&#10;&#10;1. 先读昨天的运行记录&#10;2. 归纳成三点"></textarea>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+          <button class="btn" id="skSave">保存</button>
+          <button class="btn ghost" id="skCancel" hidden>取消编辑</button>
+          <span class="sub" id="skMsg" style="margin:0"></span>
+        </div>
       </div>
     </div>`;
 
   const $i = id => root.querySelector('#' + id);
+  let skills = [];
+
+  const resetForm = () => {
+    $i('skSlug').value = ''; $i('skSlug').readOnly = false;
+    $i('skCat').value = ''; $i('skBody').value = '';
+    $i('skFormTitle').textContent = '新建技能';
+    $i('skSave').textContent = '保存';
+    $i('skCancel').hidden = true;
+  };
+
   const refresh = async () => {
-    const r = await API.get('/api/agent/state');
+    const r = await API.get('/api/agent/skills');
     if (!r.ok) { showErr($i('skList'), r); return; }
-    const skills = (r.data && r.data.skills) || [];
+    skills = (r.data && r.data.skills) || [];
     $i('skN').textContent = skills.length ? `（${skills.length}）` : '';
     $i('skList').innerHTML = skills.length ? skills.map(s => `
-      <details class="row" style="display:block">
-        <summary style="cursor:pointer"><b>${esc(s.name)}</b>
-          <span class="mono">${esc(s.tokens || 0)} token${(s.triggers || []).length ? ' · 触发词 ' + esc((s.triggers || []).join(' / ')) : ''}</span></summary>
-        <div class="sub" style="margin:6px 0 0">${esc(s.description || '')}</div>
-        <div class="mono" style="color:var(--text-3);font-size:11px">${esc(s.path || '')}</div>
-        <div class="pre" style="margin-top:6px;max-height:240px;overflow:auto">${esc((s.body || '').slice(0, 1200))}</div>
-      </details>`).join('') : '<div class="empty">还没有技能</div>';
-    $i('skMsg').textContent = '更新于 ' + new Date().toLocaleTimeString();
+      <div class="row" style="align-items:flex-start">
+        <div class="who">
+          <b>${esc(s.name || s.slug)}</b>
+          <span class="mono">${esc(s.slug)} · ${esc(s.tokens || 0)} token${(s.triggers || []).length ? ' · 触发词 ' + esc((s.triggers || []).join(' / ')) : ''}</span>
+          <div class="sub" style="margin:4px 0 0">${esc(s.description || '')}</div>
+          <details><summary class="sub" style="cursor:pointer;margin:4px 0 0">看正文</summary>
+            <div class="pre" style="max-height:220px;overflow:auto">${esc(s.body || '')}</div></details>
+        </div>
+        <div class="tags">
+          <button class="btn sm ghost" data-edit="${esc(s.slug)}">编辑</button>
+          <button class="btn sm ghost" data-del="${esc(s.slug)}">删除</button>
+        </div>
+      </div>`).join('') : '<div class="empty">还没有技能（可以让白泽自己攒，也可以在这里建）</div>';
+
+    $i('skList').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+      const s = skills.find(x => x.slug === b.dataset.edit);
+      if (!s) return;
+      // 后端只存了 front-matter 解析后的字段，这里按它拼回一份 SKILL.md 供编辑
+      const fm = ['---', 'name: ' + (s.name || ''), 'description: ' + (s.description || '')];
+      if ((s.triggers || []).length) fm.push('triggers: ' + s.triggers.join(', '));
+      fm.push('---', '', s.body || '');
+      $i('skSlug').value = s.slug; $i('skSlug').readOnly = true;
+      $i('skBody').value = fm.join('\n');
+      $i('skFormTitle').textContent = '编辑技能：' + s.slug;
+      $i('skSave').textContent = '保存修改';
+      $i('skCancel').hidden = false;
+      $i('skMsg').textContent = '';
+      $i('skBody').focus();
+    });
+    $i('skList').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      if (!confirm('删除技能「' + b.dataset.del + '」？（归档到 .archive，不是硬删）')) return;
+      const rr = await API.post('/api/agent/skills', { action: 'delete', name: b.dataset.del });
+      if (!rr.ok) { Shell.toast('删除失败：' + rr.error, 'err'); return; }
+      Shell.toast('已归档', 'ok');
+      await refresh();
+    });
   };
-  $i('skRefresh').onclick = refresh;
+
+  $i('skCancel').onclick = resetForm;
+  $i('skSave').onclick = async () => {
+    const slug = $i('skSlug').value.trim();
+    const content = $i('skBody').value;
+    if (!slug) { $i('skMsg').textContent = '目录名不能为空'; return; }
+    if (!content.trim()) { $i('skMsg').textContent = '正文不能为空'; return; }
+    $i('skMsg').textContent = '保存中…';
+    const body = { action: 'save', name: slug, content: content };
+    const cat = $i('skCat').value.trim();
+    if (cat) body.category = cat;
+    const r = await API.post('/api/agent/skills', body);
+    if (!r.ok) { $i('skMsg').textContent = '失败：' + r.error; return; }
+    $i('skMsg').textContent = '已保存（白泽立刻能用）';
+    Shell.toast('技能已保存', 'ok');
+    resetForm();
+    await refresh();
+  };
+
   await refresh();
 }
 
 /* ================= 7. 定时任务 ================= */
-/* 数据：GET /api/agent/state → cron[{id,expr,goal,recipe,enabled}]（config.CronJob）
-   动作：POST /api/agent/config {cronExpr, cronGoal} —— 只支持「新增」
-   说明：后端目前没有「列出 / 删除 / 停用定时任务」的接口，列表来自状态快照；
-        删除/停用需要后端补接口（已记进待办）。 */
+/* 数据：GET /api/agent/cron → {jobs[{...CronJob, nextAt, parseError}]}
+        CronJob：id、expr、goal、recipe、enabled（外加 nextAt / parseError / runs / lastStatus / lastError）
+   动作：POST /api/agent/cron {action: add|update|toggle|remove, id, expr, goal, recipe, enabled}
+   说明：调度器每 20 秒重读一次配置，所以改完最多 20 秒生效。 */
 async function renderCron(root) {
   root.innerHTML = `
     <div style="padding:14px 16px">
       <div class="sect" style="margin-top:0">
         <h3>定时任务 <span class="sub" id="crN" style="margin:0"></span></h3>
-        <div class="sub">到点让白泽自动干一件事。表达式是标准 5 段 cron（分 时 日 月 周），例如 <span class="mono">0 8 * * *</span>。</div>
+        <div class="sub">到点让白泽自动干一件事。表达式是标准 5 段 cron（分 时 日 月 周），例如 <span class="mono">0 8 * * *</span>；改完最多 20 秒生效。</div>
         <div id="crList"></div>
       </div>
 
       <div class="sect">
-        <h3>加一条</h3>
-        <div class="fields" style="grid-template-columns:170px 1fr">
+        <h3 id="crFormTitle">加一条</h3>
+        <div class="fields" style="grid-template-columns:170px 1fr 120px">
           <div><label>cron 表达式</label><input id="crExpr" class="mono" placeholder="0 8 * * *"></div>
           <div><label>要干什么</label><input id="crGoal" placeholder="总结昨天的工作记录并写成一条记忆"></div>
+          <div><label>配方</label><input id="crRecipe" placeholder="chat"></div>
         </div>
         <div style="display:flex;gap:10px;align-items:center">
-          <button class="btn" id="crAdd">添加</button>
+          <button class="btn" id="crSave">添加</button>
+          <button class="btn ghost" id="crCancel" hidden>取消编辑</button>
           <span class="sub" id="crMsg" style="margin:0"></span>
         </div>
       </div>
     </div>`;
 
   const $i = id => root.querySelector('#' + id);
+  let jobs = [];
+
+  const resetForm = () => {
+    $i('crExpr').value = ''; $i('crGoal').value = ''; $i('crRecipe').value = '';
+    $i('crFormTitle').textContent = '加一条';
+    $i('crSave').textContent = '添加';
+    $i('crCancel').hidden = true;
+    delete $i('crSave').dataset.id;
+  };
+
   const refresh = async () => {
-    const r = await API.get('/api/agent/state');
+    const r = await API.get('/api/agent/cron');
     if (!r.ok) { showErr($i('crList'), r); return; }
-    const jobs = (r.data && r.data.cron) || [];
+    jobs = (r.data && r.data.jobs) || [];
     $i('crN').textContent = jobs.length ? `（${jobs.length}）` : '';
     $i('crList').innerHTML = jobs.length ? jobs.map(j => `
       <div class="row">
         <div class="who"><b class="mono">${esc(j.expr || '')}</b>
           <span>${esc(j.goal || '')}</span>
-          <span class="mono">${esc(j.recipe || '')} · ${esc(j.id || '')}</span></div>
-        <div class="tags"><span class="tag ${j.enabled ? 'on' : 'off'}">${j.enabled ? '启用' : '停用'}</span></div>
+          <span class="mono">${esc(j.recipe || '')} · ${esc(j.id || '')}${j.nextAt ? ' · 下次 ' + fmtTime(j.nextAt) : ''}${j.runs ? ' · 已跑 ' + esc(j.runs) + ' 次' : ''}${j.lastStatus ? ' · 上次 ' + esc(j.lastStatus) : ''}</span>
+          ${j.parseError ? `<span class="mono" style="color:var(--danger)">表达式解析失败：${esc(j.parseError)}</span>` : ''}
+          ${j.lastError ? `<span class="mono" style="color:var(--danger)">上次错误：${esc(j.lastError)}</span>` : ''}</div>
+        <div class="tags">
+          <span class="tag ${j.enabled ? 'on' : 'off'}">${j.enabled ? '启用中' : '已停用'}</span>
+          <button class="btn sm ghost" data-toggle="${esc(j.id)}" data-on="${j.enabled ? '1' : '0'}">${j.enabled ? '停用' : '启用'}</button>
+          <button class="btn sm ghost" data-edit="${esc(j.id)}">编辑</button>
+          <button class="btn sm ghost" data-del="${esc(j.id)}">删除</button>
+        </div>
       </div>`).join('') : '<div class="empty">还没有定时任务</div>';
+
+    $i('crList').querySelectorAll('[data-toggle]').forEach(b => b.onclick = async () => {
+      const rr = await API.post('/api/agent/cron', { action: 'toggle', id: b.dataset.toggle, enabled: b.dataset.on !== '1' });
+      if (!rr.ok) { Shell.toast('操作失败：' + rr.error, 'err'); return; }
+      await refresh();
+    });
+    $i('crList').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+      const j = jobs.find(x => x.id === b.dataset.edit) || {};
+      $i('crExpr').value = j.expr || ''; $i('crGoal').value = j.goal || ''; $i('crRecipe').value = j.recipe || '';
+      $i('crFormTitle').textContent = '编辑定时任务：' + (j.id || '');
+      $i('crSave').textContent = '保存修改';
+      $i('crSave').dataset.id = j.id || '';
+      $i('crCancel').hidden = false;
+      $i('crMsg').textContent = '';
+    });
+    $i('crList').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      if (!confirm('删除这条定时任务？')) return;
+      const rr = await API.post('/api/agent/cron', { action: 'remove', id: b.dataset.del });
+      if (!rr.ok) { Shell.toast('删除失败：' + rr.error, 'err'); return; }
+      Shell.toast('已删除', 'ok');
+      await refresh();
+    });
   };
-  $i('crAdd').onclick = async () => {
+
+  $i('crCancel').onclick = resetForm;
+  $i('crSave').onclick = async () => {
     const expr = $i('crExpr').value.trim(), goal = $i('crGoal').value.trim();
     if (!expr || !goal) { $i('crMsg').textContent = '表达式和目标都要填'; return; }
-    const r = await API.post('/api/agent/config', { cronExpr: expr, cronGoal: goal });
-    $i('crMsg').textContent = r.ok ? '已添加' : ('失败：' + r.error);
-    if (r.ok) { $i('crExpr').value = ''; $i('crGoal').value = ''; await refresh(); Shell.toast('定时任务已添加', 'ok'); }
+    const id = $i('crSave').dataset.id;
+    const body = { action: id ? 'update' : 'add', expr: expr, goal: goal };
+    if (id) body.id = id;
+    const rc = $i('crRecipe').value.trim();
+    if (rc) body.recipe = rc;
+    $i('crMsg').textContent = '提交中…';
+    const r = await API.post('/api/agent/cron', body);
+    if (!r.ok) { $i('crMsg').textContent = '失败：' + r.error; return; }
+    $i('crMsg').textContent = id ? '已更新' : '已添加';
+    Shell.toast(id ? '定时任务已更新' : '定时任务已添加（最多 20 秒生效）', 'ok');
+    resetForm();
+    await refresh();
   };
+
   await refresh();
 }
 

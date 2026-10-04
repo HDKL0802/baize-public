@@ -24,6 +24,9 @@ const (
 
 	wmClose     = 0x0010
 	wmDestroy   = 0x0002
+	wmSetIcon   = 0x0080 // 给窗口换图标：不设的话 Windows 会画成系统默认那张（和 exe 图标不是一回事）
+	iconSmall   = 0
+	iconBig     = 1
 	wmLButtonUp = 0x0202
 	wmRButtonUp = 0x0205
 	wmApp       = 0x8000
@@ -73,6 +76,7 @@ var (
 	pTrackPopupMenu      = shUser32.NewProc("TrackPopupMenu")
 	pGetCursorPos        = shUser32.NewProc("GetCursorPos")
 	pGetModuleHandleW    = shKernel32.NewProc("GetModuleHandleW")
+	pSendMessageW        = shUser32.NewProc("SendMessageW")
 )
 
 var (
@@ -130,6 +134,14 @@ func installShell(w webview2.WebView) {
 	mainHWND = hwnd
 	applyDarkTitleBar(hwnd) // 原生标题栏默认是白条，改成深色（对齐界面）
 
+	// 窗口图标：WebView2 的窗口类没带图标，不显式设的话标题栏/任务栏会画成
+	// 系统默认那张白纸（跟 exe 里嵌的图标完全无关）。
+	if ic := loadAppIcon(); ic != 0 {
+		pSendMessageW.Call(hwnd, wmSetIcon, iconSmall, ic)
+		pSendMessageW.Call(hwnd, wmSetIcon, iconBig, ic)
+		log.Printf("[壳] 窗口图标已设为 exe 自带图标（标题栏/任务栏）")
+	}
+
 	old, _, callErr := pSetWindowLongPtrW.Call(hwnd, gwlpWndProc, wndProcCb)
 	if old == 0 {
 		log.Printf("[壳] 子类化窗口失败（%v）：关窗将直接退出", callErr)
@@ -157,19 +169,23 @@ type notifyIconData struct {
 	HBalloonIcon     uintptr
 }
 
-func addTrayIcon(hwnd uintptr) {
-	// 优先用 exe 里自带的图标（由 rsrc.syso 嵌入，图标资源 id = 1）；
-	// 取不到才退回系统默认图标，保证托盘一定有东西。
-	icon := uintptr(0)
+// loadAppIcon 取 exe 自带图标（由 rsrc.syso 嵌入，图标资源 id = 1）。
+// 取不到就退回系统默认图标，保证调用方拿到一个能用的句柄（返回 0 = 彻底失败）。
+func loadAppIcon() uintptr {
 	if hInst, _, _ := pGetModuleHandleW.Call(0); hInst != 0 {
 		if ic, _, _ := pLoadIconW.Call(hInst, 1); ic != 0 {
-			icon = ic
+			return ic
 		}
 	}
-	if icon == 0 {
-		icon, _, _ = pLoadIconW.Call(0, uintptr(idiApplication))
-		log.Printf("[壳] 没取到 exe 自带图标，托盘退回系统默认图标")
+	ic, _, _ := pLoadIconW.Call(0, uintptr(idiApplication))
+	if ic != 0 {
+		log.Printf("[壳] 没取到 exe 自带图标，退回系统默认图标")
 	}
+	return ic
+}
+
+func addTrayIcon(hwnd uintptr) {
+	icon := loadAppIcon()
 	if icon == 0 {
 		log.Printf("[壳] 取图标失败：托盘不启用")
 		return

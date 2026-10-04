@@ -53,11 +53,21 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 }
 
 # --- token from Git Credential Manager ---------------------------------------
-$credIn = "protocol=https`nhost=github.com`n`n"
-$credOut = $credIn | & $git credential fill 2>$null
-$token = ($credOut | Select-String '^password=').Line -replace '^password=', ''
+# NB: in this environment neither .NET StandardInput redirection nor PowerShell's
+# native pipe actually delivers stdin to git (git answers "missing protocol
+# field"), while cmd's file redirection does. So feed the query via a temp file;
+# the answer (which carries the token) stays in memory and is never written out.
+$credQuery = [IO.Path]::GetTempFileName()
+[IO.File]::WriteAllText($credQuery, "protocol=https`nhost=github.com`n`n")
+try {
+  $credOut = (& cmd /c "`"$git`" credential fill < `"$credQuery`"") -join "`n"
+} finally {
+  Remove-Item $credQuery -Force -ErrorAction SilentlyContinue
+}
+$credLines = $credOut -split "`r?`n"
+$token = ($credLines | Where-Object { $_ -like "password=*" } | Select-Object -First 1) -replace "^password=", ""
+$user = ($credLines | Where-Object { $_ -like "username=*" } | Select-Object -First 1) -replace "^username=", ""
 if (-not $token) { throw "no stored github.com credential - run: git credential-manager github login" }
-$user = ($credOut | Select-String '^username=').Line -replace '^username=', ''
 
 $jsonHeaders = @{
   Authorization = "token $token"
@@ -123,7 +133,8 @@ if ($Assets.Count -gt 0) {
     $req = [Net.HttpWebRequest]::Create($uri)
     $req.Method = "POST"
     $req.Headers.Add("Authorization", "token $token")
-    $req.Headers.Add("User-Agent", "baize-release")
+    # User-Agent is a restricted header: must go through the property.
+    $req.UserAgent = "baize-release"
     $req.Accept = "application/vnd.github+json"
     $req.ContentType = "application/octet-stream"
     $req.Timeout = 300000

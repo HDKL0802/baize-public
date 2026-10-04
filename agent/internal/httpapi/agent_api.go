@@ -625,6 +625,9 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "done": res.Done, "remaining": res.Remaining})
 	}))
+
+	// 定时任务与技能的增删改（原来只有"新增/只读"，见该文件里的说明）
+	s.registerCronSkills(mux)
 }
 
 func operatorFrom(r *http.Request) string {

@@ -644,6 +644,61 @@ try {
     if (-not $hit) { throw "等了 90 秒没有新的运行记录（cron 没触发）" }
   }
 
+  Check "H4 定时任务：改 / 停用 / 删除（新接口 /api/agent/cron）" {
+    $added = Send-Json "Post" "$base/api/agent/cron" @{ action = "add"; expr = "0 8 * * *"; goal = "自检：定时任务增删改" } $h
+    if (-not $added.added) { throw "add 没返回 id：$($added | ConvertTo-Json -Compress -Depth 4)" }
+    $id = $added.added
+    $off = Send-Json "Post" "$base/api/agent/cron" @{ action = "toggle"; id = $id; enabled = $false } $h
+    $one = @($off.jobs | Where-Object { $_.id -eq $id })[0]
+    if (-not $one) { throw "toggle 后列表里找不到 $id" }
+    if ($one.enabled) { throw "toggle 应停用：$($one | ConvertTo-Json -Compress -Depth 4)" }
+    $upd = Send-Json "Post" "$base/api/agent/cron" @{ action = "update"; id = $id; expr = "30 7 * * 1-5"; goal = "改过的目标" } $h
+    $one = @($upd.jobs | Where-Object { $_.id -eq $id })[0]
+    if ($one.expr -ne "30 7 * * 1-5" -or $one.goal -ne "改过的目标") { throw "update 没生效：$($one | ConvertTo-Json -Compress -Depth 4)" }
+    $del = Send-Json "Post" "$base/api/agent/cron" @{ action = "remove"; id = $id } $h
+    if (@($del.jobs | Where-Object { $_.id -eq $id }).Count -ne 0) { throw "remove 没删掉 $id" }
+  }
+  Check "H5 坏 cron 表达式 / 不存在的 id 必须被明确拒绝" {
+    $rejected = $false
+    try { $null = Send-Json "Post" "$base/api/agent/cron" @{ action = "add"; expr = "99 99 * * *"; goal = "应该被拒" } $h } catch { $rejected = $true }
+    if (-not $rejected) { throw "非法表达式居然被接受了" }
+    $rejected = $false
+    try { $null = Send-Json "Post" "$base/api/agent/cron" @{ action = "remove"; id = "job-not-exist" } $h } catch { $rejected = $true }
+    if (-not $rejected) { throw "删除不存在的 id 居然成功了" }
+  }
+
+  # ================= I. 技能 =================
+  Step "I. 技能"
+  Check "I1 新建技能（目录名 ASCII + 展示名中文）" {
+    $content = "---`nname: 自检技能`ndescription: 自检用的技能`n---`n`n正文：先做 A`n"
+    $r = Send-Json "Post" "$base/api/agent/skills" @{ action = "save"; name = "sweeptest"; content = $content } $h
+    $one = @($r.skills | Where-Object { $_.slug -eq "sweeptest" })[0]
+    if (-not $one) { throw "新建后清单里没有：$($r | ConvertTo-Json -Compress -Depth 4)" }
+    if ($one.name -ne "自检技能") { throw "展示名不对：$($one.name)" }
+  }
+  Check "I2 缺 front-matter / 非法目录名必须被拒" {
+    $rejected = $false
+    try { $null = Send-Json "Post" "$base/api/agent/skills" @{ action = "create"; name = "badskill"; content = "没有 front-matter" } $h } catch { $rejected = $true }
+    if (-not $rejected) { throw "缺 front-matter 居然被接受了" }
+    $rejected = $false
+    try { $null = Send-Json "Post" "$base/api/agent/skills" @{ action = "create"; name = "中文目录"; content = "---`nname: x`ndescription: y`n---`n`n正文" } $h } catch { $rejected = $true }
+    if (-not $rejected) { throw "非法目录名居然被接受了" }
+  }
+  Check "I3 按展示名改写 + 局部替换（patch）" {
+    $content = "---`nname: 自检技能`ndescription: 改过的描述`n---`n`n正文：只做 A`n"
+    $r = Send-Json "Post" "$base/api/agent/skills" @{ action = "save"; name = "自检技能"; content = $content } $h
+    $one = @($r.skills | Where-Object { $_.slug -eq "sweeptest" })[0]
+    if (-not $one) { throw "按展示名改写后找不到（名字归一有问题）" }
+    if ($one.description -ne "改过的描述") { throw "改写没生效：$($one.description)" }
+    $p = Send-Json "Post" "$base/api/agent/skills" @{ action = "patch"; name = "sweeptest"; oldString = "只做 A"; newString = "只做 B" } $h
+    $one = @($p.skills | Where-Object { $_.slug -eq "sweeptest" })[0]
+    if ($one.body -notmatch "只做 B") { throw "patch 没生效：$($one.body)" }
+  }
+  Check "I4 删除技能（归档，清单里不再出现）" {
+    $r = Send-Json "Post" "$base/api/agent/skills" @{ action = "delete"; name = "sweeptest" } $h
+    if (@($r.skills | Where-Object { $_.slug -eq "sweeptest" }).Count -ne 0) { throw "删除后还在清单里" }
+  }
+
   Write-Host ""
   Write-Host ("==== 自检结果：" + $script:pass + " 通过 / " + $script:fail + " 失败 ====") -ForegroundColor $(if ($script:fail -eq 0) { "Green" } else { "Red" })
   if ($script:fail -gt 0) {

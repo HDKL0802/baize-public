@@ -242,6 +242,29 @@ func (s *Service) SaveConfig(cfg config.Config) error {
 	return s.Reload()
 }
 
+// Skills 当前技能清单（控制台 / 桌面端列技能用；与白泽自己看到的是同一份）
+func (s *Service) Skills() []skills.Skill {
+	s.mu.RLock()
+	lib := s.skills
+	s.mu.RUnlock()
+	if lib == nil {
+		return nil
+	}
+	return lib.All()
+}
+
+// SkillManager 技能管理（新建 / 改写 / 打补丁 / 写支持文件 / 归档删除）。
+// 刻意复用与 Agent 的 skill_manage 同一个 Manager：这样「界面上建技能」和
+// 「白泽自己建技能」不会走出两套不一样的校验与落盘写法。
+func (s *Service) SkillManager() *skills.Manager {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.skillMgr
+}
+
+// Jobs 定时任务状态（含下次触发时间与表达式解析错误），供 /api/agent/cron 用
+func (s *Service) Jobs() []JobState { return s.jobStates() }
+
 // Reload 重新读配置、重建通道与技能库
 func (s *Service) Reload() error {
 	cfg, err := config.Load(s.dataDir)

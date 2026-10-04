@@ -53,13 +53,13 @@ async function localDeviceId() { return (await localDeviceInfo()).deviceId || ''
 
 /* ---------------- 应用清单 ---------------- */
 window.APPS = [
-  { id: 'chat', name: '对话', icon: '💬', w: 900, h: 620, dock: true, render: renderChat },
-  { id: 'devices', name: '设备', icon: '🖥️', w: 1000, h: 620, dock: true, render: renderDevices },
-  { id: 'settings', name: '设置', icon: '⚙️', w: 720, h: 540, dock: true, render: renderSettings },
+  { id: 'chat', name: '对话', icon: '💬', w: 900, h: 620, render: renderChat },
+  { id: 'devices', name: '设备', icon: '🖥️', w: 1000, h: 620, render: renderDevices },
+  { id: 'settings', name: '设置', icon: '⚙️', w: 720, h: 540, render: renderSettings },
 
-  { id: 'tasks', name: '任务与审批', icon: '📋', w: 900, h: 600, dock: true },
-  { id: 'kb', name: '知识库', icon: '📚', w: 980, h: 640, dock: true },
-  { id: 'memory', name: '记忆', icon: '🧠', w: 900, h: 600, dock: true },
+  { id: 'tasks', name: '任务与审批', icon: '📋', w: 900, h: 600 },
+  { id: 'kb', name: '知识库', icon: '📚', w: 980, h: 640 },
+  { id: 'memory', name: '记忆', icon: '🧠', w: 900, h: 600 },
   { id: 'providers', name: '模型通道', icon: '✨', w: 860, h: 560 },
   { id: 'mcp', name: 'MCP 服务', icon: '🔌', w: 820, h: 560 },
   { id: 'skills', name: '技能', icon: '🧩', w: 820, h: 560 },
@@ -69,7 +69,7 @@ window.APPS = [
 ];
 /* 注意：这 9 个的 render 由 apps2.js 回填（见那个文件末尾）。
    写成 render: renderXxx 会是前向引用 —— apps2.js 后加载，这里求值时就 ReferenceError，
-   整个 window.APPS 都建不起来（Dock 空、窗口不开）。 */
+   整个 window.APPS 都建不起来（导航空白、内容区不渲染）。 */
 
 window.APP_BY_ID = {};
 window.APPS.forEach(a => { window.APP_BY_ID[a.id] = a; });
@@ -134,9 +134,9 @@ async function renderSettings(root) {
 
       <div class="sect">
         <h3>关于</h3>
-        <div class="sub">白泽桌面端（Go + WebView2，纯 Go 无 cgo）· 界面方案 A 冷灰金属<br>
+        <div class="sub">白泽桌面端（Go + WebView2，纯 Go 无 cgo）· 冷色暗色直角<br>
           控制台 12 个应用已全部接入；本机作为设备的能力已接（只读）。<br>
-          D3：开机自启、关窗隐藏到托盘、自动更新已接；待做 —— 安装包。</div>
+          已接：开机自启、关窗隐藏到托盘、自动更新、NSIS 安装包。</div>
       </div>
     </div>`;
 

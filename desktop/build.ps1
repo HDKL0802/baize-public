@@ -17,8 +17,10 @@ $env:CGO_ENABLED = "0"
 $g0 = $env:GOOS; $g1 = $env:GOARCH
 $env:GOOS = "windows"; $env:GOARCH = "amd64"
 
-Write-Host "=== build desktop (windows/amd64, CGO off) ===" -ForegroundColor Cyan
-& $Go -C $Src build -trimpath -ldflags "-s -w" -o $Out .
+Write-Host "=== build desktop (windows/amd64, CGO off, GUI subsystem) ===" -ForegroundColor Cyan
+# -H windowsgui: link as a GUI app so launching it does NOT pop a console window.
+# Logs then go to %APPDATA%\Baize\desktop.log (see setupLogging in main_windows.go).
+& $Go -C $Src build -trimpath -ldflags "-s -w -H windowsgui" -o $Out .
 $env:GOOS = $g0; $env:GOARCH = $g1
 if ($LASTEXITCODE -ne 0) { throw "go build failed" }
 

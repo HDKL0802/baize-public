@@ -53,6 +53,11 @@ New-Item -ItemType Directory -Path $Stage | Out-Null
 Copy-Item -LiteralPath $Nsi  -Destination (Join-Path $Stage "installer.nsi") -Force
 Copy-Item -LiteralPath $Exe  -Destination (Join-Path $Stage "baize-desktop.exe") -Force
 
+# The .nsi pulls its icon from ${__FILEDIR__}\icon.ico, so stage that too.
+$Icon = Join-Path $Src "assets\icon.ico"
+if (-not (Test-Path $Icon)) { throw "missing $Icon - run build-icon.ps1 first" }
+Copy-Item -LiteralPath $Icon -Destination (Join-Path $Stage "icon.ico") -Force
+
 $OutStage = Join-Path $Stage "baize-desktop-setup.exe"
 $OutFinal = Join-Path $Bin ("baize-desktop-setup-" + $Version + ".exe")
 

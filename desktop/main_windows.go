@@ -14,18 +14,43 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
 	webview2 "github.com/jchv/go-webview2"
 )
 
+// setupLogging: 以 GUI 子系统链接（-H windowsgui）启动时没有控制台窗口，日志默认
+// 无处可去。这里把它落到 %APPDATA%\白泽\desktop.log，同时仍写 stderr（有控制台时可见）。
+// 超过 512KB 就先删掉重来，免得无限长大。
+func setupLogging() {
+	dir, err := os.UserConfigDir()
+	if err != nil || dir == "" {
+		dir = "."
+	}
+	dir = filepath.Join(dir, "白泽")
+	_ = os.MkdirAll(dir, 0o755)
+	path := filepath.Join(dir, "desktop.log")
+	if fi, err := os.Stat(path); err == nil && fi.Size() > 512*1024 {
+		_ = os.Remove(path)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return // 打不开就保持默认（stderr）
+	}
+	log.SetOutput(io.MultiWriter(f, os.Stderr))
+}
+
 func main() {
+	setupLogging()
+
 	addr := flag.String("addr", "127.0.0.1:0", "本机回环监听地址")
 	server := flag.String("server", "", "NAS 后端地址，例如 http://192.168.1.100:8787（会写入本地配置）")
 	token := flag.String("token", "", "配对令牌（会写入本地配置；留空 = 用已保存的那串）")

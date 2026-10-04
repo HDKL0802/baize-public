@@ -24,6 +24,9 @@ Unicode true
 !ifndef OUTFILE
   !define OUTFILE "${__FILEDIR__}\baize-desktop-setup.exe"
 !endif
+!ifndef ICON
+  !define ICON "${__FILEDIR__}\icon.ico"
+!endif
 
 !define APPNAME   "白泽"
 !define APPEXE    "baize-desktop.exe"
@@ -35,6 +38,10 @@ Unicode true
 
 Name "${APPNAME} ${VERSION}"
 OutFile "${OUTFILE}"
+
+; 安装包 / 卸载器 / 窗口都用同一个图标（assets/icon.ico）
+Icon "${ICON}"
+UninstallIcon "${ICON}"
 
 ; Per-user install: no UAC, no admin, and it lines up with the app writing its
 ; own autostart entry to HKCU (see autostart_windows.go).
@@ -54,6 +61,8 @@ VIAddVersionKey /LANG=2052 "CompanyName" "${REGCOMPANY}"
 VIAddVersionKey /LANG=2052 "LegalCopyright" "MIT License"
 
 !define MUI_ABORTWARNING
+!define MUI_ICON "${ICON}"
+!define MUI_UNICON "${ICON}"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APPEXE}"
 !define MUI_FINISHPAGE_RUN_TEXT "立即启动白泽"
 

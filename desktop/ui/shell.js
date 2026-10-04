@@ -1,126 +1,81 @@
-/* 白泽桌面端 · 外壳（窗口管理 / Dock / 启动台 / 提示 / 连接状态）
-   没有外部依赖，全部原生 DOM。方案 A：冷灰金属 + 底部 Dock + 无桌面图标。 */
+/* 白泽桌面端 · 外壳（左侧导航 + 单视图）
+   正常智能体界面：一侧导航、一个内容区；没有 Dock / 启动台 / 浮动窗口。
+   没有外部依赖，全部原生 DOM。 */
 'use strict';
 
 window.Shell = (function () {
   const $ = id => document.getElementById(id);
-  const stage = $('stage'), dockEl = $('dock'), launcherEl = $('launcher'), lgGrid = $('lgGrid');
-  const winState = {};         // id -> { el }
-  let zTop = 10;
+  const view = $('view');
 
-  /* ---------------- 窗口 ---------------- */
-  function focusWin(el) {
-    Object.values(winState).forEach(w => w.el.classList.remove('active'));
-    el.classList.add('active');
-    el.style.zIndex = ++zTop;
-    syncDock();
+  let current = null;      // 当前应用 id
+  let cleanup = null;      // 当前应用返回的清理函数（可选）
+
+  /* 导航分组（引用 apps.js 里的 id；这样不用给每个 app 加字段） */
+  const NAV = [
+    { title: '核心', ids: ['chat', 'devices', 'tasks'] },
+    { title: '知识', ids: ['kb', 'memory', 'activity'] },
+    { title: '能力', ids: ['providers', 'mcp', 'skills', 'cron'] },
+    { title: '系统', ids: ['backup', 'settings'] },
+  ];
+
+  /* ---------------- 导航 ---------------- */
+  function buildNav() {
+    $('nav').innerHTML = NAV.map(g => {
+      const items = g.ids.map(id => {
+        const a = window.APP_BY_ID[id];
+        if (!a) return '';
+        return '<a data-app="' + a.id + '"><span class="i">' + a.icon + '</span>' +
+               '<span class="n">' + esc(a.name) + '</span></a>';
+      }).join('');
+      return '<div class="grp">' + g.title + '</div>' + items;
+    }).join('');
+    $('nav').querySelectorAll('a[data-app]').forEach(el => {
+      el.onclick = () => openApp(el.dataset.app);
+    });
   }
 
+  function syncNav() {
+    $('nav').querySelectorAll('a[data-app]').forEach(el => {
+      el.classList.toggle('on', el.dataset.app === current);
+    });
+  }
+
+  /* ---------------- 打开应用（换内容区） ----------------
+     每次用一个全新的 pane 承载应用内容：旧 pane 会被摘掉，
+     应用里那些「靠 DOM 断链自动停轮询」的逻辑（pollWhileMounted）才能生效。
+     摘之前再补一发 shell:closed，兼容显式监听的应用。 */
   function openApp(id) {
     const app = window.APP_BY_ID[id];
     if (!app) return;
-    if (winState[id]) { focusWin(winState[id].el); return; }
 
-    const win = document.createElement('div');
-    win.className = 'win';
-    const n = Object.keys(winState).length;
-    const w = Math.min(app.w || 880, window.innerWidth - 40);
-    const h = Math.min(app.h || 600, window.innerHeight - 110);
-    win.style.width = w + 'px';
-    win.style.height = h + 'px';
-    win.style.left = Math.max(12, Math.min(70 + n * 26, window.innerWidth - w - 20)) + 'px';
-    win.style.top = Math.max(12, Math.min(34 + n * 22, window.innerHeight - h - 90)) + 'px';
-
-    win.innerHTML =
-      '<div class="titlebar">' +
-        '<span>' + app.icon + '</span>' +
-        '<div class="t">' + esc(app.name) + (app.render ? '' : '<em>D2 接入</em>') + '</div>' +
-        '<div class="spacer"></div>' +
-        '<button class="close" title="关闭">✕</button>' +
-      '</div>' +
-      '<div class="body"></div>';
-
-    const body = win.querySelector('.body');
-    if (app.render) {
-      Promise.resolve().then(() => app.render(body)).catch(e => {
-        body.innerHTML = '<div class="empty err" style="padding:14px">渲染失败：' + esc(e && e.message ? e.message : e) + '</div>';
-      });
-    } else {
-      renderSoon(app, body);
+    const prev = view.firstElementChild;
+    if (prev) {
+      prev.dispatchEvent(new Event('shell:closed'));
+      if (typeof cleanup === 'function') { try { cleanup(); } catch (e) { /* 清理失败不影响切换 */ } }
+      prev.remove();
     }
+    cleanup = null;
 
-    // 拖动（标题栏） + 聚焦
-    const bar = win.querySelector('.titlebar');
-    let dragging = null;
-    bar.addEventListener('mousedown', ev => {
-      if (ev.target.tagName === 'BUTTON') return;
-      focusWin(win);
-      dragging = { x: ev.clientX - win.offsetLeft, y: ev.clientY - win.offsetTop };
-      ev.preventDefault();
-    });
-    window.addEventListener('mousemove', ev => {
-      if (!dragging) return;
-      const nx = ev.clientX - dragging.x, ny = ev.clientY - dragging.y;
-      win.style.left = Math.max(-w + 120, Math.min(nx, window.innerWidth - 120)) + 'px';
-      win.style.top = Math.max(0, Math.min(ny, window.innerHeight - 60)) + 'px';
-    });
-    window.addEventListener('mouseup', () => { dragging = null; });
+    current = id;
+    syncNav();
+    $('viewTitle').textContent = app.name;
+    $('viewIcon').textContent = app.icon;
+    if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
+    view.scrollTop = 0;
 
-    win.addEventListener('mousedown', () => focusWin(win), true);
-    win.querySelector('.close').onclick = () => closeApp(id);
+    const pane = document.createElement('div');
+    pane.className = 'pane';
+    view.appendChild(pane);
 
-    stage.appendChild(win);
-    winState[id] = { el: win };
-    focusWin(win);
-    hideLauncher();
+    if (!app.render) { renderSoon(app, pane); return; }
+    Promise.resolve()
+      .then(() => app.render(pane))
+      .then(fn => { if (typeof fn === 'function') cleanup = fn; })
+      .catch(e => {
+        pane.innerHTML = '<div class="empty err" style="padding:14px">渲染失败：' +
+          esc(e && e.message ? e.message : e) + '</div>';
+      });
   }
-
-  function closeApp(id) {
-    const w = winState[id];
-    if (!w) return;
-    w.el.dispatchEvent(new Event('shell:closed'));
-    w.el.remove();
-    delete winState[id];
-    syncDock();
-  }
-
-  /* ---------------- Dock ---------------- */
-  function buildDock() {
-    dockEl.innerHTML = '';
-    const launch = document.createElement('div');
-    launch.className = 'it'; launch.title = '启动台'; launch.textContent = '⊞';
-    launch.onclick = toggleLauncher;
-    dockEl.appendChild(launch);
-    dockEl.insertAdjacentHTML('beforeend', '<div class="sep"></div>');
-
-    window.APPS.filter(a => a.dock).forEach(a => {
-      const it = document.createElement('div');
-      it.className = 'it' + (a.render ? '' : ' soon');
-      it.dataset.app = a.id; it.title = a.name; it.textContent = a.icon;
-      it.onclick = () => openApp(a.id);
-      dockEl.appendChild(it);
-    });
-  }
-  function syncDock() {
-    dockEl.querySelectorAll('[data-app]').forEach(it => {
-      it.classList.toggle('on', !!winState[it.dataset.app]);
-    });
-  }
-
-  /* ---------------- 启动台 ---------------- */
-  function buildLauncher() {
-    lgGrid.innerHTML = '';
-    window.APPS.forEach(a => {
-      const c = document.createElement('div');
-      c.className = 'cell' + (a.render ? '' : ' soon');
-      c.innerHTML = '<div class="g">' + a.icon + '</div><span>' + esc(a.name) + '</span>';
-      c.onclick = () => openApp(a.id);
-      lgGrid.appendChild(c);
-    });
-  }
-  function showLauncher() { launcherEl.hidden = false; }
-  function hideLauncher() { launcherEl.hidden = true; }
-  function toggleLauncher() { launcherEl.hidden ? showLauncher() : hideLauncher(); }
 
   /* ---------------- 提示 ---------------- */
   function toast(msg, kind) {
@@ -131,24 +86,13 @@ window.Shell = (function () {
     setTimeout(() => t.remove(), 3800);
   }
 
-  /* ---------------- 顶栏 / 连接状态 ---------------- */
-  function buildMenu() {
-    const items = ['对话', '设备', '任务与审批', '知识库', '记忆', '设置'];
-    $('menu').innerHTML = items.map(n => '<span>' + n + '</span>').join('');
-    $('menu').querySelectorAll('span').forEach(s => {
-      s.onclick = () => {
-        const hit = window.APPS.find(a => a.name === s.textContent);
-        if (hit) openApp(hit.id);
-      };
-    });
-  }
-
+  /* ---------------- 连接状态 / 待审批 / 时钟 ---------------- */
   async function conn() {
     const dot = $('connDot'), txt = $('connText');
     let r;
     try { r = await API.get('/api/health'); } catch (e) { r = { ok: false, error: String(e) }; }
-    if (r.ok) {
-      const d = r.data || {};
+    const d = (r && r.data) || {};
+    if (r && r.ok) {
       dot.className = 'dot';
       txt.textContent = 'NAS 已连 · ' + (d.devicesOnline ?? '?') + ' 台在线';
     } else {
@@ -156,19 +100,29 @@ window.Shell = (function () {
       txt.textContent = '连不上后端';
     }
     const c = await API.localConfig();
-    $('serverText').textContent = c.server || '未配置后端';
-    $('serverText').title = r.error || '';
+    const st = $('serverText');
+    st.textContent = c.server || '未配置后端';
+    st.title = c.server || '未配置后端';
   }
 
   async function pollPending() {
     const r = await API.get('/api/state');
     const pill = $('approvalPill');
-    if (!r.ok) { pill.hidden = true; return; }
+    const badge = $('nav').querySelector('a[data-app="tasks"] .badge');
+    if (!r.ok) { pill.hidden = true; if (badge) badge.remove(); return; }
     const tasks = (r.data && r.data.tasks) || [];
     const n = tasks.filter(t => t.status === 'pending_approval').length;
     pill.hidden = n === 0;
     $('approvalText').textContent = n + ' 待审批';
     pill.onclick = () => openApp('tasks');
+    const item = $('nav').querySelector('a[data-app="tasks"]');
+    if (item) {
+      let b = item.querySelector('.badge');
+      if (n > 0) {
+        if (!b) { b = document.createElement('span'); b.className = 'badge'; item.appendChild(b); }
+        b.textContent = String(n);
+      } else if (b) { b.remove(); }
+    }
   }
 
   function clock() {
@@ -176,43 +130,23 @@ window.Shell = (function () {
     $('clock').textContent = p(d.getHours()) + ':' + p(d.getMinutes());
   }
 
-  /* ---------------- 桌面右键 ---------------- */
-  function ctxMenu() {
-    const m = $('ctxmenu');
-    document.querySelector('.desktop').addEventListener('contextmenu', ev => {
-      if (ev.target.closest('.win')) return;
-      ev.preventDefault();
-      m.innerHTML = '<div data-a="launcher">打开启动台</div><div data-a="refresh">刷新连接状态</div><hr><div data-a="about">关于白泽</div>';
-      m.hidden = false;
-      m.style.left = Math.min(ev.clientX, window.innerWidth - 200) + 'px';
-      m.style.top = Math.min(ev.clientY, window.innerHeight - 140) + 'px';
-      m.querySelectorAll('div[data-a]').forEach(d => d.onclick = () => {
-        m.hidden = true;
-        if (d.dataset.a === 'launcher') showLauncher();
-        else if (d.dataset.a === 'refresh') { conn(); pollPending(); toast('已刷新'); }
-        else toast('白泽桌面端 · Go + WebView2 · 直连 NAS 后端', 'ok');
-      });
-    });
-    document.addEventListener('click', () => { m.hidden = true; });
-    launcherEl.addEventListener('click', ev => { if (ev.target === launcherEl) hideLauncher(); });
-    document.addEventListener('keydown', ev => { if (ev.key === 'Escape') { hideLauncher(); m.hidden = true; } });
-  }
-
   /* ---------------- 启动 ---------------- */
   function boot() {
-    buildMenu(); buildDock(); buildLauncher(); ctxMenu(); clock();
-    conn(); pollPending();
+    buildNav(); clock(); conn(); pollPending();
     setInterval(clock, 20000);
     setInterval(conn, 8000);
     setInterval(pollPending, 12000);
 
-    // 首次进入开「设备」（最直观）；支持深链 #appid 直接开某个应用
+    /* 深链 #appid 直接打开某个应用；否则默认开「设备」 */
     const want = (location.hash || '').replace(/^#/, '').trim();
-    const first = window.APP_BY_ID[want] ? want : 'devices';
-    setTimeout(() => openApp(first), 250);
-    if (!window.APP_BY_ID[want]) setTimeout(() => toast('按 ⊞ 或右键桌面可以打开其它应用', 'ok'), 900);
+    openApp(window.APP_BY_ID[want] ? want : 'devices');
   }
 
   window.addEventListener('DOMContentLoaded', boot);
+  window.addEventListener('hashchange', () => {
+    const want = (location.hash || '').replace(/^#/, '').trim();
+    if (want && want !== current && window.APP_BY_ID[want]) openApp(want);
+  });
+
   return { openApp, toast, conn };
 })();

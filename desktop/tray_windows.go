@@ -72,6 +72,7 @@ var (
 	pDestroyMenu         = shUser32.NewProc("DestroyMenu")
 	pTrackPopupMenu      = shUser32.NewProc("TrackPopupMenu")
 	pGetCursorPos        = shUser32.NewProc("GetCursorPos")
+	pGetModuleHandleW    = shKernel32.NewProc("GetModuleHandleW")
 )
 
 var (
@@ -156,9 +157,20 @@ type notifyIconData struct {
 }
 
 func addTrayIcon(hwnd uintptr) {
-	icon, _, _ := pLoadIconW.Call(0, uintptr(idiApplication))
+	// 优先用 exe 里自带的图标（由 rsrc.syso 嵌入，图标资源 id = 1）；
+	// 取不到才退回系统默认图标，保证托盘一定有东西。
+	icon := uintptr(0)
+	if hInst, _, _ := pGetModuleHandleW.Call(0); hInst != 0 {
+		if ic, _, _ := pLoadIconW.Call(hInst, 1); ic != 0 {
+			icon = ic
+		}
+	}
 	if icon == 0 {
-		log.Printf("[壳] 取默认图标失败：托盘不启用")
+		icon, _, _ = pLoadIconW.Call(0, uintptr(idiApplication))
+		log.Printf("[壳] 没取到 exe 自带图标，托盘退回系统默认图标")
+	}
+	if icon == 0 {
+		log.Printf("[壳] 取图标失败：托盘不启用")
 		return
 	}
 	var nid notifyIconData

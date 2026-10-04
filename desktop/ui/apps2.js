@@ -2,7 +2,7 @@
    任务与审批 / 知识库 / 记忆 / 模型通道 / MCP 服务 / 技能 / 定时任务 / 备份与恢复 / 活动追踪
 
    约定：
-   - 每个 render(root) 自己画进窗口 body；数据一律走 /api/be/*（Go 侧代理，令牌不进网页）。
+   - 每个 render(root) 自己画进内容区；数据一律走 /api/be/*（Go 侧代理，令牌不进网页）。
    - 字段名全部按后端真实响应来（不猜）：见各函数里的注释。
    - 后端确实没有的能力，就如实标注「只读 / 需后端接口」，不假装有。
    'use strict'; */
@@ -31,7 +31,7 @@ function stateTag(s) {
   return map[s] !== undefined ? map[s] : '';
 }
 
-/* 窗口关掉就停止轮询（shell 没有关闭回调，靠 DOM 断链判断） */
+/* 切走/换应用就停止轮询：新外壳会摘掉旧容器并发 shell:closed，这里再补一层 DOM 断链兜底 */
 function pollWhileMounted(root, fn, ms) {
   const tick = async () => {
     if (!document.body.contains(root)) { clearInterval(timer); return; }

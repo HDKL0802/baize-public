@@ -1,0 +1,30 @@
+# 构建上下文裁剪：镜像只用到 core / shared / agent，其余一律不发给 Docker 守护进程。
+# （不改这个，third_party 和 node_modules 会让 build 上下文变成几百 MB。）
+
+third_party/
+.git/
+.trae/
+.vscode/
+.idea/
+
+# 前端 / 手机 / 桌面产物，后端镜像用不到
+android-app/
+todo-app/
+cli/
+tools/local-embed/models/
+
+# 数据 / 密钥 / 日志
+agent/data/
+agent/bin/
+agent/.demo/
+agent/.demo-ext/
+agent/.sweep/
+core/bin/
+*.log
+*.out
+*.err
+deploy.local.env
+
+# 依赖缓存
+**/node_modules/
+**/__pycache__/

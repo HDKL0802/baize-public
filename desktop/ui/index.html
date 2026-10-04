@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>白泽</title>
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<div class="desktop">
+
+  <header class="menubar">
+    <div class="logo">泽</div>
+    <b>白泽</b>
+    <nav class="menu" id="menu"></nav>
+    <div class="right">
+      <span class="pill" id="connPill" title="NAS 后端连接状态"><i class="dot off" id="connDot"></i><span id="connText">连接中…</span></span>
+      <span class="pill" id="approvalPill" hidden title="待人工放行的跨端任务"><i class="dot warn"></i><span id="approvalText">0 待审批</span></span>
+      <span class="mono" id="serverText">—</span>
+      <span class="mono" id="clock">--:--</span>
+    </div>
+  </header>
+
+  <!-- 窗口都挂在这里 -->
+  <div class="stage" id="stage"></div>
+
+  <!-- 启动台（Dock 上的 ⊞ 唤出） -->
+  <div class="launcher" id="launcher" hidden><div class="grid" id="lgGrid"></div></div>
+
+  <div class="dock" id="dock"></div>
+  <div class="toasts" id="toasts"></div>
+  <div class="ctxmenu" id="ctxmenu" hidden></div>
+</div>
+
+<script src="apps.js"></script>
+<script src="shell.js"></script>
+</body>
+</html>

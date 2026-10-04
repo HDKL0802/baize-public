@@ -1,0 +1,14 @@
+{
+  "name": "白泽",
+  "short_name": "白泽",
+  "description": "白泽智能体的手机端入口：底栏三个入口 = 对话 / 知识库 / 其他功能；知识库按主要·资源·配置三类收口（正本在 NAS）",
+  "lang": "zh-CN",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f7fb",
+  "theme_color": "#3b6cf6",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -1,0 +1,1517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>白泽智能体 · 控制台</title>
+<!--
+  白泽智能体 控制台（产品自带 UI）
+  ─────────────────────────────────
+  视觉照 QwenPaw 自带的那个控制台做（third_party/qwenpaw/console/src/styles/tokens.css）：
+    · 暖灰底 #f9f8f4 + 白卡片 + 8px 圆角 + 1px 细边框 #eae8e7
+    · 主色 #ff7f16（hover #ff9d4d，文字态 mix 72% 黑）
+    · 状态色沿用 antd：成功 #52c41a / 警告 #faad14 / 错误 #ff4d4f
+    · 骨架：左 sidebar（分组导航 + 当前项暖色高亮） + 顶栏（动作/状态） + 主内容区
+  令牌由后端在响应时替换（handlePanel 会把 __BAIZE_TOKEN__ 换成真令牌），
+  所以这个文件里所有接口调用都自带鉴权，不用手填。
+-->
+<style>
+  :root {
+    --app-radius: 8px;
+    --app-bg: #f9f8f4;
+    --app-surface: #ffffff;
+    --app-surface-subtle: #faf9f7;
+    --app-shell-bg: #f9f8f4;
+    --app-fill: rgba(0, 0, 0, .06);
+    --app-fill-subtle: rgba(0, 0, 0, .04);
+    --app-fill-strong: rgba(0, 0, 0, .09);
+    --app-border: #eae8e7;
+    --app-border-strong: #d8d4cf;
+    --app-border-subtle: #f0eeeb;
+    --app-text: rgba(20, 20, 19, .88);
+    --app-text-2: rgba(20, 20, 19, .58);
+    --app-text-3: rgba(20, 20, 19, .45);
+    --app-text-4: rgba(20, 20, 19, .25);
+    --app-accent: #ff7f16;
+    --app-accent-hover: #ff9d4d;
+    --app-accent-text: color-mix(in srgb, var(--app-accent) 72%, black);
+    --app-accent-soft: color-mix(in srgb, var(--app-accent) 10%, transparent);
+    --app-accent-faint: color-mix(in srgb, var(--app-accent) 4%, transparent);
+    --app-nav-selected-bg: rgba(43, 18, 0, .08);
+    --app-success: #52c41a; --app-success-text: #389e0d; --app-success-bg: #f6ffed; --app-success-border: #b7eb8f;
+    --app-warning: #faad14; --app-warning-text: #d48806; --app-warning-bg: #fffbe6; --app-warning-border: #ffe58f;
+    --app-error: #ff4d4f; --app-error-text: #cf1322; --app-error-bg: #fff2f0; --app-error-border: #ffccc7;
+    --app-info-text: #1668dc; --app-info-bg: rgba(22, 119, 255, .06); --app-info-border: rgba(22, 119, 255, .16);
+    --app-shadow-sm: 0 2px 8px rgba(0, 0, 0, .06);
+    --app-shadow-md: 0 4px 16px rgba(0, 0, 0, .08);
+    --app-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --app-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--app-bg); color: var(--app-text);
+    font: 14px/1.5714 var(--app-font); -webkit-font-smoothing: antialiased;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: var(--app-info-text); text-decoration: none; }
+  code, .mono { font-family: var(--app-mono); font-size: 12px; }
+
+  /* ---------- 骨架 ---------- */
+  .shell { display: flex; min-height: 100vh; }
+  .side {
+    width: 208px; flex: none; background: var(--app-shell-bg);
+    border-right: 1px solid var(--app-border); padding: 12px 8px 24px;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  }
+  .brand { display: flex; align-items: center; gap: 8px; padding: 6px 10px 14px; }
+  .brand .mark {
+    width: 26px; height: 26px; border-radius: 7px; flex: none;
+    background: var(--app-accent); color: #fff; display: grid; place-items: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .brand b { font-size: 15px; font-weight: 600; }
+  .brand span { color: var(--app-text-3); font-size: 11px; display: block; }
+  .nav-group { margin-top: 10px; }
+  .nav-group > i {
+    font-style: normal; display: block; padding: 4px 10px; font-size: 11px;
+    color: var(--app-text-4); letter-spacing: .04em;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+    padding: 7px 10px; border: 0; background: transparent; color: var(--app-text-2);
+    border-radius: var(--app-radius); cursor: pointer; font-size: 13px;
+  }
+  .nav-item:hover { background: var(--app-fill-subtle); color: var(--app-text); }
+  .nav-item.on { background: var(--app-nav-selected-bg); color: var(--app-text); font-weight: 500; }
+  .nav-item .ico { width: 16px; text-align: center; flex: none; opacity: .85; }
+  .nav-item .cnt {
+    margin-left: auto; font-size: 11px; color: var(--app-text-3);
+    background: var(--app-fill-subtle); border-radius: 9px; padding: 0 6px;
+  }
+  .nav-item.on .cnt { background: var(--app-surface); }
+
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .top {
+    height: 56px; flex: none; display: flex; align-items: center; gap: 12px;
+    padding: 0 20px; background: var(--app-surface);
+    border-bottom: 1px solid var(--app-border); position: sticky; top: 0; z-index: 9;
+  }
+  .top h1 { font-size: 15px; font-weight: 600; margin: 0; }
+  .top .sub { color: var(--app-text-3); font-size: 12px; }
+  .top .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .body { padding: 20px; max-width: 1280px; width: 100%; }
+
+  /* ---------- 基础控件（antd 观感） ---------- */
+  .btn {
+    height: 32px; padding: 0 15px; border-radius: var(--app-radius);
+    border: 1px solid var(--app-border-strong); background: var(--app-surface);
+    color: var(--app-text); cursor: pointer; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--app-accent); color: var(--app-accent-text); }
+  .btn.primary { background: var(--app-accent); border-color: var(--app-accent); color: #fff; }
+  .btn.primary:hover { background: var(--app-accent-hover); border-color: var(--app-accent-hover); color: #fff; }
+  .btn.danger { border-color: var(--app-error-border); color: var(--app-error-text); }
+  .btn.danger:hover { background: var(--app-error-bg); border-color: var(--app-error); }
+  .btn.sm { height: 26px; padding: 0 10px; font-size: 12px; }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  input[type=text], input[type=number], input[type=password], select, textarea {
+    height: 32px; padding: 0 11px; border: 1px solid var(--app-border-strong);
+    border-radius: var(--app-radius); background: var(--app-surface); outline: none;
+  }
+  textarea { height: auto; padding: 8px 11px; resize: vertical; }
+  input:focus, select:focus, textarea:focus { border-color: var(--app-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-accent) 20%, transparent); }
+  .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+  .switch i {
+    width: 38px; height: 20px; border-radius: 9999px; background: var(--app-fill-strong);
+    position: relative; transition: background .15s;
+  }
+  .switch i::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    border-radius: 9999px; background: #fff; transition: left .15s;
+  }
+  .switch.on i { background: var(--app-accent); }
+  .switch.on i::after { left: 20px; }
+
+  /* ---------- 卡片 / 表格 / 标签 ---------- */
+  .card {
+    background: var(--app-surface); border: 1px solid var(--app-border);
+    border-radius: var(--app-radius); box-shadow: var(--app-shadow-sm); margin-bottom: 16px;
+  }
+  .card > header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 16px; border-bottom: 1px solid var(--app-border-subtle);
+  }
+  .card > header h2 { font-size: 14px; font-weight: 600; margin: 0; }
+  .card > header .ep { margin-left: auto; color: var(--app-text-4); }
+  .card > .pad { padding: 16px; }
+  .card > .desc { padding: 0 16px 12px; color: var(--app-text-3); font-size: 12px; margin: 0; }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: var(--app-bg); text-align: left; font-weight: 500; font-size: 12px;
+    color: var(--app-text-2); padding: 9px 16px; border-bottom: 1px solid var(--app-border-subtle);
+    white-space: nowrap;
+  }
+  tbody td { padding: 11px 16px; border-bottom: 1px solid var(--app-border-subtle); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--app-surface-subtle); }
+  td.nowrap, th.nowrap { white-space: nowrap; }
+  .cell-title { font-weight: 500; }
+  .cell-sub { color: var(--app-text-3); font-size: 12px; }
+  .empty { padding: 28px 16px; text-align: center; color: var(--app-text-3); font-size: 13px; }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px;
+    border-radius: 4px; font-size: 12px; line-height: 1;
+    background: var(--app-bg); border: 1px solid var(--app-border); color: var(--app-text-2);
+    margin-right: 4px; white-space: nowrap;
+  }
+  .tag.ok { background: var(--app-success-bg); border-color: var(--app-success-border); color: var(--app-success-text); }
+  .tag.warn { background: var(--app-warning-bg); border-color: var(--app-warning-border); color: var(--app-warning-text); }
+  .tag.err { background: var(--app-error-bg); border-color: var(--app-error-border); color: var(--app-error-text); }
+  .tag.info { background: var(--app-info-bg); border-color: var(--app-info-border); color: var(--app-info-text); }
+  .tag.accent { background: var(--app-accent-soft); border-color: var(--app-accent-border, color-mix(in srgb, var(--app-accent) 42%, transparent)); color: var(--app-accent-text); }
+  .dot { width: 7px; height: 7px; border-radius: 9999px; background: #94a3b8; display: inline-block; }
+  .dot.ok { background: var(--app-success); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--app-text-2); }
+  /* 活动追踪：正在跑的时候，顶栏那个点是"呼吸"的，一眼看出它在干活 */
+  .dot.live { background: var(--app-accent); animation: livepulse 1.6s ease-out infinite; }
+  @keyframes livepulse {
+    0% { box-shadow: 0 0 0 0 rgba(255, 127, 22, .45); }
+    70% { box-shadow: 0 0 0 6px rgba(255, 127, 22, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 127, 22, 0); }
+  }
+  .pill.act .act-detail { color: var(--app-text-3); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill.act .act-time { color: var(--app-text-3); }
+
+  /* ---------- 对话 ---------- */
+  .chat { display: flex; flex-direction: column; gap: 14px; }
+  .msg { display: flex; gap: 10px; }
+  .msg .av {
+    width: 28px; height: 28px; border-radius: 9999px; flex: none; display: grid; place-items: center;
+    font-size: 12px; background: var(--app-accent-soft); color: var(--app-accent-text); font-weight: 600;
+  }
+  .msg.user .av { background: var(--app-fill); color: var(--app-text-2); }
+  .msg .bubble {
+    background: var(--app-surface-subtle); border: 1px solid var(--app-border-subtle);
+    border-radius: var(--app-radius); padding: 10px 13px; white-space: pre-wrap; word-break: break-word;
+    max-width: 100%;
+  }
+  .msg.user .bubble { background: var(--app-accent-faint); border-color: color-mix(in srgb, var(--app-accent) 18%, transparent); }
+  .tool {
+    border: 1px solid var(--app-border); border-radius: var(--app-radius);
+    background: var(--app-surface); margin: 6px 0; overflow: hidden;
+  }
+  .tool > summary {
+    cursor: pointer; padding: 8px 12px; font-size: 12.5px; display: flex; align-items: center; gap: 8px;
+    background: var(--app-bg); list-style: none;
+  }
+  .tool > summary::-webkit-details-marker { display: none; }
+  .tool > summary .arrow { color: var(--app-text-4); transition: transform .15s; }
+  .tool[open] > summary .arrow { transform: rotate(90deg); }
+  .tool pre { margin: 0; padding: 10px 12px; overflow-x: auto; background: var(--app-surface); }
+  .composer { display: flex; flex-direction: column; gap: 8px; }
+  .composer textarea { min-height: 74px; }
+  /* 派活用的大输入框 */
+  .composer.big textarea { min-height: 168px; font-size: 15px; line-height: 1.7; }
+  /* 自由对话：消息区可滚，输入框固定在卡片底部 */
+  .chatlist { display: flex; flex-direction: column; gap: 12px; max-height: 46vh; overflow-y: auto; padding: 4px 2px; }
+  .chatlist .empty { padding: 18px 8px; }
+  .thinking { color: var(--app-text-3); font-size: 13px; }
+  .thinking i { display: inline-block; animation: blink 1.2s infinite; font-style: normal; }
+  @keyframes blink { 0%, 100% { opacity: .25 } 50% { opacity: 1 } }
+
+  /* ---------- 杂项 ---------- */
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  /* 宽表格在窄窗口里横向滚，别把卡片撑破（render() 会自动给 table 套 .tw） */
+  .tw { overflow-x: auto; }
+  .tw > table { min-width: 560px; }
+  /* 顶栏的侧栏开关（窄窗口用） */
+  .burger { display: none; }
+  .mask-side { display: none; }
+  /* 窗口自适应：窄窗口把侧栏收成抽屉，内容全宽铺开（不靠固定宽度） */
+  @media (max-width: 900px) {
+    .grid2 { grid-template-columns: 1fr; }
+    .side {
+      position: fixed; z-index: 31; left: 0; top: 0; bottom: 0; width: 232px;
+      transform: translateX(-100%); transition: transform .2s ease; box-shadow: var(--app-shadow-md);
+    }
+    .side.open { transform: none; }
+    .side-mask.show { display: block; position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, .35); }
+    .burger { display: inline-flex; }
+    .body { padding: 14px; }
+    .top { padding: 0 14px; gap: 8px; }
+    .top .sub { display: none; }
+    .pill.act .act-detail { display: none; }
+    .chatlist { max-height: none; }
+  }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .field label { font-size: 12px; color: var(--app-text-2); }
+  .stats { display: flex; gap: 28px; flex-wrap: wrap; }
+  .stats > div b { display: block; font-size: 22px; font-weight: 600; line-height: 1.3; }
+  .stats > div span { color: var(--app-text-3); font-size: 12px; }
+  .logbox {
+    margin: 0; padding: 12px 16px; max-height: 62vh; overflow: auto;
+    font-family: var(--app-mono); font-size: 12px; white-space: pre-wrap; word-break: break-all;
+  }
+  .toast {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    background: var(--app-surface); border: 1px solid var(--app-border);
+    box-shadow: var(--app-shadow-md); border-radius: var(--app-radius);
+    padding: 9px 16px; font-size: 13px; z-index: 99; display: none;
+  }
+  .toast.show { display: block; }
+  .toast.err { border-color: var(--app-error-border); background: var(--app-error-bg); color: var(--app-error-text); }
+  .modal-mask {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: none;
+    align-items: center; justify-content: center; z-index: 98;
+  }
+  .modal-mask.show { display: flex; }
+  .modal {
+    background: var(--app-surface); border-radius: var(--app-radius); width: min(520px, 92vw);
+    box-shadow: var(--app-shadow-md); padding: 20px;
+  }
+  .modal h3 { margin: 0 0 8px; font-size: 15px; }
+  .modal p { margin: 0 0 16px; color: var(--app-text-2); font-size: 13px; }
+  .modal .acts { display: flex; justify-content: flex-end; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- 侧栏 -->
+  <aside class="side">
+    <div class="brand">
+      <span class="mark">泽</span>
+      <div><b>白泽智能体</b><span id="brand-sub">控制台</span></div>
+    </div>
+    <nav id="nav"></nav>
+  </aside>
+
+  <div class="main">
+    <header class="top">
+      <button class="btn sm burger" id="btn-burger">☰</button>
+      <h1 id="pg-title">总览</h1>
+      <span class="sub" id="pg-sub"></span>
+      <div class="right" id="pg-actions"></div>
+    </header>
+    <div class="body" id="view"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="side-mask" id="side-mask"></div>
+<div class="modal-mask" id="mask"><div class="modal" id="modal"></div></div>
+
+<script>
+'use strict';
+const TOKEN = "__BAIZE_TOKEN__";
+
+/* ---------------- 基础 ---------------- */
+const $ = (id) => document.getElementById(id);
+function esc(s) {
+  return String(s === null || s === undefined ? "" : s).replace(/[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function toast(msg, isErr) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = "toast show" + (isErr ? " err" : "");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { t.className = "toast"; }, 2600);
+}
+async function api(path, opt) {
+  opt = opt || {};
+  opt.headers = Object.assign({ "X-Baize-Token": TOKEN }, opt.headers || {});
+  if (opt.body && typeof opt.body !== "string") {
+    opt.headers["Content-Type"] = "application/json; charset=utf-8";
+    opt.body = JSON.stringify(opt.body);
+  }
+  const r = await fetch(path, opt);
+  const text = await r.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { data = { error: text }; }
+  if (!r.ok) throw new Error((data && (data.error || data.message)) || ("HTTP " + r.status));
+  return data;
+}
+function confirmBox(title, desc, okText, onOk) {
+  $("modal").innerHTML =
+    '<h3>' + esc(title) + '</h3><p>' + esc(desc) + '</p><div class="acts">' +
+    '<button class="btn" id="m-cancel">取消</button>' +
+    '<button class="btn primary" id="m-ok">' + esc(okText || "确定") + '</button></div>';
+  $("mask").className = "modal-mask show";
+  $("m-cancel").onclick = () => { $("mask").className = "modal-mask"; };
+  $("m-ok").onclick = async () => {
+    $("mask").className = "modal-mask";
+    try { await onOk(); } catch (e) { toast("失败：" + e.message, true); }
+  };
+}
+const fmtMs = (v) => { if (!v) return "—"; const d = new Date(v); return d.toLocaleString("zh-CN", { hour12: false }); };
+const fmtAgo = (v) => {
+  if (!v) return "—";
+  const s = Math.round((Date.now() - v) / 1000);
+  if (s < 60) return s + " 秒前";
+  if (s < 3600) return Math.round(s / 60) + " 分钟前";
+  if (s < 86400) return Math.round(s / 3600) + " 小时前";
+  return Math.round(s / 86400) + " 天前";
+};
+const shortId = (s) => (s || "").slice(0, 12);
+
+/* ---------------- 状态 ---------------- */
+const S = {
+  page: "agent", state: null, agent: null, logs: [], run: null, chat: [], chatBusy: false,
+  activity: null,                                // 活动快照（顶栏"现在在干什么" + 对话页卡片）
+  memHits: null, memNote: "", memThreshold: 0,   // 记忆检索的最近一次结果与说明
+  memNodes: null, memStale: 0,                   // 记忆树节点 + 摘要没跟上的天数
+};
+const CHAT_KEY = "bz_console_chat_v1";
+function loadChat() { try { S.chat = JSON.parse(localStorage.getItem(CHAT_KEY) || "[]") || []; } catch (e) { S.chat = []; } }
+function saveChat() { try { localStorage.setItem(CHAT_KEY, JSON.stringify((S.chat || []).slice(-40))); } catch (e) { } }
+loadChat();
+
+const PAGES = [
+  { group: "主要" },
+  { id: "agent", name: "对话", icon: "💬", title: "对话", sub: "一句话派活，Agent 自己决定调哪些工具" },
+  { id: "kb", name: "知识库", icon: "📚", title: "知识库", sub: "待办 + 密码本 + 附件的正本，手机端读的就是这里", ep: "/api/kb/state" },
+  { id: "runs", name: "运行记录", icon: "🧾", title: "运行记录", sub: "每次派活的步骤、工具链路与 token 用量", ep: "/api/agent/runs" },
+  { group: "资源" },
+  { id: "devices", name: "设备", icon: "🖥️", title: "设备", sub: "电脑 / 手机 / NAS 注册上来的执行端", ep: "/api/state.devices" },
+  { id: "tasks", name: "任务与审批", icon: "📋", title: "任务与审批", sub: "危险动作要人工放行后才真的执行", ep: "/api/tasks" },
+  { id: "memory", name: "长期记忆", icon: "🧠", title: "长期记忆", sub: "任务结论自动落盘，动手前先检索", ep: "/api/agent/memory" },
+  { id: "skills", name: "技能", icon: "📦", title: "技能", sub: "工作目录里的可复用技能包", ep: "/api/agent/state.skills" },
+  { group: "配置" },
+  { id: "models", name: "模型通道", icon: "✨", title: "模型通道", sub: "只认 OpenAI / Anthropic 两种协议", ep: "/api/agent/providers" },
+  { id: "voice", name: "语音", icon: "🎙️", title: "语音", sub: "说得出话（合成）+ 听得懂话（听写），手机端按住说话走这里", ep: "/api/agent/voice" },
+  { id: "mcp", name: "MCP 服务", icon: "🔌", title: "MCP 服务", sub: "热插拔，加删重载都不用重启", ep: "/api/agent/mcp" },
+  { id: "backups", name: "备份与恢复", icon: "🗄️", title: "备份与恢复", sub: "zip + sha256 清单，恢复前自动打安全点", ep: "/api/agent/backups" },
+  { id: "cron", name: "定时任务", icon: "⏰", title: "定时任务", sub: "cron 表达式 + 一句目标", ep: "/api/agent/state.cron" },
+  { id: "logs", name: "日志", icon: "📜", title: "日志", sub: "后端运行日志（倒序）", ep: "/api/logs" },
+  { id: "settings", name: "设置", icon: "⚙️", title: "设置", sub: "运行参数与安全开关", ep: "/api/agent/config" },
+];
+
+function renderNav() {
+  let html = "";
+  PAGES.forEach((p) => {
+    if (p.group) { html += '<div class="nav-group"><i>' + esc(p.group) + '</i></div>'; return; }
+    let cnt = "";
+    if (p.id === "tasks" && S.state) {
+      const n = (S.state.tasks || []).filter((t) => t.status === "pending_approval").length;
+      if (n) cnt = '<span class="cnt">' + n + '</span>';
+    }
+    if (p.id === "devices" && S.state) {
+      const n = (S.state.devices || []).filter((d) => d.online).length;
+      cnt = '<span class="cnt">' + n + '</span>';
+    }
+    if (p.id === "kb" && S.kbStats) {
+      const n = (S.kbStats.todos || 0) + (S.kbStats.passwords || 0);
+      if (n) cnt = '<span class="cnt">' + n + '</span>';
+    }
+    html += '<button class="nav-item' + (S.page === p.id ? " on" : "") + '" data-p="' + p.id + '">' +
+      '<span class="ico">' + p.icon + '</span>' + esc(p.name) + cnt + '</button>';
+  });
+  $("nav").innerHTML = html;
+  $("nav").querySelectorAll("[data-p]").forEach((b) => {
+    b.onclick = () => { location.hash = "#" + b.dataset.p; };
+  });
+}
+
+/* ---------------- 各页渲染 ---------------- */
+function pageAgent() {
+  const st = S.agent || {};
+  // 派活（整行铺开、输入框加大）
+  let html = '<div class="card"><header><h2>派活</h2>' +
+    '<span class="ep mono">POST /api/agent/run</span></header><div class="pad">' +
+    '<div class="composer big"><textarea id="goal" placeholder="说清楚要干什么就行，例如：\n把手机上今天的待办按优先级排一下\n看看电脑上现在开着什么窗口\n把 NAS 上这个目录里的文件整理一份清单"></textarea>' +
+    '<div class="row"><button class="btn primary" id="btn-run-wait">派发（等结果）</button>' +
+    '<button class="btn" id="btn-run">只派发，不等</button>' +
+    '<span class="pill" id="run-hint">' + (st.running ? '<i class="dot ok"></i>正在跑 ' + esc(shortId(st.currentRunId)) : "空闲") + '</span>' +
+    '</div><p class="desc" style="padding:0;margin:2px 0 0">危险动作（删除文件、跑命令、跨端执行）不会直接执行，会挂到下面「待审批」里等你放行；批准前什么都不会发生。</p>' +
+    '</div></div></div>';
+
+  html += '<div class="card"><header><h2>待审批</h2><span class="ep mono">/api/agent/approvals</span></header>';
+  const ap = (st.approvals || []).filter((a) => a.status === "pending");
+  if (!ap.length) html += '<div class="empty">没有待审批的危险操作</div>';
+  else {
+    html += "<table><thead><tr><th>工具</th><th>参数</th><th class=\"nowrap\">发起于</th><th class=\"nowrap\">操作</th></tr></thead><tbody>";
+    ap.forEach((a) => {
+      html += '<tr><td><span class="tag warn">' + esc(a.tool) + '</span></td>' +
+        '<td class="mono">' + esc(JSON.stringify(a.args || {})) + '</td>' +
+        '<td class="nowrap cell-sub">' + esc(fmtAgo(a.at)) + '</td>' +
+        '<td class="nowrap"><button class="btn sm primary" data-ap="' + esc(a.id) + '">批准</button> ' +
+        '<button class="btn sm danger" data-rj="' + esc(a.id) + '">拒绝</button></td></tr>';
+    });
+    html += "</tbody></table>";
+  }
+  html += "</div>";
+
+  // 活动追踪：现在在干什么 + 最近的轨迹（轮询就地刷新，不整页重绘）
+  html += activityCard();
+
+  // 自由对话区：聊什么都行，一次发送 = 一次 Agent 运行，过程和结论都落在这条线上
+  html += '<div class="card"><header><h2>对话</h2><span class="ep mono">在本机浏览器里保留最近 40 条</span>' +
+    '<button class="btn sm" id="btn-chat-clear" style="margin-left:auto">清空</button></header>' +
+    '<div class="pad chatlist" id="chatlist">' + chatHTML() + "</div>" +
+    '<div class="pad" style="border-top:1px solid var(--app-border-subtle)"><div class="composer">' +
+    '<textarea id="chat-in" placeholder="随便聊：问它现在什么状态、让它干活、追问上一次的结果都行（Enter 发送，Shift+Enter 换行）"></textarea>' +
+    '<div class="row"><button class="btn primary" id="btn-chat-send">发送</button>' +
+    '<span class="pill" id="chat-hint">' + (S.chatBusy ? "正在想…（危险动作会挂到上面「待审批」等你放行）" : "Enter 发送，Shift+Enter 换行") + "</span></div>" +
+    "</div></div></div>";
+  return html;
+}
+
+/* 对话消息（含工具调用卡片） */
+function chatHTML() {
+  const list = S.chat || [];
+  if (!list.length && !S.chatBusy) {
+    return '<div class="empty">还没有对话。上面「派活」是干活的入口，这里可以随便聊——问状态、追问结果、让它接着做都行。</div>';
+  }
+  let out = "";
+  list.forEach((m) => {
+    const isUser = m.role === "user";
+    out += '<div class="msg' + (isUser ? " user" : "") + '"><div class="av">' + (isUser ? "你" : "泽") + "</div>" +
+      '<div style="min-width:0;flex:1"><div class="bubble">' + esc(m.text) + "</div>" +
+      ((m.trace || []).map(toolCard).join("")) +
+      (m.meta ? '<div class="pill" style="margin-top:6px">' + esc(m.meta) + "</div>" : "") +
+      "</div></div>";
+  });
+  if (S.chatBusy) out += '<div class="msg"><div class="av">泽</div><div class="thinking">正在想<i>…</i></div></div>';
+  return out;
+}
+function toolCard(t) {
+  return '<details class="tool"' + (t.error ? " open" : "") + '><summary><span class="arrow">▶</span>' +
+    '<span class="tag' + (t.error ? " err" : "") + '">' + esc(t.tool) + "</span>" +
+    '<span class="mono" style="color:var(--app-text-3)">' + esc(t.args) + "</span>" +
+    '<span style="margin-left:auto;color:var(--app-text-3)" class="mono">' + (t.ms || 0) + "ms</span></summary>" +
+    "<pre>" + esc(t.error ? ("失败：" + t.error) : (t.result || "")) + "</pre></details>";
+}
+
+function pageRuns() {
+  const runs = (S.agent && S.agent.runs) || [];
+  if (!runs.length) return '<div class="card"><div class="empty">还没有运行记录</div></div>';
+  let h = '<div class="card"><header><h2>运行记录</h2><span class="ep mono">/api/agent/runs</span></header><table><thead><tr>' +
+    '<th>目标</th><th class="nowrap">状态</th><th class="nowrap">步数</th><th class="nowrap">token</th><th class="nowrap">时间</th><th></th></tr></thead><tbody>';
+  runs.forEach((r) => {
+    const bad = r.status !== "done";
+    h += '<tr><td><div class="cell-title">' + esc(r.goal) + '</div><div class="cell-sub mono">' + esc(r.runId) + "</div></td>" +
+      '<td class="nowrap"><span class="tag ' + (bad ? "err" : "ok") + '">' + esc(r.status) + "</span></td>" +
+      '<td class="nowrap">' + (r.steps || 0) + " / " + (r.toolCalls || 0) + "</td>" +
+      '<td class="nowrap">' + ((r.usage && r.usage.totalTokens) || 0) + "</td>" +
+      '<td class="nowrap cell-sub">' + esc(fmtAgo(r.startedAt)) + "</td>" +
+      '<td class="nowrap"><button class="btn sm" data-run="' + esc(r.runId) + '">详情</button></td></tr>';
+  });
+  h += "</tbody></table></div>";
+  if (S.run) {
+    h += '<div class="card"><header><h2>运行详情</h2><span class="ep mono">GET /api/agent/runs/{id}</span></header><div class="pad chat">';
+    (S.run.messages || []).forEach((m) => {
+      const isUser = m.role === "user", isTool = m.role === "tool";
+      h += '<div class="msg' + (isUser ? " user" : "") + '"><div class="av">' + (isUser ? "你" : isTool ? "🔧" : "泽") + "</div>" +
+        '<div style="min-width:0;flex:1"><div class="bubble"' + (isTool ? ' style="background:var(--app-surface);border-style:dashed"' : "") + ">" +
+        esc(m.content) + "</div></div></div>";
+    });
+    h += "</div></div>";
+  }
+  return h;
+}
+
+function pageDevices() {
+  const ds = (S.state && S.state.devices) || [];
+  const remarks = (S.state && S.state.deviceRemarks) || {};
+  const self = (S.state && S.state.self) || {};
+
+  // 主设备：白泽后端自己跑在哪台机器上
+  let h = '<div class="card"><header><h2>主设备</h2><span class="ep mono">/api/state.self</span></header>' +
+    '<table><tbody><tr>' +
+    '<td style="width:56px"><span style="font-size:20px">🗄️</span></td>' +
+    '<td><div class="cell-title">' + esc(self.hostname || "未知主机") + '</div>' +
+    '<div class="cell-sub">白泽后端就跑在这一台上 · 设备表里其它端都由它调度</div></td>' +
+    '<td class="nowrap"><span class="tag ok">主设备</span></td>' +
+    '<td class="nowrap cell-sub">' + esc((self.os || "") + "/" + (self.arch || "")) + '</td>' +
+    '<td class="nowrap cell-sub">v' + esc(self.version || "") + '</td></tr></tbody></table></div>';
+
+  h += '<div class="card"><header><h2>接入的设备</h2><span class="ep mono">/api/state.devices</span></header>';
+  if (!ds.length) {
+    h += '<div class="empty">还没有设备接入。电脑上跑：<code>bin\\baize-desktop.exe --server http://127.0.0.1:8787 --token &lt;令牌&gt;</code>' +
+      '<br>手机上：设置 → 跨端 里填后端地址与令牌</div>';
+  } else {
+    h += '<table><thead><tr><th>设备</th><th class="nowrap">状态</th><th>能力</th><th class="nowrap">平台</th><th class="nowrap">最后心跳</th><th class="nowrap">操作</th></tr></thead><tbody>';
+    ds.forEach((d) => {
+      const rm = remarks[d.id];
+      h += '<tr><td><div class="cell-title">' + esc(d.name || d.id) +
+        (rm ? ' <span class="tag accent">' + esc(rm) + "</span>" : "") + '</div>' +
+        '<div class="cell-sub mono">' + esc(d.id) + "</div></td>" +
+        '<td class="nowrap"><span class="pill"><i class="dot' + (d.online ? " ok" : "") + '"></i>' + (d.online ? "在线" : "离线") + "</span></td>" +
+        "<td>" + (d.caps || []).map((c) => '<span class="tag">' + esc(c) + "</span>").join("") + "</td>" +
+        '<td class="nowrap cell-sub">' + esc(d.os || "") + "/" + esc(d.arch || "") + "</td>" +
+        '<td class="nowrap cell-sub">' + esc(fmtAgo(d.lastSeen)) + "</td>" +
+        '<td class="nowrap"><button class="btn sm" data-ping="' + esc(d.id) + '">探活</button> ' +
+        '<button class="btn sm" data-rm="' + esc(d.id) + '">备注</button></td></tr>';
+    });
+    h += "</tbody></table>";
+  }
+  return h + "</div>";
+}
+
+function pageTasks() {
+  const ts = (S.state && S.state.tasks) || [];
+  if (!ts.length) return '<div class="card"><div class="empty">还没有任务</div></div>';
+  const badge = (s) => s === "done" ? "ok" : s === "pending_approval" ? "warn" : s === "running" ? "accent" : s === "rejected" ? "err" : "";
+  let h = '<div class="card"><header><h2>任务</h2><span class="ep mono">/api/tasks</span></header>' +
+    '<table><thead><tr><th>动作</th><th class="nowrap">设备</th><th class="nowrap">状态</th><th>结果</th><th class="nowrap">时间</th><th class="nowrap">操作</th></tr></thead><tbody>';
+  ts.forEach((t) => {
+    h += '<tr><td><span class="tag">' + esc(t.action) + '</span><div class="cell-sub mono">' + esc(shortId(t.id)) + "</div></td>" +
+      '<td class="nowrap cell-sub">' + esc(t.deviceId) + "</td>" +
+      '<td class="nowrap"><span class="tag ' + badge(t.status) + '">' + esc(t.status) + "</span></td>" +
+      '<td class="mono cell-sub">' + esc(t.error ? ("失败：" + t.error) : JSON.stringify(t.result || {}).slice(0, 160)) + "</td>" +
+      '<td class="nowrap cell-sub">' + esc(fmtAgo(t.createdAt)) + "</td>" +
+      '<td class="nowrap">' + (t.status === "pending_approval"
+        ? '<button class="btn sm primary" data-tap="' + esc(t.id) + '">批准</button> <button class="btn sm danger" data-trj="' + esc(t.id) + '">拒绝</button>'
+        : "") + "</td></tr>";
+  });
+  return h + "</tbody></table></div>";
+}
+
+/* 知识库：待办 + 密码本 + 附件的正本都在这（手机端读的就是这份） */
+function fmtBytes(n) {
+  n = Number(n) || 0;
+  if (n >= 1 << 20) return (n / (1 << 20)).toFixed(1) + " MB";
+  if (n >= 1 << 10) return (n / (1 << 10)).toFixed(1) + " KB";
+  return n + " B";
+}
+async function kbOp(op, args) {
+  const r = await api("/api/kb/op", { method: "POST", body: { op: op, args: args || {} } });
+  if (r && r.ok === false) throw new Error(r.error || "后端执行失败");
+  return r;
+}
+function pageKb() {
+  const k = S.kb || {};
+  const stats = S.kbStats || {};
+  const todos = k.todos || [];
+  const vault = k.vault || [];
+  const files = (S.kbFiles && S.kbFiles.files) || [];
+  const reveal = S.kbReveal || {};
+  const priName = { high: "高", mid: "中", low: "低" };
+  const stName = { todo: "待办", doing: "进行中", done: "已完成", cancelled: "已取消" };
+  const stTag = (s) => s === "done" ? "ok" : s === "doing" ? "accent" : s === "cancelled" ? "err" : "";
+
+  let h = '<div class="card"><header><h2>知识库概览</h2><span class="ep mono">/api/kb/stats</span></header><div class="pad">' +
+    '<div class="stats">' +
+    '<div><b>' + todos.length + '</b><span>待办</span></div>' +
+    '<div><b>' + (k.vaultLocked ? "🔒" : vault.length) + '</b><span>密码记录</span></div>' +
+    '<div><b>' + files.length + '</b><span>附件</span></div>' +
+    '<div><b>' + fmtBytes(stats.fileBytes) + '</b><span>附件占用</span></div>' +
+    '</div><p class="cell-sub" style="margin:14px 0 0">正本目录 <code>' + esc(stats.dir || "—") + '</code>' +
+    ' —— 手机端读的就是这一份，这里改完手机刷新即可见。附件不上传不落手机，手机只在打开时临时取回。</p>' +
+    '</div></div>';
+
+  /* 待办 */
+  h += '<div class="card"><header><h2>待办</h2><span class="ep mono">/api/kb/op · todo.upsert</span></header>' +
+    '<div class="pad"><div class="row">' +
+    '<input id="kb-t-title" placeholder="要做什么" style="flex:1;min-width:180px">' +
+    '<input id="kb-t-cat" placeholder="领域（可留空）" style="width:150px">' +
+    '<select id="kb-t-pri"><option value="mid">中</option><option value="high">高</option><option value="low">低</option></select>' +
+    '<input id="kb-t-due" type="datetime-local">' +
+    '<button class="btn primary" id="kb-t-add">加进知识库</button>' +
+    '</div><p class="cell-sub" style="margin:10px 0 0">不填时间就是「闲暇待办」，填了就是「日程排期」。</p></div>';
+  if (!todos.length) {
+    h += '<div class="empty">知识库里还没有待办</div>';
+  } else {
+    h += '<table><thead><tr><th>标题</th><th class="nowrap">领域</th><th class="nowrap">优先级</th><th class="nowrap">截止</th><th class="nowrap">状态</th><th class="nowrap">操作</th></tr></thead><tbody>';
+    todos.forEach((t) => {
+      h += '<tr><td><div class="cell-title">' + esc(t.title) + '</div>' +
+        (t.note ? '<div class="cell-sub">' + esc(t.note) + '</div>' : "") +
+        '<div class="cell-sub mono">' + esc(t.id) + '</div></td>' +
+        '<td class="nowrap cell-sub">' + esc(t.category || "—") + '</td>' +
+        '<td class="nowrap cell-sub">' + esc(priName[t.priority] || t.priority || "—") + '</td>' +
+        '<td class="nowrap cell-sub">' + esc((t.due || "").replace("T", " ") || "—") + '</td>' +
+        '<td class="nowrap"><span class="tag ' + stTag(t.status) + '">' + esc(stName[t.status] || t.status) + '</span></td>' +
+        '<td class="nowrap"><button class="btn sm danger" data-kb-deltodo="' + esc(t.id) + '" data-t="' + esc(t.title) + '">删除</button></td></tr>';
+    });
+    h += '</tbody></table>';
+  }
+  h += '</div>';
+
+  /* 密码本 */
+  h += '<div class="card"><header><h2>密码本</h2><span class="ep mono">/api/kb/op · vault.merge</span></header>';
+  if (k.vaultLocked) {
+    h += '<div class="empty">密码本已锁定（设了主密码但没解锁）。先在手机 App 的密码本页解锁，或者用 CLI 解锁后再看。</div>';
+  } else {
+    h += '<div class="pad"><div class="row">' +
+      '<input id="kb-p-title" placeholder="平台 / 站点" style="width:160px">' +
+      '<input id="kb-p-acc" placeholder="账号" style="width:170px">' +
+      '<input id="kb-p-pwd" type="password" placeholder="密码" style="width:150px">' +
+      '<input id="kb-p-group" placeholder="归属（可留空）" style="width:140px">' +
+      '<button class="btn primary" id="kb-p-add">存进密码本</button>' +
+      '</div><p class="cell-sub" style="margin:10px 0 0">同一个「平台 + 账号」再存一次，旧密码会自动进历史，不会覆盖丢失。</p></div>';
+    if (!vault.length) {
+      h += '<div class="empty">还没有密码记录</div>';
+    } else {
+      h += '<table><thead><tr><th>平台</th><th class="nowrap">账号</th><th class="nowrap">归属</th><th class="nowrap">密码</th><th class="nowrap">历史</th><th class="nowrap">更新时间</th><th class="nowrap">操作</th></tr></thead><tbody>';
+      vault.forEach((v) => {
+        const on = !!reveal[v.id];
+        h += '<tr><td class="cell-title">' + esc(v.title) + '</td>' +
+          '<td class="nowrap cell-sub">' + esc(v.account) + '</td>' +
+          '<td class="nowrap cell-sub">' + esc(v.group || "—") + '</td>' +
+          '<td class="nowrap mono">' + (on ? esc(v.password || "（空）") : "••••••••") +
+          ' <button class="btn sm" data-kb-reveal="' + esc(v.id) + '">' + (on ? "隐藏" : "显示") + '</button></td>' +
+          '<td class="nowrap cell-sub">' + ((v.history || []).length || "—") + '</td>' +
+          '<td class="nowrap cell-sub">' + esc(fmtAgo(v.updatedAt)) + '</td>' +
+          '<td class="nowrap"><button class="btn sm danger" data-kb-delpass="' + esc(v.id) + '" data-t="' + esc(v.title) + '">删除</button></td></tr>';
+      });
+      h += '</tbody></table>';
+    }
+  }
+  h += '</div>';
+
+  /* 附件 */
+  h += '<div class="card"><header><h2>附件（文件正本都在 NAS）</h2><span class="ep mono">/api/kb/files</span></header>';
+  if (!files.length) {
+    h += '<div class="empty">还没有附件。手机 App 里给待办拍照就会传到这里。</div>';
+  } else {
+    h += '<table><thead><tr><th>文件名</th><th class="nowrap">大小</th><th class="nowrap">类型</th><th class="nowrap">上传时间</th><th class="nowrap">操作</th></tr></thead><tbody>';
+    files.forEach((f) => {
+      h += '<tr><td><div class="cell-title">' + esc(f.name || f.id) + '</div><div class="cell-sub mono">' + esc(f.id) + '</div></td>' +
+        '<td class="nowrap cell-sub">' + esc(fmtBytes(f.size)) + '</td>' +
+        '<td class="nowrap cell-sub">' + esc(f.kind || "file") + (f.mime ? " · " + esc(f.mime) : "") + '</td>' +
+        '<td class="nowrap cell-sub">' + esc(fmtAgo(f.at)) + '</td>' +
+        '<td class="nowrap"><button class="btn sm" data-kb-dl="' + esc(f.id) + '">下载</button> ' +
+        '<button class="btn sm danger" data-kb-delfile="' + esc(f.id) + '" data-t="' + esc(f.name || f.id) + '">删除</button></td></tr>';
+    });
+    h += '</tbody></table>';
+  }
+  return h + '</div>';
+}
+
+function pageMemory() {
+  const m = (S.agent && S.agent.memory) || {};
+  const nodes = S.memNodes || [];
+  const em = (S.agent && S.agent.embedding) || {};
+  const mc = (S.agent && S.agent.memoryCfg) || {};
+  let h = '<div class="card"><header><h2>记忆</h2><span class="ep mono">/api/agent/memory/tree</span>' +
+    '<button class="btn sm" id="btn-trebuild" style="margin-left:auto">重建记忆树摘要</button>' +
+    '<button class="btn sm danger" id="btn-mcompact">整理重复记忆</button></header><div class="pad">' +
+    '<div class="stats"><div><b>' + (m.chunks || 0) + '</b><span>记忆块</span></div>' +
+    '<div><b>' + (m.nodes || 0) + '</b><span>记忆节点</span></div>' +
+    '<div><b>' + (m.tokens || 0) + '</b><span>约 token</span></div></div>' +
+    // 语义检索到底有没有在工作，必须写清楚：不然检索结果不好也说不清为什么
+    '<div class="row" style="margin-top:10px">' +
+    '<span class="pill"><i class="dot' + (em.usable ? " ok" : "") + '"></i>' +
+    (em.usable ? "语义检索已启用" + (em.dim ? "（" + em.dim + " 维）" : "") : "语义检索未启用") + '</span>' +
+    (em.model ? '<span class="pill">向量模型 <b>' + esc(em.model) + '</b></span>' : "") +
+    '<span class="pill">自动召回 <b>' + (mc.autoRecall === false ? "关" : "开") + '</b>' +
+    (mc.recallProfile ? "（" + esc(mc.recallProfile) + "）" : "") + '</span>' +
+    (mc.namespace ? '<span class="pill">分区 <b>' + esc(mc.namespace) + '</b></span>' : "") +
+    // 摘要没跟上要说出来：不然节点列表里只有空标题，说不清是没记忆还是没摘要
+    (S.memStale > 0
+      ? '<span class="pill"><i class="dot"></i>有 <b>' + S.memStale + '</b> 天摘要没跟上（后台每小时自动补）</span>'
+      : '<span class="pill"><i class="dot ok"></i>记忆树摘要已跟上</span>') +
+    '</div>' +
+    (em.usable ? "" : '<div class="cell-sub" style="margin-top:8px">' + esc(em.err || em.note || "") +
+      "　到「设置」页可以配一条向量化通道（例如硅基流动 / 本地 embedding），配上之后记忆才按语义检索。</div>") +
+    '</div></div>';
+  h += '<div class="pad" style="border-top:1px solid var(--app-border-subtle)">' +
+    '<div class="row"><input type="text" id="mq" placeholder="检索记忆…" style="flex:1">' +
+    '<button class="btn" id="btn-mq">检索</button>' +
+    '<button class="btn primary" id="btn-mw">写一条</button></div></div>';
+  if (S.memHits) {
+    // 搜不到时要说清是"被最低相似度挡了"还是"真没有"，不然看着像记忆丢了
+    if (!S.memHits.length) {
+      h += '<div class="pad"><div class="empty">没搜到' +
+        (S.memThreshold ? '（没有够上最低语义相似度 ' + esc(String(S.memThreshold)) + ' 的记忆）' : "") + "</div>" +
+        (S.memNote ? '<div class="cell-sub" style="margin-top:6px">' + esc(S.memNote) + "</div>" : "") + "</div>";
+    } else {
+      h += '<table><thead><tr><th>标题</th><th>内容</th><th class="nowrap">类型</th><th class="nowrap">评分</th><th class="nowrap">为什么</th></tr></thead><tbody>';
+      (S.memHits || []).forEach((x) => {
+        const c = x.chunk || x;
+        h += '<tr><td class="cell-title">' + esc(c.title || "—") + '</td><td class="cell-sub">' + esc((c.content || "").slice(0, 120)) + "</td>" +
+          '<td class="nowrap"><span class="tag">' + esc(c.kind || "") + "</span></td>" +
+          '<td class="nowrap cell-sub">' + (x.score ? x.score.toFixed(2) : "") + "</td>" +
+          '<td class="nowrap cell-sub">' + esc(x.why || "") + "</td></tr>";
+      });
+      h += "</tbody></table>";
+      if (S.memNote) h += '<div class="pad"><div class="cell-sub">' + esc(S.memNote) + "</div></div>";
+    }
+  } else if (nodes.length) {
+    h += '<table><thead><tr><th class="nowrap">层级</th><th class="nowrap">标题</th><th class="nowrap">记忆条数</th><th>摘要</th></tr></thead><tbody>';
+    nodes.forEach((n) => {
+      h += '<tr><td class="nowrap"><span class="tag">' + (n.level === 2 ? "周" : "天") + '</span></td>' +
+        '<td class="cell-title nowrap">' + esc(n.title || n.id) + '</td>' +
+        '<td class="nowrap cell-sub">' + (n.chunkCount || 0) + '</td>' +
+        '<td class="cell-sub">' + esc((n.summary || "（摘要还没生成）").slice(0, 180)) + "</td></tr>";
+    });
+    h += "</tbody></table>";
+  } else h += '<div class="empty">还没有记忆</div>';
+  return h + "</div>";
+}
+
+function pageSkills() {
+  const sk = (S.agent && S.agent.skills) || [];
+  let h = '<div class="card"><header><h2>技能</h2><span class="ep mono">/api/agent/state.skills</span></header>' +
+    '<p class="desc">放在 <code>' + esc((S.agent && S.agent.skillsDir) || "") + '</code> 下的技能包，Agent 按需加载。</p>';
+  if (!sk.length) h += '<div class="empty">还没有技能包</div>';
+  else {
+    h += '<table><thead><tr><th>技能</th><th>说明</th><th class="nowrap">token</th></tr></thead><tbody>';
+    sk.forEach((s) => {
+      h += '<tr><td class="cell-title">' + esc(s.name) + '</td><td class="cell-sub">' + esc(s.description || "") + "</td>" +
+        '<td class="nowrap cell-sub">' + (s.tokens || 0) + "</td></tr>";
+    });
+    h += "</tbody></table>";
+  }
+  return h + "</div>";
+}
+
+function pageModels() {
+  const ps = (S.agent && S.agent.providers) || [];
+  let h = '<div class="card"><header><h2>模型通道</h2><span class="ep mono">/api/agent/providers</span></header>' +
+    '<table><thead><tr><th>通道</th><th class="nowrap">协议</th><th class="nowrap">状态</th><th class="nowrap">地址</th><th class="nowrap">操作</th></tr></thead><tbody>';
+  if (!ps.length) h += '<tr><td colspan="5" class="empty">还没有可用的模型通道 —— 先在下面加一个，Agent 才能干活</td></tr>';
+  ps.forEach((p) => {
+    h += '<tr><td><div class="cell-title">' + esc(p.name) + '</div><div class="cell-sub mono">' + esc(p.model) + "</div></td>" +
+      '<td class="nowrap">' + esc(p.protocol) + "</td>" +
+      '<td class="nowrap">' + (p.usable ? '<span class="tag ok">可用</span>' : '<span class="tag err">缺配置</span>') +
+      (p.local ? '<span class="tag">本地</span>' : "") + "</td>" +
+      '<td class="nowrap mono cell-sub">' + esc(p.baseUrl) + "</td>" +
+      '<td class="nowrap"><button class="btn sm" data-pt="' + esc(p.name) + '">探活</button> ' +
+      '<button class="btn sm danger" data-pd="' + esc(p.name) + '">删除</button></td></tr>';
+  });
+  h += "</tbody></table>";
+  h += '<div class="pad" style="border-top:1px solid var(--app-border-subtle)">' +
+    '<div class="row"><input type="text" id="p-name" placeholder="名称（如 deepseek）" style="width:150px">' +
+    '<select id="p-proto"><option value="openai">OpenAI 兼容</option><option value="anthropic">Anthropic</option></select>' +
+    '<input type="text" id="p-base" placeholder="BaseURL（如 https://api.deepseek.com/v1）" style="flex:1;min-width:220px">' +
+    '<input type="password" id="p-key" placeholder="API Key" style="width:150px">' +
+    '<input type="text" id="p-model" placeholder="模型 ID" style="width:140px">' +
+    '<button class="btn primary" id="btn-padd">添加</button></div></div></div>';
+  return h;
+}
+
+function pageMCP() {
+  const ms = (S.agent && S.agent.mcp) || [];
+  let h = '<div class="card"><header><h2>MCP 服务</h2><span class="ep mono">/api/agent/mcp</span></header>' +
+    '<p class="desc">MCP 工具默认走审批闸门，只有列进 <code>safeTools</code> 或打开 <code>autoApprove</code> 才免批。</p>';
+  if (!ms.length) h += '<div class="empty">还没挂 MCP 服务</div>';
+  else {
+    h += '<table><thead><tr><th>服务</th><th class="nowrap">传输</th><th class="nowrap">状态</th><th>工具</th><th class="nowrap">操作</th></tr></thead><tbody>';
+    ms.forEach((m) => {
+      const ok = m.status === "connected";
+      h += '<tr><td><div class="cell-title">' + esc(m.name) + '</div><div class="cell-sub mono">' + esc(m.error || m.serverName || "") + "</div></td>" +
+        '<td class="nowrap">' + esc(m.transport || "") + "</td>" +
+        '<td class="nowrap"><span class="tag ' + (ok ? "ok" : "err") + '">' + esc(m.status || "") + "</span></td>" +
+        "<td>" + (m.tools || []).map((t) => '<span class="tag">' + esc(t) + "</span>").join("") + "</td>" +
+        '<td class="nowrap"><button class="btn sm" data-mre="' + esc(m.name) + '">重载</button> ' +
+        '<button class="btn sm danger" data-mrm="' + esc(m.name) + '">卸载</button></td></tr>';
+    });
+    h += "</tbody></table>";
+  }
+  return h + "</div>";
+}
+
+function pageBackups() {
+  const bs = (S.agent && S.agent.backups) || [];
+  let h = '<div class="card"><header><h2>备份</h2><span class="ep mono">/api/agent/backups</span>' +
+    '<button class="btn sm primary" id="btn-bk" style="margin-left:auto">立即备份</button></header>';
+  if (!bs.length) h += '<div class="empty">还没有备份</div>';
+  else {
+    h += '<table><thead><tr><th>文件</th><th class="nowrap">大小</th><th class="nowrap">时间</th><th class="nowrap">操作</th></tr></thead><tbody>';
+    bs.forEach((b) => {
+      h += '<tr><td class="mono">' + esc(b.name) + "</td>" +
+        '<td class="nowrap cell-sub">' + Math.round((b.size || 0) / 1024) + " KB</td>" +
+        '<td class="nowrap cell-sub">' + esc(fmtMs(b.createdAt)) + "</td>" +
+        '<td class="nowrap"><button class="btn sm" data-bv="' + esc(b.name) + '">校验</button> ' +
+        '<button class="btn sm" data-bd="' + esc(b.name) + '">试运行恢复</button> ' +
+        '<button class="btn sm danger" data-br="' + esc(b.name) + '">恢复</button> ' +
+        '<button class="btn sm danger" data-bx="' + esc(b.name) + '">删除</button></td></tr>';
+    });
+    h += "</tbody></table>";
+  }
+  return h + "</div>";
+}
+
+function pageCron() {
+  const cs = (S.agent && S.agent.cron) || [];
+  let h = '<div class="card"><header><h2>定时任务</h2><span class="ep mono">/api/agent/state.cron</span></header>';
+  if (!cs.length) h += '<div class="empty">还没有定时任务</div>';
+  else {
+    h += '<table><thead><tr><th>目标</th><th class="nowrap">表达式</th><th class="nowrap">上次</th><th class="nowrap">下次</th><th class="nowrap">状态</th></tr></thead><tbody>';
+    cs.forEach((c) => {
+      h += '<tr><td class="cell-title">' + esc(c.goal) + "</td>" +
+        '<td class="nowrap mono">' + esc(c.expr) + "</td>" +
+        '<td class="nowrap cell-sub">' + esc(c.lastRunAt ? fmtAgo(c.lastRunAt) : "—") + "</td>" +
+        '<td class="nowrap cell-sub">' + esc(c.nextAt ? fmtMs(c.nextAt) : "—") + "</td>" +
+        '<td class="nowrap">' + (c.enabled ? '<span class="tag ok">启用</span>' : '<span class="tag">停用</span>') + "</td></tr>";
+    });
+    h += "</tbody></table>";
+  }
+  h += '<div class="pad" style="border-top:1px solid var(--app-border-subtle)"><div class="row">' +
+    '<input type="text" id="c-expr" placeholder="0 8 * * *" style="width:130px">' +
+    '<input type="text" id="c-goal" placeholder="到点要做什么（一句话）" style="flex:1;min-width:220px">' +
+    '<button class="btn primary" id="btn-cadd">添加</button></div></div></div>';
+  return h;
+}
+
+function pageLogs() {
+  const lines = (S.logs || []).map((l) => l.line || l.text || JSON.stringify(l));
+  return '<div class="card"><header><h2>日志</h2><span class="ep mono">/api/logs</span>' +
+    '<button class="btn sm" id="btn-lg" style="margin-left:auto">刷新</button></header>' +
+    '<pre class="logbox">' + esc(lines.join("\n") || "（还没有日志）") + "</pre></div>";
+}
+
+function pageSettings() {
+  const st = S.agent || {};
+  const n = (v, d) => (v === undefined || v === null ? d : v);
+  return '<div class="card"><header><h2>运行参数</h2><span class="ep mono">/api/agent/config</span></header><div class="pad">' +
+    '<div class="grid2">' +
+    '<div class="field"><label>最大步数 maxSteps</label><input type="number" id="s-steps" value="' + n(st2("maxSteps"), 12) + '"></div>' +
+    '<div class="field"><label>上下文预算 tokenBudget</label><input type="number" id="s-budget" value="' + n(st2("tokenBudget"), 8000) + '"></div>' +
+    '<div class="field"><label>审批超时（秒）</label><input type="number" id="s-appr" value="' + n(st2("approvalTimeoutSec"), 300) + '"></div>' +
+    '<div class="field"><label>备份保留份数</label><input type="number" id="s-keep" value="' + n(st2("backupKeep"), 10) + '"></div>' +
+    '</div><div class="field"><label>安全开关</label><div class="row">' +
+    '<span class="switch' + (st.allowShell ? " on" : "") + '" id="s-shell"><i></i>允许执行命令 shell_run</span>' +
+    '<span class="switch' + (st.allowRemote ? " on" : "") + '" id="s-remote"><i></i>允许远端模型地址</span>' +
+    '</div></div><div class="row"><button class="btn primary" id="btn-save">保存</button>' +
+    '<span class="pill">工作目录 <code>' + esc(st.workdir || "") + '</code></span></div>' +
+    '</div></div>' +
+    pageMemorySettings(st) +
+    '<div class="card"><header><h2>运行环境</h2></header><table><tbody>' +
+    row("后端版本", st.version) + row("数据目录", st.dataDir) + row("工作目录", st.workdir) +
+    row("技能目录", st.skillsDir) + row("备份目录", st.backupDir) +
+    '</tbody></table></div>';
+}
+
+// 记忆术 + 向量化通道：两块是配套的（没配向量就只能按关键词检索），所以放一起
+function pageMemorySettings(st) {
+  const em = st.embedding || {};
+  const mc = st.memoryCfg || {};
+  const m = st.memory || {};
+  const e = (v, d) => (v === undefined || v === null || v === "" ? d : v);
+  const profiles = ["balanced", "semantic", "lexical", "graph_first"];
+  const opt = (v) => profiles.map((p) => '<option value="' + p + '"' + (v === p ? " selected" : "") + ">" + p + "</option>").join("");
+  return '<div class="card"><header><h2>记忆术</h2><span class="ep mono">/api/agent/config</span>' +
+    '<span class="pill" style="margin-left:auto"><i class="dot' + (em.usable ? " ok" : "") + '"></i>' +
+    (em.usable ? "语义检索已启用" : "语义检索未启用") + '</span></header><div class="pad">' +
+    '<div class="grid2">' +
+    '<div class="field"><label>检索权重档位 recallProfile</label><select id="m-profile">' + opt(mc.recallProfile || "balanced") + "</select></div>" +
+    '<div class="field"><label>召回 token 预算</label><input type="number" id="m-budget" value="' + e(mc.recallBudget, 600) + '"></div>' +
+    '<div class="field"><label>最低语义相似度</label><input type="number" step="0.05" min="0.05" max="1" id="m-minscore" value="' + e(mc.recallMinScore, 0.35) + '"></div>' +
+    '<div class="field"><label>记忆分区 namespace</label><input type="text" id="m-ns" value="' + esc(e(mc.namespace, "default")) + '"></div>' +
+    "</div>" +
+    '<div class="field"><label>主动召回</label><div class="row">' +
+    '<span class="switch' + (mc.autoRecall === false ? "" : " on") + '" id="m-autorecall"><i></i>派活前自动想起相关记忆</span>' +
+    "</div></div>" +
+    '<div class="row"><button class="btn primary" id="btn-msave">保存记忆设置</button>' +
+    '<span class="cell-sub">档位：balanced 均衡 / semantic 偏语义 / lexical 偏关键词 / graph_first 偏联想</span></div>' +
+    "</div></div>" +
+
+    '<div class="card"><header><h2>向量化通道</h2><span class="ep mono">/api/agent/config → embedding</span></header><div class="pad">' +
+    '<div class="cell-sub" style="margin-bottom:10px">记忆的语义检索需要一条 embedding 通道。不配也能用，只是退化成关键词检索。<br>' +
+    "注意：对话模型和向量模型常常不是一家（比如 DeepSeek 没有 embedding 接口），所以要单独配一条。</div>" +
+    '<div class="grid2">' +
+    '<div class="field"><label>接口地址 baseUrl</label><input type="text" id="e-base" placeholder="https://api.siliconflow.cn/v1" value="' + esc(em.baseUrl || "") + '"></div>' +
+    '<div class="field"><label>模型 model</label><input type="text" id="e-model" placeholder="BAAI/bge-m3" value="' + esc(em.model || "") + '"></div>' +
+    '<div class="field"><label>API Key ' + (em.hasApiKey ? '<span class="tag">已配置</span>' : "") + '</label><input type="password" id="e-key" placeholder="留空 = 不修改原来的 key"></div>' +
+    '<div class="field"><label>向量维度（探活后自动记录）</label><input type="text" value="' + esc(em.dim || "—") + '" disabled></div>' +
+    "</div>" +
+    (em.err ? '<div class="cell-sub" style="color:var(--app-red,#d33);margin-bottom:8px">通道有问题：' + esc(em.err) + "</div>" : "") +
+    (em.note ? '<div class="cell-sub" style="margin-bottom:8px">' + esc(em.note) + "</div>" : "") +
+    '<div class="row"><button class="btn primary" id="btn-esave">保存通道</button>' +
+    '<button class="btn" id="btn-etest">探活</button>' +
+    '<button class="btn" id="btn-reindex">给旧记忆补向量</button>' +
+    '<span class="cell-sub">探活与补向量都会真发请求，消耗一点点额度</span></div>' +
+    (m && m.missingEmbedding > 0
+      ? '<div class="cell-sub" style="margin-top:8px">现有 ' + m.chunks + ' 条记忆里有 <b>' + m.missingEmbedding +
+        '</b> 条的向量不可用（没有向量，或向量是别的模型算的）—— 不补的话，语义检索搜不到它们（只能靠关键词命中）。' +
+        '配好通道、或换过向量模型之后，点一次「给旧记忆补向量」重算。</div>'
+      : "") +
+    "</div></div>";
+}
+// 语音通道：说话（合成）+ 听话（听写）。两家协议的实际差别写在界面上，
+// 免得用户把百炼的 compatible-mode 地址配成 openai 协议后一头雾水（音频接口会 404）。
+function pageVoice() {
+  const v = (S.cfg && S.cfg.voice) || {};
+  const full = S.voice || {};                 // /api/agent/voice 的完整信息（含音色清单）
+  const voices = full.voices || [];
+  const protocols = full.protocols || [];
+  const cur = full.protocol || v.protocol || "openai";
+  const voiceOpts = voices.map((x) =>
+    '<option value="' + esc(x.id) + '"' + ((full.voice || v.voice) === x.id ? " selected" : "") + ">" +
+    esc(x.name) + "（" + esc(x.id) + "）· " + esc(x.desc) + "</option>").join("");
+  const protoOpts = protocols.map((p) =>
+    '<option value="' + esc(p.id) + '"' + (cur === p.id ? " selected" : "") + ">" + esc(p.name) + "</option>").join("");
+  const on = (b) => (b ? " on" : "");
+  const ready = full.ready;
+  return '<div class="card"><header><h2>语音通道</h2><span class="ep mono">/api/agent/voice</span>' +
+    '<span class="pill" style="margin-left:auto"><i class="dot' + (ready ? " ok" : "") + '"></i>' +
+    (ready ? "已就绪" : (v.enabled ? "缺配置" : "未启用")) + '</span></header><div class="pad">' +
+    '<div class="cell-sub" style="margin-bottom:10px">语音故意和对话通道分开配：语音模型常常不是对话那一家' +
+    "（DeepSeek 没有语音接口，阿里百炼有 qwen-tts / paraformer）。不配也能用，只是" +
+    "<b>手机端不会有声音、也不能按住说话</b>。</div>" +
+    '<div class="grid2">' +
+    '<div class="field"><label>协议 protocol</label><select id="v-proto">' + protoOpts + "</select></div>" +
+    '<div class="field"><label>接口地址 baseUrl</label><input type="text" id="v-base" placeholder="dashscope 留空即官方地址" value="' + esc(full.baseUrl || "") + '"></div>' +
+    '<div class="field"><label>合成模型 ttsModel</label><input type="text" id="v-ttsm" placeholder="qwen-tts / tts-1" value="' + esc(full.ttsModel || "") + '"></div>' +
+    '<div class="field"><label>听写模型 sttModel</label><input type="text" id="v-sttm" placeholder="paraformer-realtime-v2 / whisper-1" value="' + esc(full.sttModel || "") + '"></div>' +
+    '<div class="field"><label>默认音色 voice</label><select id="v-voice">' + voiceOpts + "</select></div>" +
+    '<div class="field"><label>API Key ' + (v.hasApiKey ? '<span class="tag">已配置</span>' : "") + '</label><input type="password" id="v-key" placeholder="留空 = 不修改原来的 key"></div>' +
+    "</div>" +
+    '<div class="field"><label>开关</label><div class="row">' +
+    '<span class="switch' + on(v.enabled) + '" id="v-enabled"><i></i>启用语音</span>' +
+    '<span class="switch' + on(v.autoSpeak) + '" id="v-auto"><i></i>回复自动朗读</span>' +
+    "</div></div>" +
+    (full.note ? '<div class="cell-sub" style="color:var(--app-red,#d33);margin-bottom:8px">' + esc(full.note) + "</div>" : "") +
+    '<div class="row"><button class="btn primary" id="btn-vsave">保存语音设置</button>' +
+    '<button class="btn" id="btn-vtest">自检（真念一遍再听回来）</button>' +
+    '<span class="cell-sub">自检会真发两次请求，消耗一点点额度；结果是"确实出声了 / 确实听清了"，不是看配置像不像</span></div>' +
+    '<div class="cell-sub" style="margin-top:8px">协议用法：<br>' +
+    protocols.map((p) => "· <b>" + esc(p.name) + "</b>：" + esc(p.desc)).join("<br>") +
+    "</div></div></div>";
+}
+
+function st2(k) { return S.cfg ? S.cfg[k] : undefined; }
+function row(k, v) { return '<tr><td class="nowrap cell-sub" style="width:130px">' + esc(k) + '</td><td class="mono">' + esc(v || "—") + "</td></tr>"; }
+
+/* ---------------- 活动追踪（始终开启）----------------
+   /api/agent/activity 只读后端进程内存，很轻：顶栏「现在在干什么」徽标和对话页的卡片都靠它轮询。
+   阶段名与后端 internal/activity 的 stage 常量一一对应。 */
+const STAGE_CN = {
+  idle: "空闲", running: "开始运行", thinking: "问模型", retrying: "重试中", tool: "调工具",
+  tool_done: "工具返回", tool_error: "工具报错", blocked: "被审批拦下", compressing: "压缩上下文",
+  checkpoint: "打快照", memory: "记忆落盘", done: "完成", error: "出错",
+};
+const stageCN = (s) => STAGE_CN[s] || s || "—";
+const stageTag = (s) =>
+  s === "error" || s === "tool_error" ? " err"
+    : s === "blocked" || s === "retrying" ? " warn"
+      : s === "done" ? " ok" : s === "running" ? " accent" : "";
+const fmtDur = (ms) => {
+  const sec = Math.max(0, Math.round(ms / 1000));
+  if (sec < 60) return sec + " 秒";
+  if (sec < 3600) return Math.floor(sec / 60) + " 分 " + (sec % 60) + " 秒";
+  return Math.floor(sec / 3600) + " 小时 " + Math.floor((sec % 3600) / 60) + " 分";
+};
+
+/* 顶栏徽标（id=activity-status，全局常驻） */
+function actBadgeInner() {
+  const a = S.activity;
+  if (!a || !a.stage) return '<i class="dot"></i>活动追踪';
+  if (!a.active) return '<i class="dot"></i>空闲';
+  return '<i class="dot live"></i><b>' + esc(stageCN(a.stage)) + "</b>" +
+    (a.detail ? '<span class="act-detail">' + esc(a.detail) + "</span>" : "") +
+    (a.sinceMs ? '<span class="act-time">' + esc(fmtDur(Date.now() - a.sinceMs)) + "</span>" : "");
+}
+function actBadgeTitle() {
+  const a = S.activity;
+  if (!a || !a.stage) return "智能体活动追踪（始终开启）";
+  if (a.active) return "正在跑：" + stageCN(a.stage) + (a.detail ? " · " + a.detail : "") + (a.runId ? " · 运行 " + a.runId : "");
+  return a.detail || a.note || "当前空闲";
+}
+
+/* 对话页的卡片：现在在干什么 + 累计统计 + 最近轨迹（新的在前） */
+function activityCardInner() {
+  const a = S.activity || {};
+  const st = a.stats || {};
+  let h = '<header><h2>活动追踪</h2><span class="ep mono">/api/agent/activity</span>' +
+    '<span class="pill" style="margin-left:auto"><i class="dot' + (a.active ? " live" : "") + '"></i>' +
+    (a.active ? esc(stageCN(a.stage)) : "空闲") + "</span></header>";
+  h += '<div class="pad"><div class="row">' +
+    (a.active
+      ? '<span class="pill">现在：<b>' + esc(stageCN(a.stage)) + "</b>" + (a.detail ? " · " + esc(a.detail) : "") + "</span>" +
+        (a.sinceMs ? '<span class="pill">已跑 ' + esc(fmtDur(Date.now() - a.sinceMs)) + "</span>" : "") +
+        (a.runId ? '<span class="pill mono">' + esc(shortId(a.runId)) + "</span>" : "")
+      : '<span class="pill"><i class="dot"></i>' + esc(a.note || "当前没有正在跑的活动") + "</span>" +
+        (a.detail ? '<span class="pill">' + esc(a.detail) + "</span>" : "") +
+        (st.lastRunAtMs ? '<span class="pill">上次运行 ' + esc(fmtAgo(st.lastRunAtMs)) + "</span>" : "")) +
+    '</div><div class="stats" style="margin-top:12px">' +
+    "<div><b>" + (st.runs || 0) + "</b><span>运行次数</span></div>" +
+    "<div><b>" + (st.toolCalls || 0) + "</b><span>工具调用</span></div>" +
+    "<div><b>" + (st.blocked || 0) + "</b><span>被审批拦下</span></div>" +
+    "<div><b>" + (st.errors || 0) + "</b><span>出错</span></div>" +
+    '</div><p class="cell-sub" style="margin:12px 0 0">这份状态只留在后端进程内存里（重启归零），用来回答「它现在在干什么」；历史账本看「运行记录」。</p></div>';
+  const steps = a.steps || [];
+  if (!steps.length) return h + '<div class="empty">还没有活动轨迹</div>';
+  h += '<table><thead><tr><th class="nowrap">时间</th><th class="nowrap">阶段</th><th>细节</th><th class="nowrap">运行</th></tr></thead><tbody>';
+  steps.forEach((s) => {
+    h += '<tr><td class="nowrap cell-sub">' + esc(fmtAgo(s.at)) + "</td>" +
+      '<td class="nowrap"><span class="tag' + stageTag(s.stage) + '">' + esc(stageCN(s.stage)) + "</span></td>" +
+      '<td class="cell-sub">' + esc(s.detail || "—") + "</td>" +
+      '<td class="nowrap cell-sub mono">' + esc(shortId(s.runId)) + "</td></tr>";
+  });
+  return h + "</tbody></table>";
+}
+function activityCard() { return '<div class="card" id="activity-card">' + activityCardInner() + "</div>"; }
+
+// 局部重绘时要自己给表格套横向滚动容器（整页 render() 会统一套一次）
+const wrapTables = (html) => html.replace(/<table/g, '<div class="tw"><table').replace(/<\/table>/g, "</table></div>");
+function paintActivity() {
+  const b = $("activity-status");
+  if (b) { b.innerHTML = actBadgeInner(); b.title = actBadgeTitle(); }
+  const c = $("activity-card");
+  if (c) c.innerHTML = wrapTables(activityCardInner());
+}
+async function pollActivity() {
+  let a = null;
+  try { a = await api("/api/agent/activity"); } catch (e) { return; }
+  const was = !!(S.activity && S.activity.active);
+  S.activity = a;
+  paintActivity();
+  // 运行状态刚变化（自己派的活、手机端派活、定时任务都算）：整页取一次新鲜的
+  if (a && a.active !== was && (S.page === "agent" || S.page === "runs" || S.page === "tasks")) load(true);
+}
+
+/* ---------------- 路由与事件 ---------------- */
+const RENDER = {
+  agent: pageAgent, kb: pageKb, runs: pageRuns, devices: pageDevices, tasks: pageTasks, memory: pageMemory,
+  skills: pageSkills, models: pageModels, voice: pageVoice, mcp: pageMCP, backups: pageBackups, cron: pageCron,
+  logs: pageLogs, settings: pageSettings,
+};
+
+function render() {
+  const p = PAGES.find((x) => x.id === S.page) || PAGES[1];
+  $("pg-title").textContent = p.title;
+  $("pg-sub").textContent = p.sub || "";
+  $("pg-actions").innerHTML =
+    '<span class="pill act" id="activity-status" title="' + esc(actBadgeTitle()) + '">' + actBadgeInner() + "</span>" +
+    '<span class="pill">主设备 <b>' + esc((S.state && S.state.self && S.state.self.hostname) || "—") + '</b></span>' +
+    '<span class="pill"><i class="dot' + ((S.state && (S.state.devices || []).some((d) => d.online)) ? " ok" : "") + '"></i>' +
+    ((S.state ? (S.state.devices || []).filter((d) => d.online).length : 0) + " 台在线") + "</span>" +
+    '<span class="pill">v' + esc((S.agent && S.agent.version) || (S.state && S.state.version) || "") + "</span>" +
+    '<button class="btn sm" id="btn-refresh">刷新</button>';
+  renderNav();
+  $("view").innerHTML = RENDER[S.page] ? RENDER[S.page]() : '<div class="card"><div class="empty">还没做这个页面</div></div>';
+  // 宽表格在窄窗口里横向滚，别把卡片撑破
+  $("view").innerHTML = $("view").innerHTML
+    .replace(/<table/g, '<div class="tw"><table')
+    .replace(/<\/table>/g, "</table></div>");
+  $("brand-sub").textContent = "v" + ((S.agent && S.agent.version) || (S.state && S.state.version) || "");
+  bind();
+  const cl = $("chatlist");
+  if (cl) cl.scrollTop = cl.scrollHeight;
+  const rf = $("btn-refresh");
+  if (rf) rf.onclick = () => load(true);
+}
+
+function bind() {
+  const on = (id, fn) => { const e = $(id); if (e) e.onclick = fn; };
+
+  on("btn-run", () => runGoal(false));
+  on("btn-run-wait", () => runGoal(true));
+  on("btn-chat-send", () => chatSend());
+  on("btn-chat-clear", () => confirmBox("清空对话", "只清掉这个浏览器里的对话记录，后端的数据一条都不动。", "清空", async () => { S.chat = []; saveChat(); render(); }));
+  on("btn-burger", () => toggleSide());
+  const ci = $("chat-in");
+  if (ci) {
+    ci.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); chatSend(); }
+    });
+  }
+  on("btn-mq", async () => {
+    const q = $("mq").value.trim();
+    const r = await api("/api/agent/memory?q=" + encodeURIComponent(q) + "&limit=20");
+    S.memHits = r.hits || [];
+    S.memNote = r.vectorNote || "";
+    S.memThreshold = r.minVector || 0;
+    render();
+  });
+  on("btn-trebuild", async () => {
+    const b = $("btn-trebuild");
+    b.disabled = true; b.textContent = "重建中…";
+    try {
+      const r = await api("/api/agent/memory/tree/rebuild", { method: "POST", body: {} });
+      toast("已重建 " + (r.days || 0) + " 天的摘要");
+      S.memNodes = null; S.memStale = 0;   // 逼下次渲染重新取一次树
+      load(true);
+    } catch (e) {
+      b.disabled = false; b.textContent = "重建记忆树摘要";
+      toast("重建失败：" + e.message, true);
+    }
+  });
+  on("btn-mcompact", () => {
+    confirmBox("整理重复记忆",
+      "把同类的跨端任务回执收成「每组一条（最新）」。只动这类机械回执，逐次历史在「任务与审批」里都还在。",
+      "整理", async () => {
+        const r = await api("/api/agent/memory/compact", { method: "POST", body: {} });
+        toast("整理了 " + (r.groups || 0) + " 组，合并掉 " + (r.merged || 0) + " 条");
+        S.memNodes = null; S.memStale = 0;
+        load(true);
+      });
+  });
+  on("btn-mw", () => {
+    const c = prompt("要记住的内容：");
+    if (!c) return;
+    api("/api/agent/memory/write", { method: "POST", body: { content: c, title: c.slice(0, 20), kind: "note" } })
+      .then(() => { toast("已写入记忆"); load(true); }).catch((e) => toast("失败：" + e.message, true));
+  });
+  on("btn-padd", async () => {
+    const body = {
+      action: "upsert", name: $("p-name").value.trim(), allowRemote: true,
+      config: {
+        name: $("p-name").value.trim(), protocol: $("p-proto").value,
+        baseUrl: $("p-base").value.trim(), apiKey: $("p-key").value.trim(), model: $("p-model").value.trim(),
+      },
+    };
+    try { await api("/api/agent/providers", { method: "POST", body }); toast("已保存通道"); load(true); }
+    catch (e) { toast("失败：" + e.message, true); }
+  });
+  on("btn-bk", async () => {
+    try { await api("/api/agent/backups", { method: "POST", body: { note: "控制台手动备份" } }); toast("备份完成"); load(true); }
+    catch (e) { toast("失败：" + e.message, true); }
+  });
+  on("btn-cadd", async () => {
+    try {
+      await api("/api/agent/config", { method: "POST", body: { cronExpr: $("c-expr").value.trim(), cronGoal: $("c-goal").value.trim() } });
+      toast("已添加定时任务"); load(true);
+    } catch (e) { toast("失败：" + e.message, true); }
+  });
+  on("btn-lg", () => load(true));
+  on("btn-save", async () => {
+    const body = {
+      maxSteps: +$("s-steps").value, tokenBudget: +$("s-budget").value,
+      approvalTimeoutSec: +$("s-appr").value,
+      allowShell: $("s-shell").classList.contains("on"),
+      allowRemote: $("s-remote").classList.contains("on"),
+    };
+    try { await api("/api/agent/config", { method: "POST", body }); toast("已保存"); load(true); }
+    catch (e) { toast("失败：" + e.message, true); }
+  });
+  on("btn-msave", async () => {
+    const body = {
+      memoryAutoRecall: $("m-autorecall").classList.contains("on"),
+      memoryRecallProfile: $("m-profile").value,
+      memoryRecallBudget: +$("m-budget").value,
+      memoryRecallMinScore: +$("m-minscore").value,
+      memoryNamespace: $("m-ns").value.trim(),
+    };
+    try { await api("/api/agent/config", { method: "POST", body }); toast("已保存记忆设置"); load(true); }
+    catch (e) { toast("失败：" + e.message, true); }
+  });
+  on("btn-esave", async () => {
+    const body = {
+      embeddingBaseUrl: $("e-base").value.trim(),
+      embeddingModel: $("e-model").value.trim(),
+      embeddingAPIKey: $("e-key").value.trim(), // 留空 = 后端保留原来的 key
+    };
+    try { await api("/api/agent/config", { method: "POST", body }); toast("已保存向量通道"); load(true); }
+    catch (e) { toast("失败：" + e.message, true); }
+  });
+  on("btn-etest", async () => {
+    try {
+      // 这个接口失败时回 {ok:false,error}，HTTP 仍是 200，所以要主动看 ok
+      const r = await api("/api/agent/embedding/test", { method: "POST", body: {} });
+      if (r && r.ok) toast("向量通道能通，维度 " + r.dim);
+      else toast("不通：" + ((r && r.error) || "未知原因"), true);
+      load(true);
+    } catch (e) { toast("失败：" + e.message, true); }
+  });
+  on("btn-reindex", async () => {
+    try {
+      const r = await api("/api/agent/embedding/reindex", { method: "POST", body: {} });
+      if (r && r.ok) toast("已补 " + r.done + " 条，剩 " + r.remaining + " 条");
+      else toast("失败：" + ((r && r.error) || "未知原因"), true);
+      load(true);
+    } catch (e) { toast("失败：" + e.message, true); }
+  });
+  on("btn-vsave", async () => {
+    const body = {
+      enabled: $("v-enabled").classList.contains("on"),
+      autoSpeak: $("v-auto").classList.contains("on"),
+      protocol: $("v-proto").value,
+      baseUrl: $("v-base").value.trim(),
+      ttsModel: $("v-ttsm").value.trim(),
+      sttModel: $("v-sttm").value.trim(),
+      voice: $("v-voice").value,
+      apiKey: $("v-key").value.trim(), // 留空 = 后端保留原来的 key
+    };
+    try { await api("/api/agent/voice/config", { method: "POST", body }); toast("已保存语音设置"); load(true); }
+    catch (e) { toast("失败：" + e.message, true); }
+  });
+  on("btn-vtest", async () => {
+    const b = $("btn-vtest");
+    b.disabled = true; b.textContent = "自检中…（要真念一遍）";
+    try {
+      const r = await api("/api/agent/voice/test", { method: "POST", body: { voice: $("v-voice").value } });
+      const tts = (r && r.tts) || {}, stt = (r && r.stt) || {};
+      if (r && r.passed) {
+        toast("语音通了：合成 " + (tts.bytes || 0) + " 字节 / 听回「" + (stt.text || "") + "」");
+      } else {
+        toast("自检没过 —— 说话：" + (tts.ok ? "OK" : (tts.note || "?")) + "；听话：" + (stt.note || "?"), true);
+      }
+      load(true);
+    } catch (e) {
+      toast("失败：" + e.message, true);
+    } finally {
+      b.disabled = false; b.textContent = "自检（真念一遍再听回来）";
+    }
+  });
+  ["s-shell", "s-remote", "m-autorecall", "v-enabled", "v-auto"].forEach((id) => {
+    const e = $(id);
+    if (e) e.onclick = () => e.classList.toggle("on");
+  });
+
+  document.querySelectorAll("[data-ap]").forEach((b) => b.onclick = () => approval(b.dataset.ap, true));
+  document.querySelectorAll("[data-rj]").forEach((b) => b.onclick = () => approval(b.dataset.rj, false));
+  document.querySelectorAll("[data-tap]").forEach((b) => b.onclick = () =>
+    api("/api/tasks/" + b.dataset.tap + "/approve", { method: "POST", body: { by: "console" } })
+      .then(() => { toast("已批准"); load(true); }).catch((e) => toast(e.message, true)));
+  document.querySelectorAll("[data-trj]").forEach((b) => b.onclick = () =>
+    api("/api/tasks/" + b.dataset.trj + "/reject", { method: "POST", body: { by: "console", reason: "控制台拒绝" } })
+      .then(() => { toast("已拒绝"); load(true); }).catch((e) => toast(e.message, true)));
+  document.querySelectorAll("[data-ping]").forEach((b) => b.onclick = () => dispatch(b.dataset.ping, "ping", {}));
+  document.querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => {
+    const cur = ((S.state && S.state.deviceRemarks) || {})[b.dataset.rm] || "";
+    const v = prompt("给这台设备加个备注（留空 = 清除备注）：", cur);
+    if (v === null) return;
+    api("/api/agent/device-remark", { method: "POST", body: { deviceId: b.dataset.rm, remark: v } })
+      .then(() => { toast(v.trim() ? "备注已保存" : "备注已清除"); load(true); })
+      .catch((e) => toast("保存失败：" + e.message, true));
+  });
+  document.querySelectorAll("[data-run]").forEach((b) => b.onclick = async () => {
+    S.run = await api("/api/agent/runs/" + b.dataset.run); render();
+  });
+  document.querySelectorAll("[data-pt]").forEach((b) => b.onclick = () =>
+    api("/api/agent/providers", { method: "POST", body: { action: "test", name: b.dataset.pt } })
+      .then((r) => toast("探活：" + (r.result ? (r.result.reply || "通了") + "（" + r.result.totalTokens + " token / " + r.result.latencyMs + "ms）" : "通了")))
+      .catch((e) => toast("探活失败：" + e.message, true)));
+  document.querySelectorAll("[data-pd]").forEach((b) => b.onclick = () =>
+    confirmBox("删除通道", "删掉「" + b.dataset.pd + "」后 Agent 就不能用它了。", "删除", async () => {
+      await api("/api/agent/providers", { method: "POST", body: { action: "remove", name: b.dataset.pd } });
+      toast("已删除"); load(true);
+    }));
+  document.querySelectorAll("[data-mre]").forEach((b) => b.onclick = () =>
+    api("/api/agent/mcp", { method: "POST", body: { action: "reload", server: b.dataset.mre } })
+      .then(() => { toast("已重载"); load(true); }).catch((e) => toast(e.message, true)));
+  document.querySelectorAll("[data-mrm]").forEach((b) => b.onclick = () =>
+    confirmBox("卸载 MCP 服务", "卸载「" + b.dataset.mrm + "」后它的工具会从 Agent 工具表里消失。", "卸载", async () => {
+      await api("/api/agent/mcp", { method: "POST", body: { action: "remove", server: b.dataset.mrm } });
+      toast("已卸载"); load(true);
+    }));
+  document.querySelectorAll("[data-bv]").forEach((b) => b.onclick = () =>
+    api("/api/agent/backups/verify", { method: "POST", body: { path: b.dataset.bv } })
+      .then((r) => toast(r.ok ? ("校验通过：" + (r.manifest ? r.manifest.entries.length + " 个文件" : "")) : ("校验失败：" + r.error), !r.ok))
+      .catch((e) => toast(e.message, true)));
+  document.querySelectorAll("[data-bd]").forEach((b) => b.onclick = () =>
+    api("/api/agent/backups/restore", { method: "POST", body: { path: b.dataset.bd, dryRun: true } })
+      .then((r) => toast(r.error ? ("试运行被拒：" + r.error) : "试运行通过（没有改动任何数据）", !!r.error))
+      .catch((e) => toast(e.message, true)));
+  document.querySelectorAll("[data-br]").forEach((b) => b.onclick = () =>
+    confirmBox("恢复备份", "会用「" + b.dataset.br + "」覆盖当前数据（恢复前会自动打安全点）。后端在跑的时候会被拒绝——那就先用 CLI 停掉后端再恢复。", "恢复", async () => {
+      const r = await api("/api/agent/backups/restore", { method: "POST", body: { path: b.dataset.br } });
+      toast(r.error ? ("被拒绝：" + r.error) : "恢复完成", !!r.error);
+    }));
+  document.querySelectorAll("[data-bx]").forEach((b) => b.onclick = () =>
+    confirmBox("删除备份", "删掉「" + b.dataset.bx + "」，不可恢复。", "删除", async () => {
+      await api("/api/agent/backups/delete", { method: "POST", body: { path: b.dataset.bx } });
+      toast("已删除"); load(true);
+    }));
+
+  /* ---- 知识库 ---- */
+  on("kb-t-add", async () => {
+    const title = $("kb-t-title").value.trim();
+    if (!title) { toast("先写待办标题", true); return; }
+    const due = ($("kb-t-due").value || "").trim();
+    try {
+      await kbOp("todo.upsert", {
+        title: title,
+        category: $("kb-t-cat").value.trim(),
+        priority: $("kb-t-pri").value || "mid",
+        form: due ? "schedule" : "leisure",
+        due: due,
+      });
+      toast("已加进知识库");
+      load(true);
+    } catch (e) { toast("没加进去：" + e.message, true); }
+  });
+  on("kb-p-add", async () => {
+    const title = $("kb-p-title").value.trim();
+    const account = $("kb-p-acc").value.trim();
+    if (!title || !account) { toast("平台与账号都得填", true); return; }
+    try {
+      await kbOp("vault.merge", {
+        title: title, account: account,
+        password: $("kb-p-pwd").value,
+        group: $("kb-p-group").value.trim(),
+        source: "console",
+      });
+      toast("已存进密码本");
+      load(true);
+    } catch (e) { toast("没存进去：" + e.message, true); }
+  });
+  document.querySelectorAll("[data-kb-deltodo]").forEach((b) => {
+    b.onclick = () => confirmBox("删除待办", "删掉「" + b.dataset.t + "」，不可恢复，手机上也会跟着消失。", "删除", async () => {
+      await kbOp("todo.remove", { id: b.dataset.kbDeltodo });
+      toast("已删除"); load(true);
+    });
+  });
+  document.querySelectorAll("[data-kb-delpass]").forEach((b) => {
+    b.onclick = () => confirmBox("删除密码记录", "删掉「" + b.dataset.t + "」这条记录（含它的历史密码），不可恢复。", "删除", async () => {
+      await kbOp("vault.remove", { id: b.dataset.kbDelpass });
+      toast("已删除"); load(true);
+    });
+  });
+  document.querySelectorAll("[data-kb-reveal]").forEach((b) => {
+    b.onclick = () => {
+      S.kbReveal = S.kbReveal || {};
+      const id = b.dataset.kbReveal;
+      S.kbReveal[id] = !S.kbReveal[id];
+      render();
+    };
+  });
+  document.querySelectorAll("[data-kb-dl]").forEach((b) => {
+    b.onclick = async () => {
+      try {
+        const r = await api("/api/kb/files/" + b.dataset.kbDl);
+        const bin = atob(r.dataBase64 || "");
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        const f = r.file || {};
+        const url = URL.createObjectURL(new Blob([arr], { type: f.mime || "application/octet-stream" }));
+        const a = document.createElement("a");
+        a.href = url; a.download = f.name || "attachment";
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        toast("已下载 " + (f.name || ""));
+      } catch (e) { toast("下载失败：" + e.message, true); }
+    };
+  });
+  document.querySelectorAll("[data-kb-delfile]").forEach((b) => {
+    b.onclick = () => confirmBox("删除附件", "删掉「" + b.dataset.t + "」，不可恢复（手机上的待办里也会失效）。", "删除", async () => {
+      await api("/api/kb/files/" + b.dataset.kbDelfile, { method: "DELETE" });
+      toast("已删除"); load(true);
+    });
+  });
+}
+
+async function approval(id, ok) {
+  try {
+    await api("/api/agent/approvals/" + id + (ok ? "/approve" : "/reject"),
+      { method: "POST", body: { by: "console", reason: ok ? "" : "控制台拒绝" } });
+    toast(ok ? "已批准" : "已拒绝");
+    load(true);
+  } catch (e) { toast(e.message, true); }
+}
+async function dispatch(deviceId, action, args) {
+  try {
+    await api("/api/tasks", { method: "POST", body: { deviceId, action, args, origin: "console" } });
+    toast("已派发 " + action); setTimeout(() => load(true), 700);
+  } catch (e) { toast("派发失败：" + e.message, true); }
+}
+/* 派活（顶部大输入框）：结果同样落进下面的对话线 */
+async function runGoal(wait) {
+  const el = $("goal");
+  const goal = (el ? el.value : "").trim();
+  if (!goal) { toast("先写一句要做什么", true); return; }
+  if (el) el.value = "";
+  await runText(goal, wait);
+}
+
+/* 对话区发送（Enter 或点发送） */
+async function chatSend() {
+  const el = $("chat-in");
+  const text = (el ? el.value : "").trim();
+  if (!text) return;
+  if (el) el.value = "";
+  await runText(text, true);
+}
+
+/* 统一入口：发一句话给 Agent，跑完把过程与结论追加到对话线里 */
+async function runText(text, wait) {
+  if (S.chatBusy) { toast("上一次还在跑，等它结束再发", true); return; }
+  S.chat.push({ role: "user", text: text, ts: Date.now() });
+  saveChat();
+  S.chatBusy = true;
+  if (S.page === "agent") render();
+  try {
+    const r = await api("/api/agent/run", { method: "POST", body: { goal: text, wait: !!wait } });
+    if (!wait) {
+      S.chat.push({
+        role: "agent", trace: [], ts: Date.now(),
+        text: "已经派下去了（" + (r.runId || "") + "）。跑完会出现在「运行记录」里；中途有危险动作会挂到「待审批」等你放行。",
+      });
+    } else {
+      const res = r.result || {};
+      S.chat.push({
+        role: "agent", text: res.text || "（没有结论）", trace: res.trace || [], ts: Date.now(),
+        meta: (res.steps || 0) + " 步 · " + (res.toolCalls || 0) + " 次工具 · " + (((res.usage || {}).totalTokens) || 0) + " token",
+      });
+    }
+  } catch (e) {
+    S.chat.push({ role: "agent", text: "出错了：" + e.message, trace: [], ts: Date.now() });
+  }
+  S.chatBusy = false;
+  saveChat();
+  if (S.page === "agent") render(); else load(true);
+}
+
+/* 窄窗口下把侧栏收成抽屉 */
+function toggleSide() {
+  const s = document.querySelector(".side");
+  const m = $("side-mask");
+  if (!s) return;
+  s.classList.toggle("open");
+  if (m) {
+    m.className = "side-mask" + (s.classList.contains("open") ? " show" : "");
+    m.onclick = () => { s.classList.remove("open"); m.className = "side-mask"; };
+  }
+}
+
+/* ---------------- 数据加载 ---------------- */
+async function load(silent) {
+  try {
+    const [st, ag, cfg] = await Promise.all([
+      api("/api/state?tasks=30&records=30&memories=10"),
+      api("/api/agent/state").catch(() => null),
+      api("/api/agent/config").catch(() => null),
+    ]);
+    S.state = st; S.agent = ag || S.agent; S.cfg = cfg || S.cfg;
+    S.activity = (ag && ag.activity) || S.activity;   // 活动快照：顶栏徽标 + 对话页卡片
+    // 知识库计数：给侧栏那个徽标用（很轻，每轮都取）
+    S.kbStats = (st && st.kb) || S.kbStats;
+    if (S.page === "kb") {
+      const [k, fl, ks] = await Promise.all([
+        api("/api/kb/state").catch(() => null),
+        api("/api/kb/files?limit=200").catch(() => null),
+        api("/api/kb/stats").catch(() => null),
+      ]);
+      S.kb = k || S.kb;
+      S.kbFiles = fl || S.kbFiles;
+      S.kbStats = ks || S.kbStats;
+    }
+    if (S.page === "memory" && !S.memNodes) {
+      const t = await api("/api/agent/memory/tree?limit=20").catch(() => null);
+      S.memNodes = (t && t.nodes) || [];
+      S.memStale = (t && t.staleCount) || 0;
+    }
+    if (S.page === "logs") {
+      const lg = await api("/api/logs?limit=300").catch(() => null);
+      S.logs = (lg && lg.lines) || [];
+    }
+    if (S.page === "voice") {
+      const v = await api("/api/agent/voice").catch(() => null);
+      S.voice = v || S.voice;
+    }
+    render();
+  } catch (e) {
+    if (!silent) toast("加载失败：" + e.message, true);
+    $("view").innerHTML = '<div class="card"><div class="empty">加载失败：' + esc(e.message) + "</div></div>";
+  }
+}
+
+window.addEventListener("hashchange", () => {
+  S.page = (location.hash || "#agent").slice(1);
+  S.run = null; S.memHits = null; S.memNote = ""; S.memThreshold = 0;
+  S.memNodes = null; S.memStale = 0;
+  load(true);
+});
+S.page = (location.hash || "#agent").slice(1);
+load();
+
+/* 智能体活动追踪：轻量轮询（顶栏"现在在干什么" + 对话页活动卡片都靠它刷新） */
+pollActivity();
+setInterval(pollActivity, 3000);
+
+/* 运行中/有待审批时轻量轮询，让对话页自己会动 */
+setInterval(() => {
+  if (!S.agent || !S.agent.running) return;
+  if (S.page === "agent" || S.page === "runs" || S.page === "tasks") load(true);
+}, 3000);
+</script>
+</body>
+</html>

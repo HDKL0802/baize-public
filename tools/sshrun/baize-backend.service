@@ -1,0 +1,16 @@
+[Unit]
+Description=Baize Agent Backend (bai ze zhi neng ti)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=HD
+Group=Users
+WorkingDirectory=/vol1/@appdata/baize
+ExecStart=/vol1/@appdata/baize/bin/baize-backend --addr 0.0.0.0:8787 --data /vol1/@appdata/baize/data
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

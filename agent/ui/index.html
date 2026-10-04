@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>白泽 · 控制台</title>
+<!--
+  白泽智能体 · 控制台（视觉稿 / 设计样式）
+  ─────────────────────────────────────────
+  设计语言直接取自 QwenPaw 站点（third_party/qwenpaw/website/src/index.css）：
+    · 暖白纸感底色 #fefbf9，卡片纯白，1px 细边框 #eae8e7
+    · 标题用衬线（Newsreader → 中文回落到宋体系），正文 Inter → 苹方/微软雅黑
+    · 主色是暖橙 #ff9d4d，次级 #fde8d7；文字三档透明度
+    · 圆角 10px 基准，间距 0.5/1/1.5/2/3/4rem，容器 min(100% - 2rem, 64rem)
+    · 卡片用极淡的暖色叠层 rgba(43,18,0,.02)，hover 轻微上浮
+
+  这一版是**样式稿**：数据是内联的假数据，方便单独打开看效果。
+  每个卡片右上角标注了将来要接的接口，接上就能变成真控制台：
+    设备表 /api/state.devices   运行 /api/agent/state   记忆 /api/agent/memory/tree
+    通道 /api/agent/providers    MCP /api/agent/mcp      备份 /api/agent/backups
+    定时 /api/agent/state.cron   任务 /api/tasks
+-->
+<style>
+  :root {
+    /* —— QwenPaw 同源的设计令牌 —— */
+    --bg: #fefbf9;
+    --surface: #ffffff;
+    --text: #1c1c1c;
+    --text-2: rgba(20, 20, 19, .65);
+    --text-3: rgba(20, 20, 19, .45);
+    --border: #eae8e7;
+    --border-strong: #dcc1b2;
+    --primary: #ff9d4d;
+    --primary-soft: #fde8d7;
+    --primary-ink: #b45309;
+    --accent: #d97706;
+    --ok: #2f7d54;
+    --ok-soft: #e8f3ec;
+    --warn: #b45309;
+    --warn-soft: #fdf3e3;
+    --danger: #b3261e;
+    --danger-soft: #fbeceb;
+    --fill: rgba(43, 18, 0, .02);
+    --fill-2: rgba(43, 18, 0, .05);
+    --radius: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+    --shadow-sm: 0 1px 2px rgba(64, 42, 24, .05);
+    --shadow: 0 6px 20px rgba(64, 42, 24, .07);
+    --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+                 "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-serif: "Newsreader", ui-serif, Georgia, "Songti SC", "Noto Serif CJK SC", serif;
+    --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --container: min(100% - 2rem, 64rem);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--text);
+    background: var(--bg);
+  }
+  h1, h2, h3 { font-family: var(--font-serif); font-weight: 600; letter-spacing: -.01em; margin: 0; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; cursor: pointer; }
+
+  .wrap { width: var(--container); margin: 0 auto; }
+
+  /* ---------- 顶栏 ---------- */
+  header.top {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(254, 251, 249, .88);
+    backdrop-filter: saturate(1.4) blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .top .wrap { display: flex; align-items: center; gap: 1.5rem; height: 3.5rem; }
+  .brand { display: flex; align-items: center; gap: .55rem; font-family: var(--font-serif); font-size: 1.0625rem; }
+  .paw {
+    width: 1.625rem; height: 1.625rem; border-radius: 9999px;
+    display: grid; place-items: center;
+    background: var(--primary-soft); color: var(--primary-ink);
+    font-size: .875rem; font-weight: 700;
+  }
+  .brand small { font-family: var(--font-sans); color: var(--text-3); font-size: .75rem; letter-spacing: .04em; }
+  nav.links { display: flex; gap: 1.25rem; margin-left: auto; font-size: .875rem; color: var(--text-2); }
+  nav.links a:hover { color: var(--text); }
+  nav.links a.on { color: var(--text); font-weight: 500; }
+
+  /* ---------- 页头 ---------- */
+  .hero { padding: 3rem 0 2rem; }
+  .hero h1 { font-size: clamp(1.75rem, 1.2rem + 2vw, 2.5rem); line-height: 1.2; }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p { margin: .75rem 0 0; max-width: 42rem; color: var(--text-2); }
+  .pills { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.25rem; }
+  .pill {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .3rem .7rem; border-radius: 9999px;
+    background: var(--surface); border: 1px solid var(--border);
+    font-size: .8125rem; color: var(--text-2); box-shadow: var(--shadow-sm);
+  }
+  .pill b { color: var(--text); font-weight: 600; }
+  .dot { width: .5rem; height: .5rem; border-radius: 9999px; background: var(--ok); }
+  .dot.off { background: #c9c6c4; }
+  .dot.warn { background: var(--accent); }
+
+  /* ---------- 栅格与卡片 ---------- */
+  main { padding-bottom: 4rem; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(12, 1fr); }
+  .col-4 { grid-column: span 4; }
+  .col-6 { grid-column: span 6; }
+  .col-8 { grid-column: span 8; }
+  .col-12 { grid-column: span 12; }
+  @media (max-width: 900px) {
+    .col-4, .col-6, .col-8 { grid-column: span 12; }
+    nav.links { display: none; }
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 1.125rem;
+    transition: box-shadow .18s ease, transform .18s ease;
+  }
+  .card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+  .card > h2 {
+    display: flex; align-items: baseline; gap: .5rem;
+    font-size: 1.0625rem; margin-bottom: .125rem;
+  }
+  .card .api {
+    margin-left: auto; font-family: var(--font-mono); font-size: .6875rem;
+    color: var(--text-3); background: var(--fill); padding: .1rem .4rem; border-radius: 6px;
+  }
+  .card > .sub { color: var(--text-3); font-size: .8125rem; margin-bottom: .875rem; }
+
+  /* ---------- 设备 ---------- */
+  .dev { display: flex; align-items: center; gap: .75rem; padding: .75rem 0; border-top: 1px solid var(--border); }
+  .dev:first-of-type { border-top: 0; }
+  .dev .ico {
+    width: 2.25rem; height: 2.25rem; border-radius: 10px; flex: none;
+    display: grid; place-items: center; font-size: 1.05rem;
+    background: var(--fill); border: 1px solid var(--border);
+  }
+  .dev .who { min-width: 0; }
+  .dev .who b { display: block; font-weight: 600; font-size: .9375rem; }
+  .dev .who span { display: block; color: var(--text-3); font-size: .75rem; font-family: var(--font-mono); }
+  .dev .tags { margin-left: auto; display: flex; gap: .3rem; flex-wrap: wrap; justify-content: flex-end; }
+  .tag {
+    font-size: .6875rem; padding: .1rem .45rem; border-radius: 6px;
+    background: var(--fill); color: var(--text-2); border: 1px solid var(--border);
+    font-family: var(--font-mono); white-space: nowrap;
+  }
+  .tag.on { background: var(--primary-soft); border-color: #f6d3b4; color: var(--primary-ink); }
+
+  /* ---------- 任务派发 ---------- */
+  .dispatch { display: grid; gap: .75rem; }
+  .field { display: grid; gap: .3rem; }
+  .field label { font-size: .75rem; color: var(--text-3); }
+  select, input[type=text] {
+    width: 100%; font: inherit; font-size: .875rem; color: var(--text);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: .5rem .6rem;
+  }
+  select:focus, input:focus { outline: 2px solid var(--primary-soft); border-color: var(--primary); }
+  .btn {
+    border: 1px solid var(--primary); background: var(--primary); color: #3b1d05;
+    border-radius: var(--radius); padding: .55rem .9rem; font-weight: 600; font-size: .875rem;
+  }
+  .btn:hover { filter: brightness(1.03); }
+  .btn.ghost { background: var(--surface); border-color: var(--border); color: var(--text-2); font-weight: 500; }
+  .btn.ghost:hover { background: var(--fill); }
+  .row { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+  /* ---------- 列表 ---------- */
+  ul.list { list-style: none; margin: 0; padding: 0; }
+  ul.list li { padding: .6rem 0; border-top: 1px solid var(--border); display: flex; gap: .6rem; align-items: flex-start; }
+  ul.list li:first-child { border-top: 0; }
+  ul.list .t { font-weight: 500; font-size: .875rem; }
+  ul.list .m { color: var(--text-3); font-size: .75rem; }
+  ul.list .right { margin-left: auto; text-align: right; flex: none; }
+  .mono { font-family: var(--font-mono); font-size: .75rem; color: var(--text-3); }
+
+  .badge { font-size: .6875rem; padding: .1rem .45rem; border-radius: 6px; border: 1px solid transparent; white-space: nowrap; }
+  .badge.done { background: var(--ok-soft); color: var(--ok); border-color: #cfe4d8; }
+  .badge.run { background: var(--warn-soft); color: var(--warn); border-color: #f3ddba; }
+  .badge.wait { background: var(--primary-soft); color: var(--primary-ink); border-color: #f6d3b4; }
+  .badge.fail { background: var(--danger-soft); color: var(--danger); border-color: #f2d0ce; }
+
+  .kv { display: flex; justify-content: space-between; gap: 1rem; padding: .3rem 0; font-size: .875rem; }
+  .kv span { color: var(--text-3); }
+
+  /* 进度条（跑批/预算） */
+  .bar { height: .375rem; background: var(--fill-2); border-radius: 9999px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--primary); }
+
+  footer { border-top: 1px solid var(--border); padding: 1.5rem 0 3rem; color: var(--text-3); font-size: .8125rem; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><span class="paw">泽</span>白泽 <small>智能体控制台</small></div>
+    <nav class="links">
+      <a class="on" href="#">总览</a>
+      <a href="#">设备</a>
+      <a href="#">记忆</a>
+      <a href="#">通道</a>
+      <a href="#">备份</a>
+      <a href="#">设置</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap hero">
+  <h1>三端一套<em>记忆与调度</em>，活派到哪台设备都行</h1>
+  <p>电脑、手机、NAS 各自注册成设备；模型、工具、审批、快照、备份都在这一层。下面是样式稿——数据是假的，接口位置都标在卡片右上角。</p>
+  <div class="pills">
+    <span class="pill"><i class="dot"></i>在线设备 <b>2</b></span>
+    <span class="pill"><i class="dot warn"></i>运行中 <b>1</b></span>
+    <span class="pill"><i class="dot warn"></i>待审批 <b>1</b></span>
+    <span class="pill">版本 <b>v0.2.3</b></span>
+    <span class="pill">协议 <b>core-1 / 0.1.0</b></span>
+  </div>
+</div>
+
+<main class="wrap">
+  <div class="grid">
+
+    <!-- 设备 -->
+    <section class="card col-6">
+      <h2>设备<span class="api">/api/state.devices</span></h2>
+      <p class="sub">每个端注册上来就是一台设备；能力决定它能接什么活。</p>
+
+      <div class="dev">
+        <div class="ico">🖥️</div>
+        <div class="who"><b>电脑 · DESKTOP-YYYYYYY</b><span>desktop-yyyyyyy-11111111 · windows/amd64</span></div>
+        <div class="tags"><span class="tag on">在线</span><span class="tag">window.report</span><span class="tag">fs</span></div>
+      </div>
+      <div class="dev">
+        <div class="ico">📱</div>
+        <div class="who"><b>手机 · SM-A0000</b><span>phone-abc123 · android/arm64</span></div>
+        <div class="tags"><span class="tag on">在线</span><span class="tag">todo</span></div>
+      </div>
+      <div class="dev">
+        <div class="ico">🗄️</div>
+        <div class="who"><b>NAS · NAS-HOST</b><span>中枢（后端 0.2.3 常驻）</span></div>
+        <div class="tags"><span class="tag on">中枢</span><span class="tag">systemd</span></div>
+      </div>
+      <div class="dev">
+        <div class="ico">📱</div>
+        <div class="who"><b>手机 · DEVICE-A</b><span>phone-abc125 · android/arm64</span></div>
+        <div class="tags"><span class="tag">离线</span><span class="tag">todo</span></div>
+      </div>
+    </section>
+
+    <!-- 派活 -->
+    <section class="card col-6">
+      <h2>派活<span class="api">POST /api/tasks</span></h2>
+      <p class="sub">危险动作（删除、命令、跨端执行）会挂到审批队列，批准后才真的动手。</p>
+      <div class="dispatch">
+        <div class="field">
+          <label>目标设备</label>
+          <select>
+            <option>手机 · SM-A0000（phone-abc123 · todo）</option>
+            <option>电脑 · DESKTOP-YYYYYYY（fs · window.report）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>动作</label>
+          <select>
+            <option>todo.list　列出待办（只读）</option>
+            <option>todo.stats　待办统计（只读）</option>
+            <option>window.now　当前活动窗口（只读）</option>
+            <option>fs.delete　删除文件（危险 · 需审批）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>参数（JSON，可留空）</label>
+          <input type="text" value='{"limit": 10}'>
+        </div>
+        <div class="row">
+          <button class="btn">派发任务</button>
+          <button class="btn ghost">用自然语言派活</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 运行与审批 -->
+    <section class="card col-8">
+      <h2>运行记录<span class="api">/api/agent/runs</span></h2>
+      <p class="sub">一次派活 = 一次运行：几步、调了什么工具、花了多少 token，全在记录里。</p>
+      <ul class="list">
+        <li>
+          <div>
+            <div class="t">看看手机上的待办</div>
+            <div class="m">rmujeqckd5rbw · deepseek-chat · 2 步 / 2 次工具 · 4 807 token</div>
+            <div class="m mono">device_list → device_run(todo.list) → 3 条待办</div>
+          </div>
+          <div class="right"><span class="badge done">完成</span><div class="m">2 分钟前</div></div>
+        </li>
+        <li>
+          <div>
+            <div class="t">把 note.md 删掉</div>
+            <div class="m">rmujeqckd5rbx · 停在第 1 步等审批</div>
+            <div class="m mono">fs_delete ← 待人工批准</div>
+          </div>
+          <div class="right"><span class="badge wait">待审批</span><div class="row" style="margin-top:.35rem">
+            <button class="btn" style="padding:.25rem .6rem;font-size:.75rem">批准</button>
+            <button class="btn ghost" style="padding:.25rem .6rem;font-size:.75rem">拒绝</button>
+          </div></div>
+        </li>
+        <li>
+          <div>
+            <div class="t">定时任务：每天早上梳理今日待办</div>
+            <div class="m">cron 0 8 * * * · 上次 今天 08:00</div>
+          </div>
+          <div class="right"><span class="badge run">跑过一次</span></div>
+        </li>
+      </ul>
+    </section>
+
+    <!-- 记忆 -->
+    <section class="card col-4">
+      <h2>长期记忆<span class="api">/api/agent/memory</span></h2>
+      <p class="sub">任务结论自动落盘，下次先检索再动手。</p>
+      <div class="kv"><span>记忆块</span><b>128</b></div>
+      <div class="kv"><span>任务记忆</span><b>37</b></div>
+      <div class="kv"><span>本轮召回</span><b>1 块</b></div>
+      <div style="margin:.75rem 0 .35rem" class="m">命中示例</div>
+      <ul class="list">
+        <li><div><div class="t">任务：看看手机上的待办</div><div class="m">评分 0.91 · agent / task</div></div></li>
+        <li><div><div class="t">自检记忆：昆塔菠萝</div><div class="m">评分 0.64 · user / note</div></div></li>
+      </ul>
+    </section>
+
+    <!-- 模型通道 -->
+    <section class="card col-4">
+      <h2>模型通道<span class="api">/api/agent/providers</span></h2>
+      <p class="sub">只认 OpenAI / Anthropic 两种协议，地址/密钥自己填。</p>
+      <div class="dev">
+        <div class="ico">✨</div>
+        <div class="who"><b>deepseek</b><span>deepseek-chat · api.deepseek.com</span></div>
+        <div class="tags"><span class="tag on">可用</span></div>
+      </div>
+      <div class="dev">
+        <div class="ico">🧪</div>
+        <div class="who"><b>mock</b><span>mock-model · 127.0.0.1:8901（自检用）</span></div>
+        <div class="tags"><span class="tag">本地</span></div>
+      </div>
+      <div class="m" style="margin-top:.5rem">本轮预算 8 000 token，已用 4 807</div>
+      <div class="bar" style="margin-top:.35rem"><i style="width:60%"></i></div>
+    </section>
+
+    <!-- MCP -->
+    <section class="card col-4">
+      <h2>MCP 服务<span class="api">/api/agent/mcp</span></h2>
+      <p class="sub">热插拔：加/删/重载都不用重启后端。</p>
+      <div class="dev">
+        <div class="ico">🔌</div>
+        <div class="who"><b>demo</b><span>stdio · mcpserver.exe</span></div>
+        <div class="tags"><span class="tag on">已连接</span><span class="tag">2 工具</span></div>
+      </div>
+      <div class="m" style="margin:.5rem 0">工具默认走审批闸门，只有列进 safeTools 才免批。</div>
+      <div class="row"><button class="btn ghost">加一个服务</button><button class="btn ghost">重载</button></div>
+    </section>
+
+    <!-- 备份 -->
+    <section class="card col-6">
+      <h2>备份与恢复<span class="api">/api/agent/backups</span></h2>
+      <p class="sub">zip + sha256 清单；恢复前自动打安全点，占用冲突会明确拒绝。</p>
+      <ul class="list">
+        <li><div><div class="t">backup-20260927-1430.zip</div><div class="m">12 个文件 · 1.8 MB · 今天 14:30</div></div>
+          <div class="right"><span class="badge done">已校验</span></div></li>
+        <li><div><div class="t">auto-before-restore-20260927-1402.zip</div><div class="m">恢复前安全点</div></div>
+          <div class="right"><span class="badge">安全点</span></div></li>
+      </ul>
+      <div class="row" style="margin-top:.75rem">
+        <button class="btn">立即备份</button>
+        <button class="btn ghost">试运行恢复</button>
+        <button class="btn ghost">恢复</button>
+      </div>
+    </section>
+
+    <!-- 定时任务 -->
+    <section class="card col-6">
+      <h2>定时任务<span class="api">/api/agent/state.cron</span></h2>
+      <p class="sub">cron 表达式 + 一句目标，到点就用同一套 Agent 跑。</p>
+      <ul class="list">
+        <li><div><div class="t">每天早上梳理今日待办</div><div class="m mono">0 8 * * *</div></div>
+          <div class="right"><span class="badge run">已启用</span></div></li>
+        <li><div><div class="t">每周日归档本周记忆</div><div class="m mono">0 22 * * 0</div></div>
+          <div class="right"><span class="badge">已启用</span></div></li>
+      </ul>
+      <div class="row" style="margin-top:.75rem">
+        <div class="field" style="flex:1"><label>表达式</label><input type="text" placeholder="0 8 * * *"></div>
+        <div class="field" style="flex:2"><label>目标</label><input type="text" placeholder="梳理今天要做的事"></div>
+        <button class="btn" style="align-self:end">添加</button>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="wrap">
+  白泽智能体 · 样式稿（QwenPaw 设计语言）· 数据为假数据，接口位置见各卡片右上角
+</footer>
+
+</body>
+</html>

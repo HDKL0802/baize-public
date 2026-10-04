@@ -1,0 +1,151 @@
+/* 白泽桌面端 · 外壳样式（方案 A「冷灰金属」）
+   近黑冷灰底 + 细 1px 描边 + 2px 直角 + 天青点缀。 */
+
+:root{
+  --bg:#0b0e13; --surface:#12161d; --surface-2:#171c25; --surface-3:#1d2430;
+  --border:#232a35; --border-strong:#313b4a;
+  --text:#dbe4ee; --text-2:#94a3b4; --text-3:#64748b;
+  --accent:#38bdf8; --accent-soft:rgba(56,189,248,.12); --accent-ink:#06121b;
+  --ok:#34d399; --warn:#fbbf24; --danger:#f87171;
+  --radius:2px;
+  --font:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  --mono:Consolas,"Cascadia Mono",monospace;
+}
+
+*{box-sizing:border-box;border-radius:var(--radius)}
+/* 注意：[hidden] 是 UA 的 display:none，会被作者样式里的 display:grid/flex 盖掉，
+   所以这里显式兜底，否则"藏起来"的层会一直显示（踩过）。 */
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{
+  color:var(--text);background:var(--bg);font:14px/1.6 var(--font);
+  overflow:hidden;user-select:none;
+}
+.mono{font-family:var(--mono);font-size:12px}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--surface-3);border:1px solid var(--border)}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- 桌面 ---------- */
+.desktop{position:absolute;inset:0;
+  background:
+    radial-gradient(1100px 620px at 78% -8%, var(--accent-soft), transparent 62%),
+    radial-gradient(760px 460px at 6% 106%, var(--accent-soft), transparent 60%),
+    linear-gradient(180deg,var(--bg),var(--surface));
+}
+.desktop::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background-image:linear-gradient(var(--border) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--border) 1px,transparent 1px);
+  background-size:64px 64px;
+  -webkit-mask-image:radial-gradient(circle at 50% 38%,#000 18%,transparent 76%);
+}
+
+/* ---------- 顶栏 ---------- */
+.menubar{position:absolute;top:0;left:0;right:0;height:34px;z-index:60;
+  display:flex;align-items:center;gap:14px;padding:0 12px;font-size:13px;
+  background:rgba(18,22,29,.88);border-bottom:1px solid var(--border);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+}
+.menubar .logo{width:19px;height:19px;display:grid;place-items:center;
+  background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:11px}
+.menubar b{font-weight:600;letter-spacing:.02em}
+.menubar .menu{display:flex;gap:13px;color:var(--text-2)}
+.menubar .menu span{cursor:pointer}
+.menubar .menu span:hover{color:var(--text)}
+.menubar .right{margin-left:auto;display:flex;align-items:center;gap:12px;color:var(--text-2)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;font-size:12px;
+  border:1px solid var(--border);background:var(--surface-2)}
+.dot{width:6px;height:6px;border-radius:999px;background:var(--ok)}
+.dot.warn{background:var(--warn)} .dot.off{background:var(--text-3)} .dot.err{background:var(--danger)}
+
+/* ---------- 窗口 ---------- */
+.stage{position:absolute;inset:34px 0 0 0;z-index:5}
+.win{position:absolute;display:flex;flex-direction:column;min-width:420px;min-height:280px;
+  background:var(--surface);border:1px solid var(--border-strong);
+  box-shadow:0 22px 54px rgba(0,0,0,.5)}
+.win.active{border-color:var(--accent)}
+.win .titlebar{height:34px;flex:none;display:flex;align-items:center;gap:9px;padding:0 8px;
+  background:var(--surface-2);border-bottom:1px solid var(--border);cursor:default}
+.win .titlebar .t{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.win .titlebar .t em{font-style:normal;color:var(--text-3);font-weight:400;margin-left:8px;font-size:11px}
+.win .titlebar .spacer{flex:1}
+.win .titlebar button{width:30px;height:22px;border:1px solid var(--border);background:var(--surface-3);
+  color:var(--text-2);cursor:pointer}
+.win .titlebar button:hover{color:var(--text);border-color:var(--border-strong)}
+.win .titlebar button.close:hover{background:var(--danger);color:#210b0b;border-color:var(--danger)}
+.win .body{flex:1;min-height:0;overflow:auto;padding:0}
+.win .split{display:grid;grid-template-columns:186px 1fr;height:100%;min-height:0}
+.win .split .side{border-right:1px solid var(--border);background:var(--surface-2);padding:8px;overflow:auto}
+.win .split .side a{display:flex;align-items:center;gap:8px;padding:7px 9px;margin-bottom:2px;
+  color:var(--text-2);text-decoration:none;font-size:13px;border:1px solid transparent;cursor:pointer}
+.win .split .side a:hover{background:var(--surface-3);color:var(--text)}
+.win .split .side a.on{background:var(--accent-soft);color:var(--text);border-color:var(--border-strong)}
+.win .split .pane{padding:14px 16px;overflow:auto;min-width:0}
+
+/* ---------- 通用 UI ---------- */
+h3{margin:0 0 2px;font-size:15px;font-weight:600}
+.sub{color:var(--text-3);font-size:12px;margin-bottom:12px}
+.sect{margin-top:18px}
+.row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)}
+.row:first-of-type{border-top:0}
+.row .who{min-width:0}
+.row .who b{display:block;font-size:13px;font-weight:600}
+.row .who span{display:block;color:var(--text-3);font-size:11px}
+.row .tags{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tag{font-size:11px;padding:1px 7px;border:1px solid var(--border);color:var(--text-2);background:var(--surface-2);white-space:nowrap}
+.tag.on{border-color:var(--accent);color:var(--accent)}
+.tag.off{color:var(--text-3)}
+.tag.warn{border-color:var(--warn);color:var(--warn)}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
+label{display:block;font-size:11px;color:var(--text-3);margin-bottom:3px}
+select,input,textarea{width:100%;padding:6px 8px;font:inherit;font-size:13px;color:var(--text);
+  background:var(--surface-2);border:1px solid var(--border)}
+select:focus,input:focus,textarea:focus{outline:1px solid var(--accent);border-color:var(--accent)}
+textarea{resize:vertical;min-height:64px}
+.btn{padding:7px 14px;background:var(--accent);color:var(--accent-ink);border:1px solid var(--accent);
+  font-weight:600;font-size:13px;cursor:pointer}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.ghost{background:var(--surface-2);color:var(--text-2);border-color:var(--border);font-weight:500}
+.btn.ghost:hover{color:var(--text);border-color:var(--border-strong)}
+.btn.sm{padding:3px 9px;font-size:12px}
+.empty{color:var(--text-3);font-size:13px;padding:14px 0}
+.err{color:var(--danger);font-size:12px}
+.ok{color:var(--ok);font-size:12px}
+.pre{white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:12px;
+  background:var(--surface-2);border:1px solid var(--border);padding:8px;max-height:220px;overflow:auto}
+
+/* ---------- 启动台 ---------- */
+.launcher{position:absolute;inset:34px 0 0 0;z-index:55;display:grid;place-items:center;
+  background:rgba(8,11,15,.72);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.launcher .grid{display:grid;grid-template-columns:repeat(6,104px);gap:14px}
+.launcher .cell{display:grid;place-items:center;gap:8px;padding:14px 6px;cursor:pointer;
+  border:1px solid transparent;color:var(--text-2)}
+.launcher .cell:hover{background:var(--surface-2);border-color:var(--border-strong);color:var(--text)}
+.launcher .cell .g{width:48px;height:48px;display:grid;place-items:center;font-size:22px;
+  background:var(--surface-2);border:1px solid var(--border)}
+.launcher .cell.soon{opacity:.45}
+.launcher .cell span{font-size:12px}
+
+/* ---------- Dock ---------- */
+.dock{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:58;
+  display:flex;gap:7px;padding:7px 9px;border:1px solid var(--border-strong);
+  background:rgba(18,22,29,.82);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  box-shadow:0 12px 32px rgba(0,0,0,.45)}
+.dock .it{width:42px;height:42px;display:grid;place-items:center;font-size:19px;cursor:pointer;
+  background:var(--surface-2);border:1px solid var(--border);position:relative}
+.dock .it:hover{border-color:var(--accent);background:var(--surface-3)}
+.dock .it.on{border-color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
+.dock .it.soon{opacity:.45}
+.dock .sep{width:1px;background:var(--border);margin:5px 1px}
+
+/* ---------- 提示 / 右键菜单 ---------- */
+.toasts{position:absolute;right:14px;bottom:70px;z-index:90;display:grid;gap:8px;justify-items:end}
+.toast{max-width:360px;padding:9px 12px;font-size:13px;background:var(--surface-2);
+  border:1px solid var(--border-strong);box-shadow:0 10px 26px rgba(0,0,0,.45)}
+.toast.err{border-color:var(--danger)}
+.toast.ok{border-color:var(--ok)}
+.ctxmenu{position:absolute;z-index:95;min-width:184px;padding:5px;background:var(--surface-2);
+  border:1px solid var(--border-strong);box-shadow:0 12px 30px rgba(0,0,0,.5)}
+.ctxmenu div{padding:7px 10px;font-size:13px;color:var(--text-2);cursor:pointer}
+.ctxmenu div:hover{background:var(--accent-soft);color:var(--text)}
+.ctxmenu hr{border:0;border-top:1px solid var(--border);margin:4px 0}

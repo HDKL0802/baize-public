@@ -1,0 +1,7 @@
+本目录（agent/internal/memory）包含基于 GPL-3.0 项目 OpenHuman 的实现用 Go 重写而来的衍生作品，
+因此与仓库主体（MIT）不同，本目录按 **GPL-3.0** 授权。
+
+许可证原文见仓库根目录：LICENSE-GPL-3.0.txt
+上游项目：https://github.com/tinyhumansai/openhuman （GNU GPL v3）
+
+若需以非 GPL-3.0 的方式使用本目录，请先联系作者（该项目为个人作品，可另行商谈）。

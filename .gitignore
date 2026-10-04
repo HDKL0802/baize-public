@@ -1,0 +1,52 @@
+# 白泽 · 版本库忽略清单
+# 铁律：任何密钥、数据、日志、构建产物都不进版本库。
+# 尤其是 agent/data/ 下有真实 API key（config.json），一旦提交等于公开泄漏。
+
+# ---------- 密钥 / 运行数据 / 日志（绝不入库） ----------
+agent/data/
+agent/bin/data/
+agent/.demo/
+agent/.demo-ext/
+agent/.sweep/
+*.log
+*.out
+*.err
+
+# ---------- 本地部署凭据（NAS 地址/密码/令牌放在这里，不入库） ----------
+deploy.local.env
+.env
+.env.local
+
+# ---------- 构建产物 ----------
+agent/bin/
+core/bin/
+cli/*.exe
+tools/sshrun/bin/
+desktop/bin/
+android-app/*.apk
+android-app/*.apk.idsig
+android-app/debug.keystore
+
+# ---------- 依赖 / 缓存 ----------
+**/node_modules/
+**/__pycache__/
+*.pyc
+.venv/
+venv/
+**/target/
+**/dist/
+**/build/
+
+# ---------- 第三方源码（体积巨大，只保留来源说明，见 THIRD-PARTY-NOTICES.md） ----------
+third_party/
+
+# ---------- 本地向量模型（几百 MB） ----------
+tools/local-embed/models/
+
+# ---------- IDE / 本地工具 / 系统 ----------
+.trae/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,40 @@
+MIT License
+
+Copyright (c) 2026 HDKL0802
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+许可范围（双许可 / Dual licensing）
+================================================================================
+
+本仓库**主体按 MIT 授权**（上文）。
+
+**例外（GPL-3.0）**：下列目录中的代码，是基于 GPL-3.0 项目 **OpenHuman**
+（https://github.com/tinyhumansai/openhuman）的实现用 Go 重写而来，属于衍生作品，
+因此**按 GPL-3.0 授权**（许可证原文见根目录 `LICENSE-GPL-3.0.txt`）：
+
+  - `agent/internal/memory/`   记忆术（混合检索 / 自动召回 / 记忆树）
+  - `agent/internal/voice/`    语音通道（TTS / STT）
+
+对其余目录（后端中枢 `agent/internal/{hub,store,httpapi,agentsvc,agentrt,kb,mcp,skills,backup,cron,llm,executor,sysinfo,activity,tools,hooks,config,logx}`、
+共享契约 `shared/`、手机内核与领域 `core/`、桌面端 `desktop/`、手机壳 `android-app/`、
+WebView 前端 `todo-app/`、CLI `cli/`、部署与工具 `tools/`、`deploy/`）适用 MIT。
+
+第三方依赖各自的许可证见 `THIRD-PARTY-NOTICES.md`。

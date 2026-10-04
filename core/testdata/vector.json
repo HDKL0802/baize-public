@@ -1,0 +1,12 @@
+{
+  "note": "由 make_vector.mjs 用 WebCrypto 生成，勿手改",
+  "password": "p@ss-测试-123",
+  "saltB64": "MDEyMzQ1Njc4OWFiY2RlZg==",
+  "hashB64": "aqlSI8Y7CZ71Lxa7fyhQjPX+WR7dynT2/KZwZCim0eg=",
+  "ivB64": "YWJjZGVmZ2hpamts",
+  "box": {
+    "iv": "YWJjZGVmZ2hpamts",
+    "data": "wMbtpGBT0lzwWfnfwtGKCzjegYGDgkBjqAYbEX5t7AeTmrqa1XxIJU+L/MrcoBX0RyCGbfpLs3YtdJGF9+2bBJFwJuc/eLCMiC40tPj/U8JdrBaoek59W5uNTcHdTfLIEHyiG5lZJV0y3+L7OnVIVpU0+x3Lr/XKl082ZsfPA92BdeE4C1EJ2dibpD3gj7G+2K7a8iIN"
+  },
+  "plaintext": "[{\"title\":\"Trae 国际站\",\"account\":\"me@a.com\",\"password\":\"newpass\",\"history\":[{\"pwd\":\"oldpass\",\"at\":1758800000000}],\"group\":\"Trae\"}]"
+}

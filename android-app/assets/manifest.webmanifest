@@ -1,0 +1,14 @@
+{
+  "name": "白泽 · 待办中心",
+  "short_name": "待办中心",
+  "description": "双源待办 / 密码本 / 语音助手的本地优先个人任务中心（秒哒 Go 重写前身）",
+  "lang": "zh-CN",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f7fb",
+  "theme_color": "#3b6cf6",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0B0F19">
+<title>待办中心 · Baize Todo</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<main class="app-main">
+
+  <!-- ============ Tab 1 待办 ============ -->
+  <section class="tab-view" id="view-todo">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">待办</h1>
+        <p class="page-sub" id="todoStat">日程 0 项 · 闲暇 0 项</p>
+      </div>
+      <div class="head-actions">
+        <button class="icon-btn" id="btnLock" title="密码本锁定" hidden>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        </button>
+        <button class="icon-btn" id="btnVoiceQuick" title="语音录入">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 0 0-7 0v6A3.5 3.5 0 0 0 12 15Z"/><path d="M17.5 11a5.5 5.5 0 0 1-11 0H4.5a7.5 7.5 0 0 0 6.75 7.45V21H9v2h6v-2h-2.25v-2.55A7.5 7.5 0 0 0 19.5 11h-2Z"/></svg>
+        </button>
+        <button class="icon-btn accent" id="btnAiPlan">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 2l1.9 5.6L19.5 9l-4.4 3.4L16.6 18 12 14.8 7.4 18l1.5-5.6L4.5 9l5.6-1.4L12 2z"/></svg>
+          AI排期
+        </button>
+        <button class="icon-btn square" id="btnSort" title="切换排序">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="seg">
+      <button class="seg-btn active" data-seg="user">我的待办</button>
+      <button class="seg-btn" data-seg="agent">Agent 待办</button>
+    </div>
+
+    <div class="seg soft" id="viewSwitch">
+      <button class="vs-btn active" data-view="schedule">今日 / 日程排期 <span class="cnt" id="cntSched">(0)</span></button>
+      <button class="vs-btn" data-view="leisure">闲暇待办 <span class="cnt" id="cntLeisure">(0)</span></button>
+    </div>
+
+    <div class="quick-add">
+      <input id="quickInput" type="text" placeholder="快速记录今日排期任务（回车添加）...">
+      <button class="btn primary" id="btnQuickNew">＋ 新建</button>
+    </div>
+
+    <p class="hint">💡 左右滑动屏幕可在这两个视图间快速切换；时间越近的任务排在越前面。</p>
+
+    <div id="todoList" class="todo-list"></div>
+    <div class="empty-tip" id="todoEmpty" hidden>暂无待办<br>输入框回车，或点「＋ 新建」</div>
+  </section>
+
+  <!-- ============ Tab 2 密码本 ============ -->
+  <section class="tab-view" id="view-vault" hidden>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">自用密码本</h1>
+        <p class="page-sub">取代手机自带密码库 · 支持 MD 智能提取与浏览器导入</p>
+      </div>
+      <div class="head-actions">
+        <button class="icon-btn" id="btnVaultImport" title="导入 MD">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="vault-lock-tip" id="vaultLockTip"></div>
+
+    <div class="vault-toolbar">
+      <input id="vaultSearch" type="search" placeholder="搜索网站名称、账号或备注">
+      <span class="vault-count" id="vaultCount">0 组密码</span>
+    </div>
+    <div style="margin-bottom:10px"><button class="btn primary" id="btnVaultAdd" style="width:100%">＋ 新建密码记录</button></div>
+
+    <div id="vaultList" class="vault-list"></div>
+    <div class="empty-tip" id="vaultEmpty" hidden>暂无凭据<br>点「＋ 新建密码记录」，或右上角导入 MD</div>
+  </section>
+
+  <!-- ============ Tab 3 语音助手 ============ -->
+  <section class="tab-view" id="view-voice" hidden>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">语音助手</h1>
+        <p class="page-sub">说一句即可加待办 / 存密码</p>
+      </div>
+    </div>
+
+    <div class="voice-stage">
+      <button class="voice-ball" id="voiceBall">
+        <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 0 0-7 0v6A3.5 3.5 0 0 0 12 15Z"/><path d="M17.5 11a5.5 5.5 0 0 1-11 0H4.5a7.5 7.5 0 0 0 6.75 7.45V21H9v2h6v-2h-2.25v-2.55A7.5 7.5 0 0 0 19.5 11h-2Z"/></svg>
+      </button>
+      <p class="voice-hint" id="voiceHint">按住说话，例如「加一个明天复习待办」或「存微信密码」</p>
+      <div class="voice-wave" id="voiceWave"></div>
+    </div>
+
+    <div class="voice-quick" id="voiceQuick">
+      <button class="chip" data-phrase="加一个明天复习待办">加一个明天复习待办</button>
+      <button class="chip" data-phrase="今天下午3点和产品开会，待办">今天下午3点和产品开会</button>
+      <button class="chip" data-phrase="存 GitHub 账号 zhangsan 密码 abc1234">存 GitHub 密码</button>
+      <button class="chip" data-phrase="买牛奶">记录：买牛奶</button>
+    </div>
+
+    <div class="widget-card">
+      <div class="wc-title">桌面 1×1 与 1×2 语音微件交互模型</div>
+      <div class="widget-row" id="widgetPicker">
+        <button class="widget-box" data-widget="1x1">
+          <div class="wb-name">1×1 语音球</div>
+          <div class="wb-mic">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 0 0-7 0v6A3.5 3.5 0 0 0 12 15Z"/><path d="M17.5 11a5.5 5.5 0 0 1-11 0H4.5a7.5 7.5 0 0 0 6.75 7.45V21H9v2h6v-2h-2.25v-2.55A7.5 7.5 0 0 0 19.5 11h-2Z"/></svg>
+          </div>
+          <div class="wb-desc">按住说话</div>
+        </button>
+        <button class="widget-box" data-widget="1x2">
+          <div class="wb-name">1×2 语音微条</div>
+          <div class="wb-desc" style="margin-top:8px">点击直接说出待办或密码</div>
+          <div class="wb-desc">自动解析日期与密码并存库</div>
+        </button>
+        <button class="widget-box" data-widget="off">
+          <div class="wb-name">关闭</div>
+          <div class="wb-desc" style="margin-top:8px">不显示悬浮微件</div>
+        </button>
+      </div>
+    </div>
+
+    <div id="voiceLog" class="voice-log"></div>
+  </section>
+
+  <!-- ============ Tab 4 系统与配置 ============ -->
+  <section class="tab-view" id="view-settings" hidden>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">系统与配置</h1>
+        <p class="page-sub">AI 接口、Markdown 迁移与原生系统设置跳转</p>
+      </div>
+      <div class="head-actions">
+        <button class="po-save" id="btnSaveCfg">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          保存配置
+        </button>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3 class="group-title">📱 手机系统级权限与设置跳转</h3>
+      <p class="group-desc">点击直接跳转到安卓 / 鸿蒙手机原生设置页，自由控制权限</p>
+      <button class="link-item" data-sys="notify">
+        <div class="li-main">
+          <span class="li-icon">🔔</span>
+          <div><div class="li-name">系统级定时通知</div><div class="li-desc">横幅提示、锁屏通知与静默免打扰</div></div>
+        </div>
+        <span class="li-go">↗</span>
+      </button>
+      <button class="link-item" data-sys="alarm">
+        <div class="li-main">
+          <span class="li-icon">⏰</span>
+          <div><div class="li-name">定时提醒与高精度闹钟</div><div class="li-desc">保障固定提醒准时唤醒</div></div>
+        </div>
+        <span class="li-go">↗</span>
+      </button>
+      <button class="link-item" data-sys="vibrate">
+        <div class="li-main">
+          <span class="li-icon">📳</span>
+          <div><div class="li-name">触觉振动反馈</div><div class="li-desc">打卡确认与手势操作细腻微振</div></div>
+        </div>
+        <span class="li-go">↗</span>
+      </button>
+    </div>
+
+    <div class="settings-group">
+      <h3 class="group-title">🗂 Markdown 格式数据中心（兼容 Obsidian）</h3>
+      <p class="group-desc">非私有格式！所有待办与密码可一键导出为标准 Markdown，即便应用异常也能直接用 Obsidian 打开无缝使用。</p>
+      <div class="field-row" style="gap:10px">
+        <button class="btn primary" id="btnExport" style="flex:1">导出 Markdown</button>
+        <button class="btn ghost" id="btnImportMd" style="flex:1">导入 Markdown</button>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3 class="group-title">🔔 通知与提醒</h3>
+      <div class="field-row"><span>开启通知</span><button class="toggle" id="tglNotify"><span></span></button></div>
+      <div class="field-row"><span>待办到点提醒</span><button class="toggle" id="tglRemind"><span></span></button></div>
+      <p class="desc">浏览器通知需授权；打包为 APK 后使用系统级通知与高精度闹钟。</p>
+    </div>
+
+    <div class="settings-group">
+      <h3 class="group-title">🧹 数据管理</h3>
+      <div class="field-row" style="gap:10px">
+        <button class="btn ghost" id="btnLoadSample" style="flex:1">恢复初始示例</button>
+        <button class="btn danger-ghost" id="btnClearAll" style="flex:1">清空全部数据</button>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3 class="group-title">关于</h3>
+      <p class="desc">白泽 · 待办中心 v0.1 —— 秒哒 Go 重写前身（Web 形态）。数据仅存本机；后续将内嵌至白泽智能体 Agent 作为插件，或打包为独立 APK。</p>
+    </div>
+  </section>
+</main>
+
+<!-- 底栏导航 -->
+<nav class="bottom-nav">
+  <button class="nav-item active" data-tab="view-todo">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="4" height="4" rx="1"/><rect x="10" y="4" width="4" height="4" rx="1"/><rect x="17" y="4" width="4" height="4" rx="1"/><path d="M3 12h4M10 12h4M17 12h4M3 16h4M10 17h7"/></svg>
+    <span>待办</span>
+  </button>
+  <button class="nav-item" data-tab="view-vault">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+    <span>密码本</span>
+  </button>
+  <button class="nav-item" data-tab="view-voice">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+    <span>语音助手</span>
+  </button>
+  <button class="nav-item" data-tab="view-settings">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+    <span>设置</span>
+  </button>
+</nav>
+
+<!-- ================= 全屏页：新建 / 编辑待办任务 ================= -->
+<div class="page-overlay" id="todoPage" hidden>
+  <div class="po-head">
+    <button class="po-btn" id="tpClose" title="关闭">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="po-title" id="tpTitle">新建待办任务</div>
+    <button class="po-save" id="tpSave">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+      保存
+    </button>
+  </div>
+  <div class="po-body">
+    <div class="f-block">
+      <label class="f-label">任务标题<span class="req">*</span></label>
+      <input class="f-input" id="tTitle" placeholder="例如：AI 漫剧角色设定 / 高数课后习题...">
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">详细备注 / 步骤要求</label>
+      <textarea class="f-textarea" id="tNote" rows="3" placeholder="记录关键想法、执行要点或验收条件..."></textarea>
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">所属领域</label>
+      <div class="chip-group" id="tDomain">
+        <button class="chip-opt" data-v="工作开发">工作开发</button>
+        <button class="chip-opt" data-v="创作（AI漫剧等）">创作（AI漫剧等）</button>
+        <button class="chip-opt" data-v="日常生活">日常生活</button>
+      </div>
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">优先级</label>
+      <div class="chip-group" id="tPriority">
+        <button class="chip-opt p-high" data-v="high">高优先级</button>
+        <button class="chip-opt p-mid" data-v="mid">中优先级</button>
+        <button class="chip-opt p-low" data-v="low">低优先级</button>
+      </div>
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">任务形式</label>
+      <div class="form-card">
+        <div class="form-card-head">
+          <span class="form-card-name">任务形式</span>
+          <span class="form-badge" id="tFormBadge">闲暇待办</span>
+        </div>
+        <div class="chip-group form-toggle" id="tForm">
+          <button class="chip-opt" data-v="schedule">今日 / 日程排期</button>
+          <button class="chip-opt" data-v="leisure">闲暇待办</button>
+        </div>
+        <div class="f-note" id="tFormNote">闲暇待办专为创作、灵感项目、闲暇阅读等设计，不设死板日期，可在有空时随时挑选启动。</div>
+      </div>
+    </div>
+
+    <div class="f-block" id="tDueBlock">
+      <label class="f-label">日期时间</label>
+      <input class="f-input f-datetime" id="tDue" type="datetime-local">
+    </div>
+
+    <div class="f-block">
+      <div class="switch-row">
+        <div class="sr-main">
+          <div class="sr-name">每周定时提醒</div>
+          <div class="sr-desc">支持每周固定提醒（如学生每周作业交卷、周复盘）</div>
+        </div>
+        <button class="toggle" id="tWeekly"><span></span></button>
+      </div>
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">前置依赖任务</label>
+      <div class="dep-list" id="tDeps"></div>
+      <div class="f-note">指定必须在当前任务之前完成的事项。</div>
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">预计耗时（分钟）</label>
+      <div class="chip-group" id="tEstimate">
+        <button class="chip-opt" data-v="15">15m</button>
+        <button class="chip-opt" data-v="30">30m</button>
+        <button class="chip-opt" data-v="45">45m</button>
+        <button class="chip-opt" data-v="60">60m</button>
+        <button class="chip-opt" data-v="90">90m</button>
+        <button class="chip-opt" data-v="120">120m</button>
+      </div>
+    </div>
+
+    <div class="f-block">
+      <div class="switch-row">
+        <div class="sr-main">
+          <div class="sr-name">到点提醒</div>
+          <div class="sr-desc">到达日期时间时弹出通知</div>
+        </div>
+        <button class="toggle" id="tRemind"><span></span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 全屏页：新建 / 编辑密码记录 ================= -->
+<div class="page-overlay" id="vaultPage" hidden>
+  <div class="po-head">
+    <button class="po-btn" id="vpClose" title="关闭">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="po-title" id="vpTitle">新建密码记录</div>
+    <button class="po-save" id="vpSave">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+      保存
+    </button>
+  </div>
+  <div class="po-body">
+    <div class="f-block">
+      <label class="f-label">平台 / 网站名称<span class="req">*</span></label>
+      <input class="f-input" id="vTitle" placeholder="例如：华为账号、GitHub、Steam、知乎">
+    </div>
+    <div class="f-block">
+      <label class="f-label">账号 / 手机号 / 邮箱<span class="req">*</span></label>
+      <input class="f-input" id="vAccount" placeholder="例如：user@example.com 或 13800000000">
+    </div>
+    <div class="f-block">
+      <label class="f-label">密码凭据<span class="req">*</span></label>
+      <div style="display:flex;gap:8px">
+        <input class="f-input" id="vPassword" type="text" placeholder="密码" style="flex:1">
+        <button class="btn ghost" id="vGen" style="flex:none">⚡ 生成强密码</button>
+      </div>
+    </div>
+    <div class="f-block">
+      <label class="f-label">网站 URL（选填）</label>
+      <input class="f-input" id="vUrl" placeholder="https://...">
+    </div>
+    <div class="f-block">
+      <label class="f-label">安全备注</label>
+      <textarea class="f-textarea" id="vNote" rows="3" placeholder="记录密码提示、密保问题或绑定手机..."></textarea>
+    </div>
+    <button class="btn-block" id="vSaveBlock">保存到自用密码库</button>
+  </div>
+</div>
+
+<!-- ================= 全屏页：AI 智能排期 ================= -->
+<div class="page-overlay" id="planPage" hidden>
+  <div class="po-head">
+    <button class="po-btn" id="ppBack" title="返回">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="po-title">AI 智能排期</div>
+    <button class="po-btn" id="ppCfg" title="AI 接口配置">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
+    </button>
+  </div>
+  <div class="po-body">
+    <p class="group-desc" style="margin:0 0 14px">根据前置依赖与策略偏好自动规划日程</p>
+
+    <div class="api-card">
+      <div class="api-main">
+        <div class="api-logo">D</div>
+        <div style="min-width:0">
+          <div class="api-name" id="ppApiName">DeepSeek 官方 API</div>
+          <div class="api-sub" id="ppApiSub">deepseek-chat · 待排期 0 项（含闲暇 0 项）</div>
+        </div>
+      </div>
+      <button class="btn ghost sm" id="ppSwitch">切换/配置</button>
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">选择排期策略偏好</label>
+      <div class="policy-list" id="policyList">
+        <button class="policy-item on" data-v="balance">
+          <div class="policy-name">各项兼顾</div>
+          <div class="policy-desc">在工作、创作与生活之间保持均衡平滑的排期节奏</div>
+          <div class="policy-check">✓</div>
+        </button>
+        <button class="policy-item" data-v="work">
+          <div class="policy-name">专注于工作</div>
+          <div class="policy-desc">将核心工作、应用开发与重要作业优先排在最前黄金时段</div>
+          <div class="policy-check">✓</div>
+        </button>
+        <button class="policy-item" data-v="create">
+          <div class="policy-name">专注于创作</div>
+          <div class="policy-desc">为 AI 漫剧创作、灵感大纲与剪辑测试预留大块连续时间</div>
+          <div class="policy-check">✓</div>
+        </button>
+        <button class="policy-item" data-v="life">
+          <div class="policy-name">专注于生活</div>
+          <div class="policy-desc">优先保障从容的作息与阅读生活，平滑分散复杂事务</div>
+          <div class="policy-check">✓</div>
+        </button>
+      </div>
+    </div>
+
+    <button class="btn-block" id="ppStart">⚡ 开始自动智能排期</button>
+
+    <div class="plan-result" id="ppResult" hidden>
+      <h4>建议执行顺序</h4>
+      <div class="plan-list" id="ppList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 底部弹层 ================= -->
+<!-- AI 接口配置 -->
+<div class="modal-mask" id="apiModal" hidden>
+  <div class="modal">
+    <h3 class="modal-title">AI 接口配置</h3>
+    <div class="field"><label>服务商</label>
+      <select id="sProvider"><option value="deepseek">DeepSeek</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="custom">自定义</option></select>
+    </div>
+    <div class="field"><label>BaseURL</label><input id="sBaseUrl" placeholder="https://api.deepseek.com/v1"></div>
+    <div class="field"><label>API Key</label><input id="sApiKey" type="password" placeholder="sk-..."></div>
+    <div class="field"><label>Model</label><input id="sModel" placeholder="deepseek-chat"></div>
+    <div class="field-row" style="justify-content:flex-start;gap:12px">
+      <button class="btn ghost sm" id="btnTestApi">测试连通性</button>
+      <span id="apiTestResult" class="test-result"></span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="apiCancel">关闭</button>
+      <button class="btn primary" id="apiSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 语音识别确认 -->
+<div class="modal-mask" id="voiceModal" hidden>
+  <div class="modal">
+    <h3 class="modal-title">识别结果</h3>
+    <p class="voice-rec-text" id="vmText"></p>
+    <div class="voice-rec-type" id="vmType"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="vmCancel">忽略</button>
+      <button class="btn primary" id="vmOk">确认入库</button>
+    </div>
+  </div>
+</div>
+
+<!-- 主密码 -->
+<div class="modal-mask" id="pwdModal" hidden>
+  <div class="modal">
+    <h3 class="modal-title" id="pwdTitle">密码本解锁</h3>
+    <div class="field"><label>主密码</label><input id="pwdInput" type="password" placeholder="主密码"></div>
+    <div class="field" id="pwdHintWrap" hidden><label>确认主密码</label><input id="pwdInput2" type="password" placeholder="再输一次"></div>
+    <p class="desc" id="pwdDesc"></p>
+    <div class="modal-actions">
+      <button class="btn ghost" id="pwdCancel">取消</button>
+      <button class="btn primary" id="pwdOk">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 全局操作单 -->
+<div class="action-sheet-mask" id="actionSheet" hidden>
+  <div class="action-sheet" id="actionSheetBox"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<input type="file" id="fileImport" accept=".md,.markdown,.txt" hidden>
+
+<script src="js/store.js"></script>
+<script src="js/app.js"></script>
+<script src="js/voice.js"></script>
+<script src="js/vault.js"></script>
+<script src="js/todo.js"></script>
+<script src="js/plan.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

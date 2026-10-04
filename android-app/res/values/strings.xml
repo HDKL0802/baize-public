@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">白泽</string>
+
+    <!-- 长按图标的快捷菜单文案（shortcut 属性必须引用字符串资源） -->
+    <string name="sc_todo_short">新建待办</string>
+    <string name="sc_todo_long">新建待办任务</string>
+    <string name="sc_newvault_short">记一条密码</string>
+    <string name="sc_newvault_long">新建密码记录</string>
+    <string name="sc_vault_short">密码本</string>
+    <string name="sc_vault_long">打开自用密码本</string>
+    <string name="sc_disabled">该快捷方式当前不可用</string>
+</resources>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>重置测试数据</title>
+<style>body{font:15px/1.6 sans-serif;background:#111;color:#eee;padding:20px}a{color:#6cf}</style>
+</head>
+<body>
+<h3>已清除待办中心测试数据</h3>
+<p id="detail"></p>
+<p><a href="index.html">→ 打开待办中心</a></p>
+<script>
+const keys = ['bz_todos','bz_settings','bz_vault','bz_vault_enc','bz_vault_pwd','bz_reminded'];
+const removed = [];
+keys.forEach(k => { if (localStorage.getItem(k) !== null) { localStorage.removeItem(k); removed.push(k); } });
+
+// 清掉 Service Worker 与缓存，确保拿到最新前端资源
+(async () => {
+  let swMsg = '无 SW';
+  if ('serviceWorker' in navigator) {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    for (const r of regs) await r.unregister();
+    if (window.caches) {
+      const names = await caches.keys();
+      for (const n of names) await caches.delete(n);
+      swMsg = regs.length ? '已注销 SW 并清空缓存' : '已清空缓存';
+    } else if (regs.length) {
+      swMsg = '已注销 SW';
+    }
+  }
+  document.getElementById('detail').textContent =
+    (removed.length ? '已删除：' + removed.join(', ') : '无残留数据') + ' ｜ ' + swMsg;
+})();
+</script>
+</body>
+</html>

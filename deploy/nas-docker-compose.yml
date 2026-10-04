@@ -1,0 +1,26 @@
+# 白泽后端 · NAS 部署（替代原来的「systemd 直跑二进制」）
+#
+# 放到 NAS 的 /vol1/@appdata/baize/compose/docker-compose.yml 后：
+#   cd /vol1/@appdata/baize/compose
+#   echo "$BAIZE_NAS_PASS" | sudo -S docker compose up -d     # 密码取自 deploy.local.env，莫写进仓库
+#
+# 镜像二选一（用环境变量 BAIZE_IMAGE 覆盖）：
+#   ghcr.io/hdkl0802/baize-backend:latest   已推仓库（CI 或 NAS 侧 build+push 的产物）
+#   baize-backend:local                     NAS 本地构建（tools/deploy-nas.ps1 的默认路径）
+#
+# network_mode: host —— 让容器直接用宿主 8787，局域网设备才能连上；
+# 数据卷挂到 /data，与原来 --data /vol1/@appdata/baize/data 完全一致，历史数据不动。
+
+services:
+  baize-backend:
+    image: ${BAIZE_IMAGE:-baize-backend:local}
+    container_name: baize-backend
+    restart: unless-stopped
+    # 与原来 systemd 的 User=HD / Group=Users 对齐，避免容器写出 root 属主的数据文件
+    user: "1000:1001"
+    network_mode: host
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - /vol1/@appdata/baize/data:/data
+    command: ["--addr", "0.0.0.0:8787", "--data", "/data"]

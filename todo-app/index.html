@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0B0F19">
+<title>白泽 · Baize</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<main class="app-main">
+
+  <!-- ============ Tab 2 知识库 · 待办 ============
+       「待办」与「密码本」融合成同一个入口（底栏那个「知识库」），
+       页内用顶部那排分段按钮切换，两边共用同一份后端知识库。 -->
+  <section class="tab-view" id="view-todo" hidden>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">待办</h1>
+        <p class="page-sub" id="todoStat">日程 0 项 · 闲暇 0 项</p>
+      </div>
+      <div class="head-actions">
+        <button class="icon-btn" id="btnLock" title="密码本锁定" hidden>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        </button>
+        <button class="icon-btn accent" id="btnAiPlan">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 2l1.9 5.6L19.5 9l-4.4 3.4L16.6 18 12 14.8 7.4 18l1.5-5.6L4.5 9l5.6-1.4L12 2z"/></svg>
+          AI排期
+        </button>
+        <button class="icon-btn square" id="btnSort" title="切换排序">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 注意：这两个分段是待办自己的（我的 / Agent），知识库那排类别分段由 app.js 注入，
+         两边样式一样但各自带 id，别用全局 .seg-btn 去选，否则会互相接管点击。 -->
+    <div class="seg" id="ownerSeg">
+      <button class="seg-btn active" data-seg="user">我的待办</button>
+      <button class="seg-btn" data-seg="agent">Agent 待办</button>
+    </div>
+
+    <div class="seg soft" id="viewSwitch">
+      <button class="vs-btn active" data-view="schedule">今日 / 日程排期 <span class="cnt" id="cntSched">(0)</span></button>
+      <button class="vs-btn" data-view="leisure">闲暇待办 <span class="cnt" id="cntLeisure">(0)</span></button>
+    </div>
+
+    <div class="quick-add">
+      <input id="quickInput" type="text" placeholder="快速记录今日排期任务（回车添加）...">
+      <button class="btn primary" id="btnQuickNew">＋ 新建</button>
+    </div>
+
+    <p class="hint">💡 左右滑动屏幕可在这两个视图间快速切换；时间越近的任务排在越前面。</p>
+
+    <div id="todoList" class="todo-list"></div>
+    <div class="empty-tip" id="todoEmpty" hidden>暂无待办<br>输入框回车，或点「＋ 新建」</div>
+  </section>
+
+  <!-- ============ Tab 2 知识库 · 密码本 ============ -->
+  <section class="tab-view" id="view-vault" hidden>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">自用密码本</h1>
+        <p class="page-sub">取代手机自带密码库 · 支持 MD 智能提取与浏览器导入</p>
+      </div>
+      <div class="head-actions">
+        <button class="icon-btn" id="btnVaultExport" title="导出密码本 MD">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+        </button>
+        <button class="icon-btn" id="btnVaultImport" title="导入 MD">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="vault-lock-tip" id="vaultLockTip"></div>
+
+    <div class="vault-toolbar">
+      <input id="vaultSearch" type="search" placeholder="搜索网站名称、账号或备注">
+      <span class="vault-count" id="vaultCount">0 组密码</span>
+    </div>
+    <div style="margin-bottom:10px"><button class="btn primary" id="btnVaultAdd" style="width:100%">＋ 新建密码记录</button></div>
+
+    <div id="vaultList" class="vault-list"></div>
+    <div class="empty-tip" id="vaultEmpty" hidden>暂无凭据<br>点「＋ 新建密码记录」，或右上角导入 MD</div>
+  </section>
+
+  <!-- ============ 知识库 · 资源 · 附件（正本在 NAS，手机上不留文件） ============ -->
+  <section class="tab-view" id="view-files" hidden>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">附件</h1>
+        <p class="page-sub" id="fileStat">正本在 NAS 的知识库 · 手机上只临时取回</p>
+      </div>
+      <div class="head-actions">
+        <button class="icon-btn" id="btnFileRefresh" title="刷新">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+        </button>
+        <button class="icon-btn accent" id="btnFileAdd">＋ 上传</button>
+      </div>
+    </div>
+
+    <div class="vault-toolbar">
+      <input id="fileSearch" type="search" placeholder="搜索文件名">
+      <span class="vault-count" id="fileCount">0 个附件</span>
+    </div>
+
+    <div id="fileList" class="vault-list"></div>
+    <div class="empty-tip" id="fileEmpty" hidden>还没有附件<br>点右上角「＋ 上传」，或在待办里加附件</div>
+  </section>
+
+  <!-- ============ 知识库 · 资源 · 记忆（长期记忆 / 语义检索） ============ -->
+  <section class="tab-view" id="view-memory" hidden>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">记忆</h1>
+        <p class="page-sub" id="memStat">长期记忆 · 支持语义搜索</p>
+      </div>
+      <div class="head-actions">
+        <button class="icon-btn" id="btnMemTree" title="记忆整理（重建摘要 / 合并重复）">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6"/><path d="M6 21v-6M18 21v-6"/><path d="M6 9h12"/><path d="M12 9v6"/><path d="M4 21h4M16 21h4"/></svg>
+        </button>
+        <button class="icon-btn" id="btnMemRefresh" title="刷新">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+        </button>
+        <button class="icon-btn accent" id="btnMemAdd">＋ 记一条</button>
+      </div>
+    </div>
+
+    <div class="seg soft" id="memProfile">
+      <button class="vs-btn active" data-p="balanced">均衡</button>
+      <button class="vs-btn" data-p="semantic">偏语义</button>
+      <button class="vs-btn" data-p="lexical">偏关键词</button>
+      <button class="vs-btn" data-p="graph_first">偏联想</button>
+    </div>
+
+    <div class="vault-toolbar">
+      <input id="memSearch" type="search" placeholder="搜索记忆（说人话就行，走语义）">
+      <span class="vault-count" id="memCount">0 条</span>
+    </div>
+
+    <!-- 记忆树（按天/周压出来的摘要）：只在没搜索的时候显示，搜索时专注结果 -->
+    <div id="memTree" hidden>
+      <div class="kb-sec-title" id="memTreeHead">记忆树</div>
+      <div id="memTreeList" class="vault-list"></div>
+    </div>
+
+    <div id="memList" class="vault-list"></div>
+    <div class="empty-tip" id="memEmpty" hidden>还没有记忆<br>白泽每次派活的结论会自动落进来，也可以点「＋ 记一条」</div>
+  </section>
+
+  <!-- ============ 知识库 · 配置 · API 服务（各模型站的 Key + baseURL） ============ -->
+  <section class="tab-view" id="view-keys" hidden>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">API 服务</h1>
+        <p class="page-sub">各模型站的 API Key 与 baseURL · 存在 NAS 后端</p>
+      </div>
+      <div class="head-actions">
+        <button class="icon-btn" id="btnKeyRefresh" title="刷新">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+        </button>
+        <button class="icon-btn accent" id="btnKeyAdd">＋ 加一个</button>
+      </div>
+    </div>
+
+    <div class="cfg-warn" id="keyWarn" hidden>
+      <div>还没连上白泽后端，模型站密钥读不到。去「其他功能 → 跨端」填上后端地址和令牌。</div>
+      <button class="btn ghost sm" id="keyGoCfg">去设置</button>
+    </div>
+
+    <div id="keyList" class="vault-list"></div>
+    <div class="empty-tip" id="keyEmpty" hidden>还没有模型站<br>点右上角「＋ 加一个」，填名称 + API Key + baseURL</div>
+  </section>
+
+  <!-- ============ 知识库 · 配置 · 模型审批（危险动作人工放行） ============ -->
+  <section class="tab-view" id="view-approval" hidden>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">模型审批</h1>
+        <p class="page-sub" id="apprStat">危险动作先挂起，人工放行后才真的执行</p>
+      </div>
+      <div class="head-actions">
+        <button class="icon-btn" id="btnApprRefresh" title="刷新">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3 class="group-title">审批闸门</h3>
+      <div class="field"><label>审批超时（秒）· 超时按拒绝处理</label><input id="apprTimeout" type="number" placeholder="300"></div>
+      <button class="btn primary" id="btnApprSave" style="width:100%">保存</button>
+      <p class="desc">危险动作（删除文件、跑命令、跨端执行）不会直接执行，会挂到下面的「待审批」里等你放行；批准前什么都不会发生。</p>
+    </div>
+
+    <div id="apprList" class="vault-list"></div>
+    <div class="empty-tip" id="apprEmpty" hidden>没有待审批的危险操作</div>
+  </section>
+
+  <!-- ============ Tab 1 白泽智能体（主页 · 跟后端同一个 Agent 说话） ============
+       底部输入栏布局：左边=切换/多选智能体，右边从边上数：①发送 ②录音（无「＋」） -->
+  <section class="tab-view" id="view-baize">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">白泽智能体</h1>
+        <p class="page-sub" id="chatSub">说一句就能顺手记成待办 · 加东西随便加，删除会先问你</p>
+      </div>
+      <div class="head-actions">
+        <button class="icon-btn" id="btnChatList" title="会话（新建 / 切换 / 删除）">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>
+        </button>
+        <button class="icon-btn" id="btnChatClear" title="清空对话">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v6M14 11v6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="cfg-warn" id="voiceCfgWarn" hidden>
+      <div>还没连上白泽后端：现在只有本地规则在干活（记待办/存密码照样能用）。去「设置 → 跨端」填上后端地址和令牌，就能真的跟白泽智能体对话了。</div>
+      <button class="btn ghost sm" id="voiceGoCfg">去设置</button>
+    </div>
+
+    <div class="chat-stream" id="chatStream"></div>
+
+    <!-- 待发送的附件（拍照 / 相册 / 文件） -->
+    <div class="chat-attach-bar" id="chatAttachBar" hidden></div>
+
+    <!-- 输入区：上面一行输入，下面一行工具（＋ 智能体 … 发送）
+         想语音输入就用输入法自带的麦克风，说进输入框即可 -->
+    <div class="chat-composer" id="chatComposer">
+      <input class="composer-input" id="chatInput" type="text" autocomplete="off"
+             placeholder="跟白泽说点什么… 例如：明天下午三点开会 / 存 GitHub 账号 me 密码 xxx">
+      <div class="composer-tools">
+        <button class="tool-btn" id="btnChatPlus" title="拍照 / 相册 / 文件">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <button class="agent-pill" id="btnAgentPick" title="选择智能体（可多选群发）">
+          <span class="ca-avatar" id="agentAvatar">白</span>
+          <span class="ca-name" id="agentName">白泽智能体</span>
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <span class="tools-gap"></span>
+        <button class="tool-btn mic-btn" id="btnChatMic" title="按住说话（听写成文字，检查后再发送）">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4M8 22h8"/></svg>
+        </button>
+        <button class="send-btn" id="btnChatSend" title="发送">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Tab 3 系统与配置 ============ -->
+  <section class="tab-view" id="view-settings" hidden>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">系统与配置</h1>
+        <p class="page-sub">AI 智能体 · Markdown 迁移 · 通知提醒</p>
+      </div>
+    </div>
+
+    <div class="settings-group" id="aiGroup">
+      <h3 class="group-title">🤖 AI 智能体</h3>
+      <p class="group-desc">只走 OpenAI 兼容 / Anthropic 两家协议，BaseURL 与模型全部自己填；DeepSeek、AGNES 这类选「OpenAI 兼容」即可。最多存 5 个模型，随时切换；改动即时生效。</p>
+
+      <div class="ai-status" id="aiStatus"></div>
+
+      <div class="ai-model-list" id="aiModelList"></div>
+      <button class="btn ghost sm" id="btnAddModel" style="width:100%;margin-top:8px">＋ 添加模型（最多 5 个）</button>
+
+      <div class="ai-edit" id="aiEdit">
+        <div class="field"><label>配置名称</label><input id="mName" placeholder="例如：DeepSeek 主力"></div>
+        <div class="field">
+          <label>协议</label>
+          <div class="chip-group" id="aiProtocol">
+            <button class="chip-opt" data-v="openai">OpenAI 兼容</button>
+            <button class="chip-opt" data-v="anthropic">Anthropic</button>
+          </div>
+        </div>
+        <div class="field"><label>BaseURL</label><input id="sBaseUrl" placeholder="https://api.deepseek.com/v1"></div>
+        <div class="field"><label>API Key</label><input id="sApiKey" type="password" placeholder="sk-..."></div>
+        <div class="field"><label>模型 ID</label><input id="sModel" placeholder="deepseek-chat"></div>
+        <div class="field-row" style="justify-content:flex-start;gap:12px">
+          <button class="btn ghost sm" id="btnTestApi">测试连通性</button>
+          <span id="apiTestResult" class="test-result"></span>
+        </div>
+        <p class="desc">填好 BaseURL / API Key / 模型 ID 后，「AI 智能排期」与 AI 助手对话才会启用；没填就只用本地规则。</p>
+      </div>
+
+    </div>
+    <div class="settings-group">
+      <h3 class="group-title">🗂 Markdown 格式数据中心（兼容 Obsidian）</h3>
+      <p class="group-desc">非私有格式！所有待办与密码可一键导出为标准 Markdown，即便应用异常也能直接用 Obsidian 打开无缝使用。</p>
+      <div class="field-row" style="gap:10px">
+        <button class="btn primary" id="btnExport" style="flex:1">导出 Markdown</button>
+        <button class="btn ghost" id="btnImportMd" style="flex:1">导入 Markdown</button>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3 class="group-title">🔌 跨端（把这台手机接进白泽后端）</h3>
+      <p class="group-desc">开启后，App 会在本机拉起 Go 内核（bzcore）并以「设备」身份注册到白泽后端。<b>连上之后，待办、密码本、附件文件的正本都在 NAS 上的白泽知识库</b>：手机只留一份待办缓存（断网还能看见列表）与附件缩略图，密码和原始文件一律不在手机上留（打开附件时才临时取回，关掉预览就删）。地址填跑后端那台电脑/NAS 的局域网 IP，令牌在后端数据目录的 token 文件里；后端要用 <b>--addr 0.0.0.0:8787</b> 启动，手机才连得上。</p>
+      <div class="field"><label>后端地址</label><input id="dwServer" placeholder="http://192.168.1.100:8787"></div>
+      <div class="field"><label>配对令牌</label><input id="dwToken" type="password" placeholder="留空 = 不改已存的令牌"></div>
+      <div class="field-row"><span>注册成后端设备并使用其知识库</span><button class="toggle" id="tglDevice"><span></span></button></div>
+      <div class="field-row" style="gap:10px">
+        <button class="btn primary" id="btnDeviceSave" style="flex:1">保存并重启内核</button>
+        <button class="btn ghost" id="btnDeviceRefresh" style="flex:1">刷新状态</button>
+      </div>
+      <p class="test-result" id="deviceState">检查中…</p>
+      <p class="test-result" id="deviceMirror"></p>
+    </div>
+
+    <div class="settings-group">
+      <h3 class="group-title">🔔 通知与提醒</h3>
+      <div class="field-row"><span>待办到点提醒</span><button class="toggle" id="tglRemind"><span></span></button></div>
+      <div class="field-row">
+        <span>通知权限</span>
+        <span class="test-result" id="notifyStateText">检查中…</span>
+      </div>
+      <div class="field-row" style="gap:10px">
+        <button class="btn ghost" id="btnNotifyPerm" style="flex:1">开启通知权限</button>
+        <button class="btn primary" id="btnTestNotify" style="flex:1">发一条测试通知</button>
+      </div>
+      <p class="desc">APK 内使用系统级通知 + 精确闹钟，息屏/锁屏也能提醒；开启后可在系统设置里随时关闭。</p>
+    </div>
+
+    <div class="settings-group">
+      <h3 class="group-title">🧹 数据管理</h3>
+      <div class="field-row" style="gap:10px">
+        <button class="btn ghost" id="btnLoadSample" style="flex:1">恢复初始示例</button>
+        <button class="btn danger-ghost" id="btnClearAll" style="flex:1">清空全部数据</button>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3 class="group-title">关于</h3>
+      <p class="desc">白泽 v0.10.10 —— 手机端是「白泽」的一个入口：底栏三个入口 = 对话（快捷方式）· 知识库 · 其他功能。知识库按 <b>主要 / 资源 / 配置</b> 三类收口：主要=待办 + 密码本，资源=附件 + 记忆，配置=API 服务（各模型站密钥）+ 模型审批 + 语音。语音这一块：对话里每条回复都能点 <b>🔊 朗读</b>，输入栏那个 <b>🎤</b> 是<b>按住说话</b>（松手出字、检查完再发）；音色、自动朗读、以及「真念一遍再听回来」的自检都在<b>其他功能 → 配置 → 语音</b>里。声音和听写都由后端那条独立的<b>语音通道</b>出（可以是阿里百炼的 qwen-tts + paraformer，也可以是任何 OpenAI 兼容的音频接口），手机上不留音频文件。连上白泽后端后，<b>正本（待办 + 密码本 + 附件文件 + 记忆）全部落在 NAS 的知识库上</b>：手机只留一份待办缓存和缩略图，密码与附件一律不在手机上留文件（打开附件时才临时取回，关掉就删）。记忆的语义搜索按「最低语义相似度」卡一道，不够相关的就不显示（并告诉你挡掉了几条），档位可在记忆页切换；记忆页还带「记忆树」（按天/周压出来的摘要，可手动重建）。对话里遇到要人工放行的危险操作（删除等），<b>直接在气泡里放行或驳回</b>，放行后白泽会接着把这次跑完——不用再跑去电脑。另提供 Go 版 CLI 供计算机侧使用。</p>
+      <p class="desc" id="envInfo"></p>
+    </div>
+  </section>
+
+  <!-- ============ 其他功能（对话与知识库之外的全部功能，按 主要 / 资源 / 配置 归类） ============ -->
+  <section class="tab-view" id="view-more" hidden>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">其他功能</h1>
+        <p class="page-sub">对话与知识库已单独放在底栏，剩下的都在这儿</p>
+      </div>
+      <div class="head-actions">
+        <button class="icon-btn" id="btnMoreRefresh" title="刷新状态">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="moreBody"></div>
+  </section>
+</main>
+
+<!-- 底栏导航（三个入口）：对话（快捷方式）→ 知识库（主要/资源/配置）→ 其他功能 -->
+<nav class="bottom-nav">
+  <button class="nav-item active" data-tab="view-baize">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><path d="M18 16l.9 2.1L21 19l-2.1.9L18 22l-.9-2.1L15 19l2.1-.9L18 16z"/></svg>
+    <span>对话</span>
+  </button>
+  <button class="nav-item" data-tab="view-kb">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h6M9 11h4"/></svg>
+    <span>知识库</span>
+  </button>
+  <button class="nav-item" data-tab="view-more">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
+    <span>其他功能</span>
+  </button>
+</nav>
+
+<!-- ================= 全屏页：新建 / 编辑待办任务 ================= -->
+<div class="page-overlay" id="todoPage" hidden>
+  <div class="po-head">
+    <button class="po-btn" id="tpClose" title="关闭">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="po-title" id="tpTitle">新建待办任务</div>
+    <button class="po-save" id="tpSave">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+      保存
+    </button>
+  </div>
+  <div class="po-body">
+    <div class="f-block">
+      <label class="f-label">任务标题<span class="req">*</span></label>
+      <input class="f-input" id="tTitle" placeholder="例如：AI 漫剧角色设定 / 高数课后习题...">
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">详细备注 / 步骤要求</label>
+      <textarea class="f-textarea" id="tNote" rows="3" placeholder="记录关键想法、执行要点或验收条件..."></textarea>
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">附件（照片 / 文件）<span class="f-count" id="tAttCount"></span></label>
+      <div class="att-grid" id="tAtts" hidden></div>
+      <button class="btn ghost sm att-add" id="tAttAdd">＋ 添加附件</button>
+      <div class="f-note">附件会复制一份存进 App（原文件删了也不影响），点开可用系统应用查看或另存到「下载」。</div>
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">所属领域</label>
+      <div class="chip-group" id="tDomain">
+        <button class="chip-opt" data-v="工作开发">工作开发</button>
+        <button class="chip-opt" data-v="创作">创作</button>
+        <button class="chip-opt" data-v="日常生活">日常生活</button>
+      </div>
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">优先级</label>
+      <div class="chip-group" id="tPriority">
+        <button class="chip-opt p-high" data-v="high">高优先级</button>
+        <button class="chip-opt p-mid" data-v="mid">中优先级</button>
+        <button class="chip-opt p-low" data-v="low">低优先级</button>
+      </div>
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">任务形式</label>
+      <div class="form-card">
+        <div class="form-card-head">
+          <span class="form-card-name">任务形式</span>
+          <span class="form-badge" id="tFormBadge">闲暇待办</span>
+        </div>
+        <div class="chip-group form-toggle" id="tForm">
+          <button class="chip-opt" data-v="schedule">今日 / 日程排期</button>
+          <button class="chip-opt" data-v="leisure">闲暇待办</button>
+        </div>
+        <div class="f-note" id="tFormNote">闲暇待办专为创作、灵感项目、闲暇阅读等设计，不设死板日期，可在有空时随时挑选启动。</div>
+      </div>
+    </div>
+
+    <div class="f-block" id="tDueBlock">
+      <label class="f-label">日期时间</label>
+      <input class="f-input f-datetime" id="tDue" type="datetime-local">
+    </div>
+
+    <div class="f-block">
+      <div class="switch-row">
+        <div class="sr-main">
+          <div class="sr-name">每周定时提醒</div>
+          <div class="sr-desc">支持每周固定提醒（如学生每周作业交卷、周复盘）</div>
+        </div>
+        <button class="toggle" id="tWeekly"><span></span></button>
+      </div>
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">前置依赖任务</label>
+      <div class="dep-list" id="tDeps"></div>
+      <div class="f-note">指定必须在当前任务之前完成的事项。</div>
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">预计耗时（分钟）</label>
+      <div class="chip-group" id="tEstimate">
+        <button class="chip-opt" data-v="15">15m</button>
+        <button class="chip-opt" data-v="30">30m</button>
+        <button class="chip-opt" data-v="45">45m</button>
+        <button class="chip-opt" data-v="60">60m</button>
+        <button class="chip-opt" data-v="90">90m</button>
+        <button class="chip-opt" data-v="120">120m</button>
+      </div>
+    </div>
+
+    <div class="f-block">
+      <div class="switch-row">
+        <div class="sr-main">
+          <div class="sr-name">到点提醒</div>
+          <div class="sr-desc">到达日期时间时弹出通知</div>
+        </div>
+        <button class="toggle" id="tRemind"><span></span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 全屏页：查看附件 ================= -->
+<div class="page-overlay" id="attPage" hidden>
+  <div class="po-head">
+    <button class="po-btn" id="apClose" title="关闭">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="po-title" id="apTitle">附件</div>
+    <span style="width:38px"></span>
+  </div>
+  <div class="po-body att-view" id="apBody"></div>
+</div>
+
+<!-- ================= 全屏页：新建 / 编辑密码记录 ================= -->
+<div class="page-overlay" id="vaultPage" hidden>
+  <div class="po-head">
+    <button class="po-btn" id="vpClose" title="关闭">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="po-title" id="vpTitle">新建密码记录</div>
+    <button class="po-save" id="vpSave">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+      保存
+    </button>
+  </div>
+  <div class="po-body">
+    <div class="f-block">
+      <label class="f-label">平台 / 网站名称<span class="req">*</span></label>
+      <input class="f-input" id="vTitle" placeholder="例如：华为账号、GitHub、Steam、知乎">
+    </div>
+    <div class="f-block">
+      <label class="f-label">账号 / 手机号 / 邮箱<span class="req">*</span></label>
+      <input class="f-input" id="vAccount" placeholder="例如：user@example.com 或 13800000000">
+    </div>
+    <div class="f-block">
+      <label class="f-label">归属 / 关联（选填）</label>
+      <input class="f-input" id="vGroup" placeholder="同一服务的多个站点填同一个归属，例如：Trae">
+      <div class="chip-group grp-chips" id="vGroupChips" hidden></div>
+      <div class="f-note">填一样的归属就会在密码本里分到一组（例：Trae 国际站 + Trae 国内站）。</div>
+    </div>
+    <div class="f-block">
+      <label class="f-label">密码凭据<span class="req">*</span></label>
+      <div style="display:flex;gap:8px">
+        <input class="f-input" id="vPassword" type="text" placeholder="密码" style="flex:1">
+        <button class="btn ghost" id="vGen" style="flex:none">⚡ 生成强密码</button>
+      </div>
+      <div class="f-note" id="vHisNote" hidden></div>
+    </div>
+    <div class="f-block">
+      <label class="f-label">网站 URL（选填）</label>
+      <input class="f-input" id="vUrl" placeholder="https://...">
+    </div>
+    <div class="f-block">
+      <label class="f-label">安全备注</label>
+      <textarea class="f-textarea" id="vNote" rows="3" placeholder="记录密码提示、密保问题或绑定手机..."></textarea>
+    </div>
+    <button class="btn-block" id="vSaveBlock">保存到自用密码库</button>
+  </div>
+</div>
+
+<!-- ================= 全屏页：AI 智能排期 ================= -->
+<div class="page-overlay" id="planPage" hidden>
+  <div class="po-head">
+    <button class="po-btn" id="ppBack" title="返回">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="po-title">AI 智能排期</div>
+    <button class="po-btn" id="ppCfg" title="AI 智能体设置">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
+    </button>
+  </div>
+  <div class="po-body">
+    <p class="group-desc" style="margin:0 0 14px">根据前置依赖与策略偏好自动规划日程</p>
+
+    <div class="cfg-warn" id="ppWarn" hidden>
+      <div>还没配置 AI 智能体，排期不可用。请先在「设置 → AI 智能体」填写 BaseURL / API Key / 模型 ID。</div>
+      <button class="btn primary sm" id="ppGoCfg">去设置</button>
+    </div>
+
+    <div class="api-card">
+      <div class="api-main">
+        <div class="api-logo">AI</div>
+        <div style="min-width:0">
+          <div class="api-name" id="ppApiName">未配置</div>
+          <div class="api-sub" id="ppApiSub">待排期 0 项（含闲暇 0 项）</div>
+        </div>
+      </div>
+      <button class="btn ghost sm" id="ppSwitch">去设置</button>
+    </div>
+
+    <div class="f-block">
+      <label class="f-label">选择排期策略偏好</label>
+      <div class="policy-list" id="policyList">
+        <button class="policy-item on" data-v="balance">
+          <div class="policy-name">各项兼顾</div>
+          <div class="policy-desc">在工作、创作与生活之间保持均衡平滑的排期节奏</div>
+          <div class="policy-check">✓</div>
+        </button>
+        <button class="policy-item" data-v="work">
+          <div class="policy-name">专注于工作</div>
+          <div class="policy-desc">将核心工作、应用开发与重要作业优先排在最前黄金时段</div>
+          <div class="policy-check">✓</div>
+        </button>
+        <button class="policy-item" data-v="create">
+          <div class="policy-name">专注于创作</div>
+          <div class="policy-desc">为 AI 漫剧创作、灵感大纲与剪辑测试预留大块连续时间</div>
+          <div class="policy-check">✓</div>
+        </button>
+        <button class="policy-item" data-v="life">
+          <div class="policy-name">专注于生活</div>
+          <div class="policy-desc">优先保障从容的作息与阅读生活，平滑分散复杂事务</div>
+          <div class="policy-check">✓</div>
+        </button>
+      </div>
+    </div>
+
+    <button class="btn-block" id="ppStart">⚡ 开始自动智能排期</button>
+
+    <div class="plan-result" id="ppResult" hidden>
+      <h4>建议执行顺序</h4>
+      <div class="plan-list" id="ppList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 全屏页：其他功能（内容由 more.js 按需渲染） ================= -->
+<div class="page-overlay" id="toolPage" hidden>
+  <div class="po-head">
+    <button class="po-btn" id="toolClose" title="关闭">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="po-title" id="toolTitle">功能</div>
+    <button class="po-save" id="toolAction" hidden></button>
+  </div>
+  <div class="po-body" id="toolBody"></div>
+</div>
+
+<!-- ================= 底部弹层 ================= -->
+<!-- 智能体选择（可多选群发） -->
+<div class="modal-mask" id="agentModal" hidden>
+  <div class="modal">
+    <h3 class="modal-title">选择智能体</h3>
+    <p class="group-desc" style="margin:0 0 10px">勾一个就是单聊；勾多个就群发同一条消息，各自回复分别显示。白泽智能体接入后会自动出现在这个列表里。</p>
+    <div class="agent-list" id="agentList"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="agentModalClose">取消</button>
+      <button class="btn primary" id="agentModalOk">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- 主密码 -->
+<div class="modal-mask" id="pwdModal" hidden>
+  <div class="modal">
+    <h3 class="modal-title" id="pwdTitle">密码本解锁</h3>
+    <div class="field"><label>主密码</label><input id="pwdInput" type="password" placeholder="主密码"></div>
+    <div class="field" id="pwdHintWrap" hidden><label>确认主密码</label><input id="pwdInput2" type="password" placeholder="再输一次"></div>
+    <p class="desc" id="pwdDesc"></p>
+    <div class="modal-actions">
+      <button class="btn ghost" id="pwdCancel">取消</button>
+      <button class="btn primary" id="pwdOk">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 全局操作单 -->
+<div class="action-sheet-mask" id="actionSheet" hidden>
+  <div class="action-sheet" id="actionSheetBox"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/store.js"></script>
+<script src="js/device.js"></script>
+<script src="js/reminders.js"></script>
+<script src="js/app.js"></script>
+<script src="js/nlparse.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/voice.js"></script>
+<script src="js/chat.js"></script>
+<script src="js/vault.js"></script>
+<script src="js/todo.js"></script>
+<script src="js/plan.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/kb.js"></script>
+<script src="js/more.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

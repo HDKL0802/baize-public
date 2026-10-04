@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 长按应用图标弹出的快捷菜单（微信「扫一扫」那种）
+     注意：shortcutShortLabel / shortcutLongLabel / shortcutDisabledMessage 必须引用字符串资源 -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:shortcutId="new_todo"
+        android:enabled="true"
+        android:icon="@drawable/sc_todo"
+        android:shortcutShortLabel="@string/sc_todo_short"
+        android:shortcutLongLabel="@string/sc_todo_long"
+        android:shortcutDisabledMessage="@string/sc_disabled">
+        <intent
+            android:action="com.baize.todo.NEW_TODO"
+            android:targetPackage="com.baize.todo"
+            android:targetClass="com.baize.todo.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="new_vault"
+        android:enabled="true"
+        android:icon="@drawable/sc_vault"
+        android:shortcutShortLabel="@string/sc_newvault_short"
+        android:shortcutLongLabel="@string/sc_newvault_long"
+        android:shortcutDisabledMessage="@string/sc_disabled">
+        <intent
+            android:action="com.baize.todo.NEW_VAULT"
+            android:targetPackage="com.baize.todo"
+            android:targetClass="com.baize.todo.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="vault"
+        android:enabled="true"
+        android:icon="@drawable/sc_vault"
+        android:shortcutShortLabel="@string/sc_vault_short"
+        android:shortcutLongLabel="@string/sc_vault_long"
+        android:shortcutDisabledMessage="@string/sc_disabled">
+        <intent
+            android:action="com.baize.todo.VAULT"
+            android:targetPackage="com.baize.todo"
+            android:targetClass="com.baize.todo.MainActivity" />
+    </shortcut>
+
+</shortcuts>

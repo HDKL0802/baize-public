@@ -1,0 +1,76 @@
+//go:build windows
+
+// 白泽 · Windows 桌面端
+//
+// 架构（对齐手机端「内核 + WebView」，只是这里用桌面 WebView2）：
+//   1) 本机回环 HTTP 服务：内嵌界面 + 把 /api/be/* 原样代理到 NAS 后端
+//      （配对令牌只留在原生侧，不进网页，也绕开跨源限制）；
+//   2) 一个 WebView2 原生窗口指向它。
+//
+// 为什么不用 Tauri/QwenPaw 那套：本机没有 Rust 工具链。Go + 纯 Go 的 WebView2 绑定
+// 同样能做到「原生窗口 + WebView2 + 同一套 Web 界面」，且无 cgo / 无 Node。
+package main
+
+import (
+	"context"
+	"flag"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+
+	webview2 "github.com/jchv/go-webview2"
+)
+
+func main() {
+	addr := flag.String("addr", "127.0.0.1:0", "本机回环监听地址")
+	server := flag.String("server", "", "NAS 后端地址，例如 http://192.168.1.100:8787（会写入本地配置）")
+	token := flag.String("token", "", "配对令牌（会写入本地配置；留空 = 用已保存的那串）")
+	debug := flag.Bool("debug", false, "打开 WebView2 调试（可用 CDP 连）")
+	flag.Parse()
+
+	loadConfig()
+	if strings.TrimSpace(*server) != "" || strings.TrimSpace(*token) != "" {
+		setConfig(*server, *token)
+	}
+	if s, _ := getConfig(); s != "" {
+		log.Printf("后端：%s", s)
+	} else {
+		log.Printf("后端未配置：请在窗口里的「设置」填地址与令牌")
+	}
+
+	// 设备连接在后台常驻；窗口关掉时随 ctx 一起收（下次开 App 会再连上）
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	baseCtx = ctx
+	deviceRestart(ctx, "启动")
+
+	ln, err := net.Listen("tcp", *addr)
+	if err != nil {
+		log.Fatalf("监听失败：%v", err)
+	}
+	go func() { _ = http.Serve(ln, buildHandler()) }()
+
+	url := "http://" + ln.Addr().String() + "/"
+	log.Printf("白泽桌面端启动：%s", url)
+
+	w := webview2.NewWithOptions(webview2.WebViewOptions{
+		Debug:     *debug,
+		AutoFocus: true,
+		WindowOptions: webview2.WindowOptions{
+			Title:  "白泽",
+			Width:  1280,
+			Height: 800,
+		},
+	})
+	if w == nil {
+		log.Fatal("WebView2 初始化失败：系统缺少 WebView2 运行时（Win11 自带；Win10 需安装）")
+	}
+	defer w.Destroy()
+	w.Navigate(url)
+	w.Run()
+	os.Exit(0)
+}

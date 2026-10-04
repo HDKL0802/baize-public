@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设备自检 · 待办中心</title>
+<style>
+  body { margin:0; font:13px/1.5 -apple-system,"PingFang SC",sans-serif; background:#111; color:#eee; }
+  header { padding:10px 12px; background:#1c2333; position:sticky; top:0; }
+  h1 { font-size:15px; margin:0 0 4px; }
+  .env { font-size:11px; color:#9aa4b8; word-break:break-all; }
+  ul { list-style:none; margin:0; padding:8px 12px; }
+  li { padding:7px 8px; border-radius:8px; margin-bottom:6px; font-size:13px; }
+  .ok { background:#12331f; color:#7ee2a8; }
+  .bad { background:#3a1618; color:#ff9b9b; }
+  .name { font-weight:600; }
+  .extra { font-size:11px; opacity:.75; margin-top:2px; word-break:break-all; }
+  .tally { padding:10px 12px; font-size:14px; font-weight:700; position:sticky; bottom:0; background:#1c2333; }
+  iframe { position:absolute; left:-9999px; width:412px; height:915px; border:0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>待办中心 · 设备自检</h1>
+  <div class="env" id="env">准备中…</div>
+</header>
+<ul id="list"></ul>
+<div class="tally" id="tally">等待应用加载…</div>
+<iframe id="app" src="index.html"></iframe>
+
+<script>
+const list = document.getElementById('list');
+const env  = document.getElementById('env');
+const tally = document.getElementById('tally');
+let pass = 0, fail = 0;
+
+function check(name, ok, extra) {
+  ok ? pass++ : fail++;
+  const li = document.createElement('li');
+  li.className = ok ? 'ok' : 'bad';
+  li.innerHTML = `<span class="name">${ok ? '✓' : '✗'} ${name}</span>` +
+                 (extra ? `<div class="extra">${String(extra).slice(0,140)}</div>` : '');
+  list.appendChild(li);
+  tally.textContent = `通过 ${pass} / 失败 ${fail}`;
+}
+
+env.textContent = 'UA: ' + navigator.userAgent;
+
+const f = document.getElementById('app');
+f.addEventListener('load', () => setTimeout(run, 900));
+
+async function run() {
+  const w = f.contentWindow;
+  const d = f.contentDocument;
+
+  // -------- 运行环境 --------
+  check('安全上下文 isSecureContext', window.isSecureContext === true, 'isSecureContext=' + window.isSecureContext);
+  check('iframe 内 isSecureContext', w.isSecureContext === true, 'inner=' + w.isSecureContext);
+  check('crypto.subtle 可用（密码本加密前提）', !!(w.crypto && w.crypto.subtle), !!(w.crypto && w.crypto.subtle) ? 'OK' : '不可用 → 密码本将失效');
+  const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
+  check('语音识别 API 存在（语音 tab 前提）', !!SR, SR ? '已提供' : '未提供 → 该浏览器不支持');
+
+  // -------- 应用加载 --------
+  check('应用已加载 window.Todo', typeof w.Todo === 'object', typeof w.Todo);
+  check('DOM 渲染：底部四个 tab', d.querySelectorAll('.nav-item').length === 4, d.querySelectorAll('.nav-item').length + ' 个');
+  check('DOM 渲染：双源分段', d.querySelectorAll('.seg-btn').length === 2, d.querySelectorAll('.seg-btn').length + ' 个');
+  check('DOM 渲染：AI 智能体配置在设置页', !!(d.querySelector('#view-settings #aiGroup') && d.querySelector('#view-settings #sApiKey')), d.querySelector('#view-settings #aiGroup') ? '存在' : '缺失');
+
+  // -------- 待办 --------
+  w.Todo.quickAdd('设备自检待办A');
+  w.Todo.quickAdd('设备自检待办B');
+  check('待办：新增两条', w.Todo.getList().length === 2, 'count=' + w.Todo.getList().length);
+  check('待办：卡片渲染', d.querySelectorAll('.todo-card').length === 2, d.querySelectorAll('.todo-card').length + ' 张卡片');
+
+  // -------- 自然语言解析 --------
+  const t = w.NL.parseTodo('加一个明天复习 Go 待办');
+  check('解析：明天复习待办', t.category === '工作开发' && !!t.due, `${t.title} / ${t.category} / ${t.due}`);
+  const p = w.NL.parsePassword('存 GitHub 账号 zhangsan 密码 abc1234');
+  check('解析：存密码', !!p && p.title === 'GitHub' && p.password === 'abc1234', p ? `${p.title}/${p.account}` : 'null');
+
+  // -------- AI 助手输入栏 --------
+  const barIds = [...d.querySelectorAll('.chat-bar > *')].map(el => el.id).join(',');
+  check('AI 助手输入栏顺序（智能体/输入框/录音/发送）', barIds === 'btnAgentPick,chatInput,btnChatMic,btnChatSend', barIds);
+  check('从边上数第一个是发送', d.querySelector('.chat-bar').lastElementChild.id === 'btnChatSend');
+  check('智能体可选（含白泽智能体接入位）', w.Chat.Agents().some(a => a.kind === 'baize'), w.Chat.Agents().map(a => a.name).join(' / '));
+
+  // -------- 密码本加密（设备实测） --------
+  try {
+    await w.Store.setMasterPwd('deviceqa123');
+    await w.Store.saveVault([{ id: 'q1', title: '自检站点', account: 'u1', password: 'p1', url: '', note: '', source: 'manual' }]);
+    const back = await w.Store.getVault();
+    check('密码本：加密写入并读回', back.length === 1 && back[0].password === 'p1', JSON.stringify(back[0] || {}));
+    const rawEnc = w.localStorage.getItem('bz_vault_enc');
+    const rawPlain = w.localStorage.getItem('bz_vault');
+    check('密码本：明文不落盘', !!rawEnc && !rawPlain, 'enc=' + !!rawEnc + ' plain=' + !!rawPlain);
+    const wrong = await w.Store.verifyMasterPwd('bad');
+    check('密码本：错误主密码被拒', wrong === false, 'verify(bad)=' + wrong);
+  } catch (e) {
+    check('密码本加密流程', false, '异常: ' + e.message);
+  }
+
+  // -------- 导出 --------
+  try {
+    const md = await w.Vault.exportMarkdown();
+    check('Markdown 导出', typeof md === 'string' && md.includes('## 待办') && md.includes('## 密码'), md.length + ' 字符');
+  } catch (e) {
+    check('Markdown 导出', false, '异常: ' + e.message);
+  }
+
+  // -------- 持久化 --------
+  const rawTodos = w.localStorage.getItem('bz_todos');
+  check('localStorage 持久化待办', !!rawTodos && rawTodos.length > 10, (rawTodos || '').length + ' 字节');
+
+  tally.textContent = `完成：通过 ${pass} / 失败 ${fail}`;
+  document.title = `设备自检 ${pass}/${pass + fail}`;
+}
+</script>
+</body>
+</html>

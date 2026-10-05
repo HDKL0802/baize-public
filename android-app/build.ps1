@@ -1,4 +1,4 @@
-﻿# Build the Todo app APK without Gradle.
+# Build the Todo app APK without Gradle.
 # NOTE 1: aapt2 cannot handle non-ASCII paths, so all tool work happens in an ASCII staging dir.
 # NOTE 2: keep this file ASCII-only. PowerShell 5.1 reads .ps1 as ANSI, and non-ASCII bytes
 #         inside comments can be mis-parsed (e.g. swallow the following line).
@@ -44,13 +44,13 @@ $SRC     = $PSScriptRoot                       # source project (path may contai
 $WEBAPP  = Join-Path $SRC "..\todo-app"        # web frontend
 $KERNEL  = Join-Path $SRC "..\core\bin\bzcore-android-arm64"   # Go kernel (linux/arm64)
 $STAGE   = "C:\bz-apk-build"                   # ASCII-only staging dir for the toolchain
-$OUTNAME = "bz-todo-v0.10.10.apk"
+$OUTNAME = "bz-todo-v0.10.11.apk"
 
 $PKG      = "com.baize.todo"
 $MIN_SDK  = 24
 $TARGET   = 34
-$VER_CODE = 1010
-$VER_NAME = "0.10.10"
+$VER_CODE = 1011
+$VER_NAME = "0.10.11"
 
 Write-Host "=== 0. stage clean ===" -ForegroundColor Cyan
 if (Test-Path $STAGE) { Remove-Item $STAGE -Recurse -Force }

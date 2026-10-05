@@ -109,6 +109,7 @@ window.Chat = (function () {
       { label: '📷 拍照', onTap: () => pickAttachment('camera') },
       { label: '🖼 从相册选图', onTap: () => pickAttachment('album') },
       { label: '📎 选文件（md / txt / pdf…）', onTap: () => pickAttachment('file') },
+      { label: '🪄 魔法命令（/help）', onTap: () => send('/help') },
       { label: '取消', cancel: true },
     ]);
   }
@@ -399,6 +400,12 @@ window.Chat = (function () {
         if (!goal) throw new Error('这句没有内容可以派给白泽');
         const r = d.agentRun(goal, false);
         if (r.error) throw new Error(r.error);
+        // 魔法命令（以 / 开头）：后端直接回执，不派给模型。带 action 的（/new、/clear）
+        // 要顺手清掉本机聊天上下文 —— 后端没有常驻会话，历史一直在这台手机上。
+        if (r.command) {
+          if (r.action) applyCommandAction(r.action);
+          return (r.reply || '').trim() || '（命令已执行）';
+        }
         const runId = r.runId || (r.data && r.data.runId);
         if (!runId) throw new Error('后端没有接下这个活（没拿到运行 id）');
         const tick = opts && opts.onTick;
@@ -1030,6 +1037,20 @@ window.Chat = (function () {
     ready.forEach(a => { askAgent(a, payload, history); });
   }
 
+  /** 魔法命令里带客户端动作的（/new、/clear）：清掉本机聊天上下文。
+      后端不存会话，历史一直在这台手机上，所以"清空"这件事只能在这一层做。
+      清完留一条系统提示，免得人以为界面坏了。 */
+  function applyCommandAction(action) {
+    if (action !== 'new' && action !== 'clear') return;
+    msgs = [{
+      id: Store.uid(), ts: Date.now(), role: 'sys',
+      text: action === 'new' ? '已开始新对话。' : '已清空当前上下文。',
+    }];
+    Store.saveChat(msgs);
+    render();
+    renderChatSub();
+  }
+
   /* ================= 智能体选择弹层 ================= */
   function renderAgentList() {
     const box = $('agentList');
@@ -1130,7 +1151,7 @@ window.Chat = (function () {
     init, send, render, renderChatSub, select,
     Agents, selectedAgents, adapters, doCard, detectAction,
     pickAttachment, addAttachment, openPlusMenu, contentFor, attachHtml, takeNativeAttachment,
-    pathsIn, attachPathsIn,
+    pathsIn, attachPathsIn, applyCommandAction,
     getPending: () => pending.slice(),
     getMessages: () => msgs,
   };

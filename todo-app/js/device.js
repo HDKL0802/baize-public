@@ -130,6 +130,7 @@ window.BzDevice = (function () {
   }
   function agentState() { return call('/api/agent/state', 'GET'); }
   function agentRunDetail(id) { return call('/api/agent/runs/' + encodeURIComponent(id), 'GET'); }
+  function agentCommands() { return call('/api/agent/commands', 'GET'); }
   function agentApprovals() { return call('/api/agent/approvals', 'GET'); }
   function agentApprove(id) { return call('/api/agent/approvals/' + encodeURIComponent(id) + '/approve', 'POST', JSON.stringify({ by: '手机' })); }
   function agentReject(id, reason) { return call('/api/agent/approvals/' + encodeURIComponent(id) + '/reject', 'POST', JSON.stringify({ by: '手机', reason: reason || '' })); }
@@ -171,7 +172,7 @@ window.BzDevice = (function () {
   return {
     available, processStatus, linkStatus, call, configure,
     refreshRemote, remoteInfo, remoteLastError, remoteConfigured, remoteReady, remoteOp, remoteState,
-    agentRun, agentState, agentRunDetail, agentApprovals, agentApprove, agentReject,
+    agentRun, agentState, agentRunDetail, agentCommands, agentApprovals, agentApprove, agentReject,
     pushTodos, mirrorWhenReady, lastSyncInfo,
   };
 })();

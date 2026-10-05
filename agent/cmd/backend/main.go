@@ -30,11 +30,12 @@ import (
 	"baize/internal/httpapi"
 	"baize/internal/hub"
 	"baize/internal/logx"
-	"baize/shared/proto"
+	"baize/internal/mcp"
 	"baize/internal/store"
+	"baize/shared/proto"
 )
 
-const version = "0.9.11"
+const version = "0.9.12"
 
 func main() {
 	var (
@@ -48,6 +49,10 @@ func main() {
 		showVersion = flag.Bool("version", false, "打印版本后退出")
 	)
 	flag.Parse()
+
+	// 让「服务版本 / MCP 客户端版本」与后端版本只保留一处来源（历史上是分开写死的，曾漂移）。
+	agentsvc.SetVersion(version)
+	mcp.SetVersion(version)
 
 	if *showVersion {
 		fmt.Printf("baize-backend %s（内部协议 %s，MIT）\n", version, proto.Version)

@@ -29,8 +29,17 @@ import (
 	"baize/internal/tools"
 )
 
-// Version 服务版本
-const Version = "0.8.0"
+// Version 服务版本。默认值只在没被覆盖时用（单测等）；
+// 后端启动时会调 SetVersion 把它对齐到 cmd/backend 的版本号，避免两处漂移
+// （备份 manifest 写的就是这个值）。
+var Version = "0.8.0"
+
+// SetVersion 由 cmd/backend 在启动时调用，让「服务版本」与「后端版本」只有一个来源。
+func SetVersion(v string) {
+	if strings.TrimSpace(v) != "" {
+		Version = v
+	}
+}
 
 // ProviderInfo 通道状态（给控制台看；apiKey 只显示是否配置，不回显）
 type ProviderInfo struct {

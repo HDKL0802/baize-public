@@ -17,8 +17,16 @@ import (
 	"sync"
 )
 
-// Version 客户端版本（给 MCP 服务看的 clientInfo.version）
-const Version = "0.8.0"
+// Version 客户端版本（给 MCP 服务看的 clientInfo.version）。
+// 默认值可被 SetVersion 覆盖，由 cmd/backend 在启动时对齐到后端版本号。
+var Version = "0.8.0"
+
+// SetVersion 让 MCP 客户端版本与后端版本保持一致。
+func SetVersion(v string) {
+	if strings.TrimSpace(v) != "" {
+		Version = v
+	}
+}
 
 // ProtocolVersion 我们主动声明的 MCP 协议版本（服务端可回它自己支持的版本）
 const ProtocolVersion = "2025-06-18"

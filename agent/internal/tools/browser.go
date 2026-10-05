@@ -417,8 +417,12 @@ func launchChromium(ctx context.Context, path string, headless bool) (*exec.Cmd,
 		args = append([]string{"--headless=new"}, args...)
 	}
 	cmd := exec.Command(path, args...)
-	// HOME 指到临时目录：精简容器里常常没设 HOME，浏览器会因此起不来
-	cmd.Env = append(os.Environ(), "HOME="+tmp)
+	// HOME 指到临时目录：精简容器里常常没设 HOME，浏览器会因此起不来。
+	// XDG_CACHE_HOME 单独指到一个固定目录：fontconfig 会在这里缓存字体索引，
+	// 否则每次冷启动都要重扫全部字体（装了 Noto CJK 后有几十 MB，NAS 上能拖到十几秒）。
+	cacheDir := filepath.Join(os.TempDir(), "baize-chrome-cache")
+	_ = os.MkdirAll(cacheDir, 0o755)
+	cmd.Env = append(os.Environ(), "HOME="+tmp, "XDG_CACHE_HOME="+cacheDir)
 	// 浏览器起不来时的原因基本只在 stderr 里（缺库、沙箱、参数不支持……），
 	// 丢掉它就只能报"端口没起来"这种没用的话
 	var errBuf bytes.Buffer
@@ -428,7 +432,9 @@ func launchChromium(ctx context.Context, path string, headless bool) (*exec.Cmd,
 		return nil, "", "", fmt.Errorf("启动浏览器失败（%s）：%w", path, err)
 	}
 	base := fmt.Sprintf("http://127.0.0.1:%d", port)
-	deadline := time.Now().Add(15 * time.Second)
+	// 首次冷启动要建字体缓存（装了 CJK 字体后明显变慢），给足余量；
+	// 缓存建好后的启动在 1~2 秒内。
+	deadline := time.Now().Add(45 * time.Second)
 	for {
 		if cdpAlive(ctx, base) {
 			return cmd, tmp, base, nil

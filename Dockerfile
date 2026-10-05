@@ -24,7 +24,10 @@ RUN cd agent && go build -trimpath -ldflags "-s -w" -o /out/baize-backend ./cmd/
 FROM alpine:3.20
 # 出网要调百炼 / DeepSeek 等，必须有 CA 证书；时区让日志和定时任务对得上
 # chromium：browser 工具的浏览器内核（没有它，browser 工具会明确报"没有可用浏览器"）
-RUN apk add --no-cache ca-certificates tzdata chromium fontconfig
+# font-noto-cjk：中文字形（没有它，网页截图里的汉字会变方框）
+RUN apk add --no-cache ca-certificates tzdata chromium fontconfig font-noto-cjk
+# 预建字体缓存：否则第一次起 chromium 要现场扫字体（CJK 字体大，慢）
+RUN fc-cache -f
 ENV TZ=Asia/Shanghai
 WORKDIR /app
 COPY --from=build /out/baize-backend /app/baize-backend

@@ -377,7 +377,16 @@ async function renderChat(root) {
     $i('chState').textContent = '已派发，跑着…';
     const r = await API.post('/api/agent/run', { goal, wait: false });
     if (!r.ok) { $i('chState').innerHTML = `<span class="err">${esc(r.error || '派发失败')}</span>`; return; }
-    const id = (r.data && (r.data.runId || r.data.id)) || '';
+    const d = r.data || {};
+    // 魔法命令（以 / 开头）：后端直接回执，不派活也不占运行记录，把回复原样贴出来即可
+    if (d.command) {
+      $i('chState').innerHTML = '<span class="ok">魔法命令 /' + esc(d.name || '') +
+        (d.action ? '（动作：' + esc(d.action) + '）' : '') + '</span><br>' +
+        '<span class="pre" style="white-space:pre-wrap">' + esc(d.reply || '（命令已执行）') + '</span>';
+      $i('chGoal').value = '';
+      return;
+    }
+    const id = d.runId || d.id || '';
     $i('chState').innerHTML = `<span class="ok">已派发${id ? ' · ' + esc(id) : ''}</span>`;
     $i('chGoal').value = '';
     load();

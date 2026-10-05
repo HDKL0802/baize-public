@@ -53,10 +53,10 @@ type Voice struct {
 	Protocol   string  `json:"protocol"` // openai | dashscope
 	BaseURL    string  `json:"baseUrl"`  // openai 协议用；dashscope 留空即官方地址
 	APIKey     string  `json:"apiKey,omitempty"`
-	TTSModel   string  `json:"ttsModel"`   // 合成（说话）用
-	STTModel   string  `json:"sttModel"`   // 听写（听话）用
-	Voice      string  `json:"voice"`      // 默认音色 id（吉祥物音色）
-	AutoSpeak  bool    `json:"autoSpeak"`  // 智能体回复是否自动朗读
+	TTSModel   string  `json:"ttsModel"`  // 合成（说话）用
+	STTModel   string  `json:"sttModel"`  // 听写（听话）用
+	Voice      string  `json:"voice"`     // 默认音色 id（吉祥物音色）
+	AutoSpeak  bool    `json:"autoSpeak"` // 智能体回复是否自动朗读
 	Speed      float64 `json:"speed,omitempty"`
 	TimeoutSec int     `json:"timeoutSec,omitempty"`
 }
@@ -94,17 +94,17 @@ type CronJob struct {
 
 // HeartbeatConfig 心跳任务配置（定期运行 agent 并可选择分发结果）
 type HeartbeatConfig struct {
-	Enabled        bool   `json:"enabled"`
-	Every          string `json:"every"`           // 间隔：@every 30m 或 cron 表达式
-	Target         string `json:"target,omitempty"` // 分发目标：main（仅运行）、last（上次聊天渠道）、inbox（收件箱）
-	TimeoutSec     int    `json:"timeoutSec,omitempty"`
+	Enabled    bool   `json:"enabled"`
+	Every      string `json:"every"`            // 间隔：@every 30m 或 cron 表达式
+	Target     string `json:"target,omitempty"` // 分发目标：main（仅运行）、last（上次聊天渠道）、inbox（收件箱）
+	TimeoutSec int    `json:"timeoutSec,omitempty"`
 	// ActiveHours 不能加 omitempty：零值 ""（全天）与默认值 "08:00-22:00" 语义不同，
 	// 一旦省略键，Load 时会被 Default() 重新填回默认值，用户永远清不掉。
-	ActiveHours    string `json:"activeHours"`          // 活跃时间段，如 "08:00-22:00"，空=全天
-	LastRunAt      int64  `json:"lastRunAt,omitempty"`
-	LastStatus     string `json:"lastStatus,omitempty"`
-	LastError      string `json:"lastError,omitempty"`
-	Runs           int    `json:"runs,omitempty"`
+	ActiveHours string `json:"activeHours"` // 活跃时间段，如 "08:00-22:00"，空=全天
+	LastRunAt   int64  `json:"lastRunAt,omitempty"`
+	LastStatus  string `json:"lastStatus,omitempty"`
+	LastError   string `json:"lastError,omitempty"`
+	Runs        int    `json:"runs,omitempty"`
 }
 
 // ChannelConfig 一个频道（QwenPaw 频道机制的 Go 版）。支持的 kind：
@@ -113,17 +113,19 @@ type HeartbeatConfig struct {
 //   - onebot：QQ OneBot V11 反向 WebSocket，实现端连到 /api/channels/{id}/ws（用 token 校验）
 //   - feishu：飞书事件回调模式，平台 POST 到 /api/channels/{id}/event（token = 验证令牌），出站走飞书 OpenAPI
 type ChannelConfig struct {
-	ID          string `json:"id"`                    // 频道 id（唯一，出现在 /api/channels/{id}/... 路径里）
-	Kind        string `json:"kind"`                  // 频道类型：webhook / onebot / feishu
-	Enabled     bool   `json:"enabled"`
-	Token       string `json:"token,omitempty"`       // webhook / onebot 的入站令牌；feishu 用作事件回调的「验证令牌」
-	OutboundURL string `json:"outboundUrl,omitempty"` // webhook：出站地址
-	Format      string `json:"format,omitempty"`      // webhook：出站体形状（generic/feishu/dingtalk/slack）
-	AppID       string `json:"appId,omitempty"`       // feishu：应用 App ID
-	AppSecret   string `json:"appSecret,omitempty"`   // feishu：应用 App Secret
-	EncryptKey  string `json:"encryptKey,omitempty"`  // feishu：可选，事件加密时用来解密
-	Domain      string `json:"domain,omitempty"`      // feishu：可选，默认 https://open.feishu.cn（自建/测试可改）
-	BotPrefix   string `json:"botPrefix,omitempty"`   // 回复前缀
+	ID          string   `json:"id"`   // 频道 id（唯一，出现在 /api/channels/{id}/... 路径里）
+	Kind        string   `json:"kind"` // 频道类型：webhook / onebot / feishu
+	Enabled     bool     `json:"enabled"`
+	Token       string   `json:"token,omitempty"`       // webhook / onebot 的入站令牌；feishu 用作事件回调的「验证令牌」
+	OutboundURL string   `json:"outboundUrl,omitempty"` // webhook：出站地址
+	Format      string   `json:"format,omitempty"`      // webhook：出站体形状（generic/feishu/dingtalk/slack）
+	AppID       string   `json:"appId,omitempty"`       // feishu：应用 App ID
+	AppSecret   string   `json:"appSecret,omitempty"`   // feishu：应用 App Secret
+	EncryptKey  string   `json:"encryptKey,omitempty"`  // feishu：可选，事件加密时用来解密
+	Domain      string   `json:"domain,omitempty"`      // feishu：可选，默认 https://open.feishu.cn（自建/测试可改）
+	ChatIDs     []string `json:"chatIds,omitempty"`     // feishu：轮询监听的会话（chat_id）；配了就启用「轮询入站」（免公网）
+	PollSec     int      `json:"pollSec,omitempty"`     // feishu：轮询间隔秒（默认 5，最小 2）
+	BotPrefix   string   `json:"botPrefix,omitempty"`   // 回复前缀
 }
 
 // Config 后端 Agent 配置
@@ -344,6 +346,22 @@ func (c *Config) normalize() {
 		ch.Format = normalizeChannelFormat(ch.Format)
 		ch.OutboundURL = strings.TrimSpace(ch.OutboundURL)
 		ch.Token = strings.TrimSpace(ch.Token)
+		ch.Domain = strings.TrimSpace(ch.Domain)
+		// 轮询会话：去空、去重
+		ids := make([]string, 0, len(ch.ChatIDs))
+		seenID := map[string]bool{}
+		for _, id := range ch.ChatIDs {
+			id = strings.TrimSpace(id)
+			if id == "" || seenID[id] {
+				continue
+			}
+			seenID[id] = true
+			ids = append(ids, id)
+		}
+		ch.ChatIDs = ids
+		if len(ids) > 0 && ch.PollSec < 2 {
+			ch.PollSec = 5 // 有轮询会话就给个默认间隔（最小 2 秒，别把 API 打爆）
+		}
 		cleanedCh = append(cleanedCh, ch)
 	}
 	c.Channels = cleanedCh

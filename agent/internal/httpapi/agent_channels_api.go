@@ -50,19 +50,21 @@ func (s *Server) channelsState() map[string]any {
 // handleChannelAdmin 增删改查 + 测试发送（走 s.api，只有本机能用）
 func (s *Server) handleChannelAdmin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Action      string  `json:"action"`
-		ID          string  `json:"id"`
-		Kind        string  `json:"kind"`
-		Enabled     *bool   `json:"enabled"`
-		Token       *string `json:"token"`
-		OutboundURL *string `json:"outboundUrl"`
-		Format      *string `json:"format"`
-		BotPrefix   *string `json:"botPrefix"`
-		AppID       *string `json:"appId"`
-		AppSecret   *string `json:"appSecret"`
-		EncryptKey  *string `json:"encryptKey"`
-		Domain      *string `json:"domain"`
-		Text        string  `json:"text"`
+		Action      string    `json:"action"`
+		ID          string    `json:"id"`
+		Kind        string    `json:"kind"`
+		Enabled     *bool     `json:"enabled"`
+		Token       *string   `json:"token"`
+		OutboundURL *string   `json:"outboundUrl"`
+		Format      *string   `json:"format"`
+		BotPrefix   *string   `json:"botPrefix"`
+		AppID       *string   `json:"appId"`
+		AppSecret   *string   `json:"appSecret"`
+		EncryptKey  *string   `json:"encryptKey"`
+		Domain      *string   `json:"domain"`
+		ChatIDs     *[]string `json:"chatIds"`
+		PollSec     *int      `json:"pollSec"`
+		Text        string    `json:"text"`
 	}
 	if err := decodeBody(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -135,6 +137,12 @@ func (s *Server) handleChannelAdmin(w http.ResponseWriter, r *http.Request) {
 		if req.Domain != nil {
 			cur.Domain = strings.TrimSpace(*req.Domain)
 		}
+		if req.ChatIDs != nil {
+			cur.ChatIDs = *req.ChatIDs
+		}
+		if req.PollSec != nil {
+			cur.PollSec = *req.PollSec
+		}
 		cur.ID = id
 		// 按类型做各自的必要校验：宁可在门口拒绝，也别存一个收不到 / 发不出的频道
 		switch cur.Kind {
@@ -155,13 +163,15 @@ func (s *Server) handleChannelAdmin(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case "feishu":
-			// 事件回调要鉴权（验证令牌），出站要应用凭证
-			if strings.TrimSpace(cur.Token) == "" {
-				writeErr(w, http.StatusBadRequest, "feishu 频道必须设验证令牌（token，飞书后台「事件订阅」里那个）")
-				return
-			}
+			// 出站要应用凭证
 			if strings.TrimSpace(cur.AppID) == "" || strings.TrimSpace(cur.AppSecret) == "" {
 				writeErr(w, http.StatusBadRequest, "feishu 频道必须配 appId / appSecret（出站发消息要用）")
+				return
+			}
+			// 入站两种：事件回调用验证令牌；轮询模式（chatIds）由白泽主动拉，不需要令牌。总得有一种，否则收不到消息。
+			if strings.TrimSpace(cur.Token) == "" && len(cur.ChatIDs) == 0 {
+				writeErr(w, http.StatusBadRequest,
+					"feishu 频道要么设验证令牌（token，事件回调用），要么配轮询会话（chatIds，免公网）")
 				return
 			}
 			if cur.Domain != "" {

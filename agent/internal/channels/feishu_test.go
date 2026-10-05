@@ -9,11 +9,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"baize/internal/config"
 )
@@ -21,7 +24,7 @@ import (
 /* 飞书频道单元测试：事件回调解析（握手 / 令牌 / 文本 / 非消息）、AES 解密、出站发消息。 */
 
 func TestFeishuHandleEvent(t *testing.T) {
-	f := NewFeishu(config.ChannelConfig{ID: "fs", Token: "vtok", AppID: "cli_x", AppSecret: "sec"})
+	f := NewFeishu(config.ChannelConfig{ID: "fs", Token: "vtok", AppID: "cli_x", AppSecret: "sec"}, nil)
 
 	// URL 验证握手
 	ch, msgs, err := f.HandleEvent([]byte(`{"type":"url_verification","challenge":"abc","token":"vtok"}`), nil)
@@ -60,14 +63,14 @@ func TestFeishuDecrypt(t *testing.T) {
 	encKey := "my-encrypt-key"
 	plain := `{"type":"url_verification","challenge":"xyz","token":"vtok"}`
 	enc := encryptForTest(t, encKey, plain)
-	f := NewFeishu(config.ChannelConfig{ID: "fs", Token: "vtok", EncryptKey: encKey})
+	f := NewFeishu(config.ChannelConfig{ID: "fs", Token: "vtok", EncryptKey: encKey}, nil)
 	body, _ := json.Marshal(map[string]string{"encrypt": enc})
 	ch, _, err := f.HandleEvent(body, nil)
 	if err != nil || ch != "xyz" {
 		t.Fatalf("解密后握手失败：ch=%q err=%v", ch, err)
 	}
 	// 没配 encryptKey 时拿到加密体应被当作"令牌不对"挡住（而不是崩）
-	g := NewFeishu(config.ChannelConfig{ID: "fs", Token: "vtok"})
+	g := NewFeishu(config.ChannelConfig{ID: "fs", Token: "vtok"}, nil)
 	if _, _, err := g.HandleEvent(body, nil); err == nil {
 		t.Fatal("没配加密钥匙时加密事件应被挡")
 	}
@@ -91,7 +94,7 @@ func TestFeishuSend(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := NewFeishu(config.ChannelConfig{ID: "fs", AppID: "cli_x", AppSecret: "sec", Domain: srv.URL, BotPrefix: "[泽] "})
+	f := NewFeishu(config.ChannelConfig{ID: "fs", AppID: "cli_x", AppSecret: "sec", Domain: srv.URL, BotPrefix: "[泽] "}, nil)
 	if err := f.Send(context.Background(), Message{Channel: "fs", Meta: map[string]any{"receive_id": "oc_1"}}, "你好"); err != nil {
 		t.Fatalf("发送失败：%v", err)
 	}
@@ -115,7 +118,7 @@ func TestFeishuSendRejectsBizError(t *testing.T) {
 		_, _ = w.Write([]byte(`{"code":99991,"msg":"no permission"}`))
 	}))
 	defer srv.Close()
-	f := NewFeishu(config.ChannelConfig{ID: "fs", AppID: "a", AppSecret: "b", Domain: srv.URL})
+	f := NewFeishu(config.ChannelConfig{ID: "fs", AppID: "a", AppSecret: "b", Domain: srv.URL}, nil)
 	if err := f.Send(context.Background(), Message{Meta: map[string]any{"receive_id": "oc"}}, "x"); err == nil {
 		t.Fatal("飞书返回 code!=0 应报错")
 	}
@@ -137,4 +140,65 @@ func encryptForTest(t *testing.T, encKey, plain string) string {
 	out := make([]byte, len(pt))
 	cipher.NewCBCEncrypter(block, iv).CryptBlocks(out, pt)
 	return base64.StdEncoding.EncodeToString(append(append([]byte{}, iv...), out...))
+}
+
+// TestFeishuPoll 轮询入站：只投递「用户发的文本」，跳过 bot 自己/系统消息
+func TestFeishuPoll(t *testing.T) {
+	ct := time.Now().UnixMilli() + 1000 // 固定在"轮询起点之后"，保证首轮能拉到、次轮不重放
+	var mu sync.Mutex
+	var got []Message
+	done := make(chan Message, 4)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/v3/tenant_access_token/internal"):
+			_, _ = w.Write([]byte(`{"code":0,"msg":"ok","tenant_access_token":"t","expire":7200}`))
+		case strings.HasSuffix(r.URL.Path, "/im/v1/messages"):
+			_, _ = fmt.Fprintf(w, `{"code":0,"msg":"ok","data":{"items":[`+
+				`{"message_id":"om_1","msg_type":"text","create_time":"%d","body":{"content":"{\"text\":\"轮询测试\"}"},"sender":{"id":"ou_u","sender_type":"user"}},`+
+				`{"message_id":"om_2","msg_type":"text","create_time":"%d","body":{"content":"{\"text\":\"bot 自己\"}"},"sender":{"id":"ou_b","sender_type":"app"}}`+
+				`]}}`, ct, ct+1)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	f := NewFeishu(config.ChannelConfig{
+		ID: "fs", AppID: "a", AppSecret: "b", Domain: srv.URL,
+		ChatIDs: []string{"oc_1"}, PollSec: 2,
+	}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go f.Poll(ctx, func(m Message) {
+		mu.Lock()
+		got = append(got, m)
+		mu.Unlock()
+		select {
+		case done <- m:
+		default:
+		}
+	})
+
+	select {
+	case m := <-done:
+		if m.Text != "轮询测试" {
+			t.Fatalf("文本不对：%q", m.Text)
+		}
+		if m.Session != "feishu:oc_1" || m.Channel != "fs" {
+			t.Fatalf("会话不对：%+v", m)
+		}
+		if m.Meta["receive_id"] != "oc_1" {
+			t.Fatalf("Meta 里应带 receive_id=oc_1：%+v", m.Meta)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("轮询没拉到消息")
+	}
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	n := len(got)
+	mu.Unlock()
+	if n != 1 {
+		t.Fatalf("只该投递「用户」那条，实际 %d 条：%+v", n, got)
+	}
 }

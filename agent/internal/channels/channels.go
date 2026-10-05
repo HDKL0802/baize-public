@@ -41,15 +41,24 @@ type Channel interface {
 	Send(ctx context.Context, msg Message, reply string) error
 }
 
+// PollChannel 支持"主动轮询"接入的频道（如飞书免公网模式）：频道自己定时去平台拉新消息，
+// 拉到就回调 onEvent。ctx 取消即停。
+type PollChannel interface {
+	Channel
+	Poll(ctx context.Context, onEvent func(Message))
+}
+
 // Info 频道的对外描述（控制台 / API 用；不含令牌明文）
 type Info struct {
-	ID          string `json:"id"`
-	Kind        string `json:"kind"`
-	Enabled     bool   `json:"enabled"`
-	OutboundURL string `json:"outboundUrl,omitempty"`
-	Format      string `json:"format,omitempty"`
-	HasToken    bool   `json:"hasToken"`
-	BotPrefix   string `json:"botPrefix,omitempty"`
+	ID          string   `json:"id"`
+	Kind        string   `json:"kind"`
+	Enabled     bool     `json:"enabled"`
+	OutboundURL string   `json:"outboundUrl,omitempty"`
+	Format      string   `json:"format,omitempty"`
+	ChatIDs     []string `json:"chatIds,omitempty"`
+	PollSec     int      `json:"pollSec,omitempty"`
+	HasToken    bool     `json:"hasToken"`
+	BotPrefix   string   `json:"botPrefix,omitempty"`
 }
 
 // entry 一个已登记的频道：配置快照 + 活对象
@@ -108,6 +117,7 @@ func (m *Manager) List() []Info {
 		out = append(out, Info{
 			ID: e.cfg.ID, Kind: e.cfg.Kind, Enabled: e.cfg.Enabled,
 			OutboundURL: e.cfg.OutboundURL, Format: NormalizeFormat(e.cfg.Format),
+			ChatIDs: e.cfg.ChatIDs, PollSec: e.cfg.PollSec,
 			HasToken: strings.TrimSpace(e.cfg.Token) != "", BotPrefix: e.cfg.BotPrefix,
 		})
 	}

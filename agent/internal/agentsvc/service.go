@@ -122,16 +122,17 @@ type Service struct {
 	skills    *skills.Library
 	skillMgr  *skills.Manager
 
-	mem      *memory.Store
-	embedder llm.Embedder // 可选：记忆的向量化通道
-	embedErr string       // 配了但用不了时的原因（要显示出来，不能静默失效）
-	runs     *agentrt.Store
-	ck       *agentrt.CheckpointManager
-	ws       *tools.Workspace
-	mcp      *mcp.Manager
-	kbs      *kb.Service
-	persona  *persona.Library
-	chans    *channels.Manager
+	mem         *memory.Store
+	embedder    llm.Embedder // 可选：记忆的向量化通道
+	embedErr    string       // 配了但用不了时的原因（要显示出来，不能静默失效）
+	runs        *agentrt.Store
+	ck          *agentrt.CheckpointManager
+	ws          *tools.Workspace
+	mcp         *mcp.Manager
+	kbs         *kb.Service
+	persona     *persona.Library
+	chans       *channels.Manager
+	chansCancel context.CancelFunc // 轮询型频道的取消器（重建/关闭时停）
 
 	hooks     *hooks.Bus
 	approvals *ApprovalQueue
@@ -218,7 +219,7 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 		mem: mem, runs: runs, ck: ck, ws: ws, skills: lib, skillMgr: skills.NewManager(lib), kbs: kbs,
 		persona: personaLib,
 		mcp:     mcp.NewManager(lg, cfg.AllowRemote),
-		hooks: hooks.NewBus(), approvals: NewApprovalQueue(200),
+		hooks:   hooks.NewBus(), approvals: NewApprovalQueue(200),
 		activity:  activity.New(50),
 		schedStop: make(chan struct{}),
 	}
@@ -242,6 +243,12 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 // Close 停止后台任务并关闭存储
 func (s *Service) Close() {
 	close(s.schedStop)
+	s.mu.Lock()
+	if s.chansCancel != nil {
+		s.chansCancel()
+		s.chansCancel = nil
+	}
+	s.mu.Unlock()
 	s.mcp.Close()
 	s.mem.Close()
 	s.runs.Close()
@@ -342,6 +349,14 @@ func (s *Service) rebuildChannels() {
 		}
 		return res.Text, nil
 	}, s.lg)
+	// 先停掉上一轮的轮询（改配置会整体重建）
+	s.mu.Lock()
+	if s.chansCancel != nil {
+		s.chansCancel()
+		s.chansCancel = nil
+	}
+	s.mu.Unlock()
+
 	for _, ch := range cfg.Channels {
 		switch ch.Kind {
 		case "webhook", "":
@@ -349,7 +364,7 @@ func (s *Service) rebuildChannels() {
 		case "onebot":
 			mgr.Register(ch, channels.NewOneBot(ch))
 		case "feishu":
-			mgr.Register(ch, channels.NewFeishu(ch))
+			mgr.Register(ch, channels.NewFeishu(ch, s.lg))
 		default:
 			s.lg.Warn("未知频道类型，已跳过", "id", ch.ID, "kind", ch.Kind)
 		}
@@ -366,6 +381,28 @@ func (s *Service) rebuildChannels() {
 	s.mu.Lock()
 	s.chans = mgr
 	s.mu.Unlock()
+
+	// 轮询型频道（如飞书免公网模式）：起后台轮询，拉到消息就投递给 Agent
+	polCtx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	s.chansCancel = cancel
+	s.mu.Unlock()
+	for _, info := range mgr.List() {
+		if !info.Enabled {
+			continue
+		}
+		ch, ok := mgr.Get(info.ID)
+		if !ok {
+			continue
+		}
+		if pc, ok := ch.(channels.PollChannel); ok {
+			go pc.Poll(polCtx, func(m channels.Message) {
+				if err := mgr.Deliver(m); err != nil {
+					s.lg.Warn("频道轮询消息被拒", "channel", m.Channel, "err", err)
+				}
+			})
+		}
+	}
 	if n := mgr.Count(); n > 0 {
 		s.lg.Info("已装配频道", "count", n)
 	}
@@ -752,7 +789,7 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 		Logger: s.lg, Recipe: recipe, SessionID: "backend", RunID: runID,
 		MaxSteps: cfg.MaxSteps, MaxRetries: cfg.MaxRetries, TokenBudget: cfg.TokenBudget,
 		SystemExtra: sysExtra, Persona: personaText,
-		Approve:     approver, ApproveAllTools: allTools, CheckpointBeforeWrite: true,
+		Approve: approver, ApproveAllTools: allTools, CheckpointBeforeWrite: true,
 	})
 
 	res, runErr := runner.Run(ctx, goal)

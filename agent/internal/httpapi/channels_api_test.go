@@ -16,11 +16,13 @@ import (
    正确令牌真的跑一次 Agent 并回发出站；测试发送 / 启停 / 删除；没挂 Agent 时不注册。 */
 
 type channelInfo struct {
-	ID       string `json:"id"`
-	Kind     string `json:"kind"`
-	Enabled  bool   `json:"enabled"`
-	Format   string `json:"format"`
-	HasToken bool   `json:"hasToken"`
+	ID       string   `json:"id"`
+	Kind     string   `json:"kind"`
+	Enabled  bool     `json:"enabled"`
+	Format   string   `json:"format"`
+	HasToken bool     `json:"hasToken"`
+	ChatIDs  []string `json:"chatIds"`
+	PollSec  int      `json:"pollSec"`
 }
 
 type channelsResp struct {
@@ -273,6 +275,38 @@ func TestFeishuChannelEvent(t *testing.T) {
 	}
 	if !hit {
 		t.Fatal("飞书消息事件没触发 Agent 运行")
+	}
+}
+
+// 飞书轮询模式（免公网）：有 chatIds 即可，无需验证令牌；chatIds / pollSec 要能回显
+func TestFeishuChannelPolling(t *testing.T) {
+	e, _ := newAgentEnv(t)
+
+	// 既没验证令牌、也没轮询会话 → 收不到消息，应 400
+	if code := e.do("POST", "/api/agent/channels", map[string]any{
+		"action": "save", "id": "fs", "kind": "feishu", "appId": "cli_x", "appSecret": "sec",
+	}, true, nil); code != 400 {
+		t.Fatalf("feishu 无 token 无 chatIds 应 400，实际 %d", code)
+	}
+	// 轮询模式
+	var saved channelsResp
+	if code := e.do("POST", "/api/agent/channels", map[string]any{
+		"action": "save", "id": "fs-poll", "kind": "feishu",
+		"appId": "cli_x", "appSecret": "sec", "chatIds": []string{"oc_1", "oc_2"},
+	}, true, &saved); code != 200 {
+		t.Fatalf("轮询模式保存失败：%d", code)
+	}
+	var got *channelInfo
+	for i := range saved.Channels {
+		if saved.Channels[i].ID == "fs-poll" {
+			got = &saved.Channels[i]
+		}
+	}
+	if got == nil {
+		t.Fatal("fs-poll 没保存上")
+	}
+	if len(got.ChatIDs) != 2 || got.PollSec != 5 {
+		t.Fatalf("chatIds / pollSec 没回显：%+v", got)
 	}
 }
 

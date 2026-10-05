@@ -11,8 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,13 +41,17 @@ type EventChannel interface {
 // 选事件回调而非长连接：长连接要引入 lark SDK 且难在本地验证；事件回调是纯 HTTP，
 // 可把 domain 指向本地假飞书来完整验证。
 type Feishu struct {
-	id     string
-	domain string
-	appID  string
-	secret string
-	token  string // 验证令牌（飞书后台「事件订阅」里那个）
-	encKey string // 可选：事件加密时用来解密
-	prefix string
+	id      string
+	domain  string
+	appID   string
+	secret  string
+	token   string // 验证令牌（飞书后台「事件订阅」里那个）
+	encKey  string // 可选：事件加密时用来解密
+	prefix  string
+	chatIDs []string // 轮询监听的会话（配了就启用轮询入站，免公网）
+	pollSec int
+
+	lg *slog.Logger
 
 	mu     sync.Mutex
 	tok    string
@@ -56,16 +63,26 @@ type Feishu struct {
 const feishuDefaultDomain = "https://open.feishu.cn"
 
 // NewFeishu 造一个飞书频道
-func NewFeishu(cfg config.ChannelConfig) *Feishu {
+func NewFeishu(cfg config.ChannelConfig, lg *slog.Logger) *Feishu {
+	if lg == nil {
+		lg = slog.Default()
+	}
 	domain := strings.TrimRight(strings.TrimSpace(cfg.Domain), "/")
 	if domain == "" {
 		domain = feishuDefaultDomain
+	}
+	ids := make([]string, 0, len(cfg.ChatIDs))
+	for _, id := range cfg.ChatIDs {
+		if s := strings.TrimSpace(id); s != "" {
+			ids = append(ids, s)
+		}
 	}
 	return &Feishu{
 		id: strings.TrimSpace(cfg.ID), domain: domain,
 		appID: strings.TrimSpace(cfg.AppID), secret: strings.TrimSpace(cfg.AppSecret),
 		token: strings.TrimSpace(cfg.Token), encKey: strings.TrimSpace(cfg.EncryptKey),
-		prefix: cfg.BotPrefix, client: &http.Client{Timeout: 20 * time.Second},
+		prefix: cfg.BotPrefix, chatIDs: ids, pollSec: cfg.PollSec,
+		lg: lg, client: &http.Client{Timeout: 20 * time.Second},
 	}
 }
 
@@ -272,4 +289,119 @@ func feishuDecrypt(encryptKey, b64 string) ([]byte, error) {
 		return nil, errors.New("padding 不对")
 	}
 	return out[:len(out)-n], nil
+}
+
+/* ---------- 轮询入站（免公网模式） ---------- */
+
+// Poll 轮询监听配置的会话：拉到新消息就回调 onEvent。ctx 取消即停。
+// 只处理「用户发的文本」，跳过 bot 自己 / 系统消息，避免回环。
+func (f *Feishu) Poll(ctx context.Context, onEvent func(Message)) {
+	if len(f.chatIDs) == 0 {
+		return
+	}
+	interval := time.Duration(f.pollSec) * time.Second
+	if interval < 2*time.Second {
+		interval = 5 * time.Second
+	}
+	last := map[string]int64{} // 每个会话已读到的最大 create_time（毫秒）
+	seen := map[string]bool{}
+	now := time.Now().UnixMilli()
+	for _, id := range f.chatIDs {
+		last[id] = now // 起点 = 现在，别把历史消息一股脑触发
+	}
+	f.lg.Info("飞书频道开始轮询入站", "channel", f.id, "chats", len(f.chatIDs), "everySec", int(interval.Seconds()))
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if len(seen) > 5000 {
+				seen = map[string]bool{}
+			}
+			for _, id := range f.chatIDs {
+				f.pollOnce(ctx, id, last, seen, onEvent)
+			}
+		}
+	}
+}
+
+// pollOnce 拉一个会话的新消息，逐条回调
+func (f *Feishu) pollOnce(ctx context.Context, chatID string, last map[string]int64, seen map[string]bool, onEvent func(Message)) {
+	tok, err := f.tenantToken(ctx)
+	if err != nil {
+		f.lg.Warn("飞书轮询取 token 失败", "channel", f.id, "err", err)
+		return
+	}
+	// 注意单位：start_time 用秒（飞书要求），而 create_time 是毫秒 —— 下面按毫秒过滤，避免秒级精度带来的重放
+	u := fmt.Sprintf("%s/open-apis/im/v1/messages?container_id_type=chat&container_id=%s&start_time=%d&page_size=50",
+		f.domain, url.QueryEscape(chatID), last[chatID]/1000)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := f.client.Do(req)
+	if err != nil {
+		f.lg.Warn("飞书轮询请求失败", "channel", f.id, "err", err)
+		return
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data struct {
+			Items []struct {
+				MessageID  string `json:"message_id"`
+				MsgType    string `json:"msg_type"`
+				CreateTime string `json:"create_time"`
+				Body       struct {
+					Content string `json:"content"`
+				} `json:"body"`
+				Sender struct {
+					ID         string `json:"id"`
+					SenderType string `json:"sender_type"`
+				} `json:"sender"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
+		f.lg.Warn("飞书轮询响应解析失败", "channel", f.id, "err", err)
+		return
+	}
+	if out.Code != 0 {
+		f.lg.Warn("飞书轮询返回错误", "channel", f.id, "code", out.Code, "msg", out.Msg)
+		return
+	}
+	for _, it := range out.Data.Items {
+		ct, _ := strconv.ParseInt(strings.TrimSpace(it.CreateTime), 10, 64)
+		if ct <= last[chatID] {
+			continue // 已处理过
+		}
+		if ct > last[chatID] {
+			last[chatID] = ct // 推进游标（非文本 / 机器人消息也推进，免得反复拉）
+		}
+		if seen[it.MessageID] {
+			continue
+		}
+		seen[it.MessageID] = true
+		if it.Sender.SenderType != "user" {
+			continue // 跳过 bot 自己 / 系统消息，避免回环
+		}
+		if it.MsgType != "text" {
+			continue
+		}
+		text := feishuText(it.Body.Content)
+		if text == "" {
+			continue
+		}
+		onEvent(Message{
+			Channel: f.id,
+			Session: "feishu:" + chatID,
+			Sender:  it.Sender.ID,
+			Text:    text,
+			Meta:    map[string]any{"receive_id": chatID, "receive_id_type": "chat_id", "message_id": it.MessageID},
+		})
+	}
 }

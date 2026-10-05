@@ -936,6 +936,17 @@ try {
     $hit = Wait-For { $x = Get-Json "$base/api/agent/runs?limit=10" $h; @($x.runs | Where-Object { $_.goal -match "飞书自检消息" })[0] } 60
     if (-not $hit) { throw "飞书消息事件没触发运行" }
   }
+  Check "I27 飞书轮询模式：既无令牌又无会话被拒 + 有 chatIds 即通（免公网）" {
+    $rejected = $false
+    try { $null = Send-Json "Post" "$base/api/agent/channels" @{ action = "save"; id = "sweep-fp"; kind = "feishu"; appId = "cli_x"; appSecret = "sec" } $h } catch { $rejected = $true }
+    if (-not $rejected) { throw "feishu 既无令牌又无 chatIds 竟然被接受" }
+    $saved = Send-Json "Post" "$base/api/agent/channels" @{ action = "save"; id = "sweep-fp"; kind = "feishu"; appId = "cli_x"; appSecret = "sec"; chatIds = @("oc_1", "oc_2") } $h
+    $fp = @($saved.channels | Where-Object { $_.id -eq "sweep-fp" })[0]
+    if (-not $fp) { throw "轮询频道没保存上" }
+    if (@($fp.chatIds).Count -ne 2) { throw "chatIds 没回显：$($fp | ConvertTo-Json -Compress)" }
+    if ($fp.pollSec -ne 5) { throw "pollSec 默认应为 5：$($fp.pollSec)" }
+    $null = Send-Json "Post" "$base/api/agent/channels" @{ action = "remove"; id = "sweep-fp" } $h
+  }
 
   # ================= J. 桌面端分发 =================
   Step "J. 桌面端分发"

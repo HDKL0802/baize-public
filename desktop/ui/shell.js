@@ -14,7 +14,7 @@ window.Shell = (function () {
   const NAV = [
     { title: '核心', ids: ['chat', 'devices', 'tasks'] },
     { title: '知识', ids: ['kb', 'memory', 'activity'] },
-    { title: '能力', ids: ['providers', 'mcp', 'skills', 'cron'] },
+    { title: '能力', ids: ['providers', 'mcp', 'skills', 'persona', 'cron'] },
     { title: '系统', ids: ['backup', 'settings'] },
   ];
 
@@ -29,6 +29,7 @@ window.Shell = (function () {
     providers: '<path d="M13.5 3 5.5 13.5H11l-1 7.5 8.5-10.5H13z"/>',
     mcp: '<path d="M9 3.5v4M15 3.5v4"/><path d="M6.5 7.5h11v3.5a5.5 5.5 0 0 1-11 0z"/><path d="M12 16.5v4"/>',
     skills: '<path d="M12 3.2l2 5.3 5.3 2-5.3 2-2 5.3-2-5.3-5.3-2 5.3-2z"/><path d="M18.5 16.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+    persona: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10.6" r="2.1"/><path d="M5.7 16.4c.6-1.6 1.8-2.4 3.3-2.4s2.7.8 3.3 2.4"/><path d="M15 10.2h3.6M15 13.4h3.6"/>',
     cron: '<circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3.2 2"/>',
     backup: '<rect x="3.5" y="4.5" width="17" height="4.6" rx="1.4"/><path d="M5.5 9.1V19a1.4 1.4 0 0 0 1.4 1.4h10.2A1.4 1.4 0 0 0 18.5 19V9.1"/><path d="M10 13h4"/>',
     settings: '<circle cx="12" cy="12" r="3.2"/><path d="M12 3.4v2.3M12 18.3v2.3M3.4 12h2.3M18.3 12h2.3M5.9 5.9l1.6 1.6M16.5 16.5l1.6 1.6M18.1 5.9l-1.6 1.6M7.5 16.5l-1.6 1.6"/>',
@@ -47,7 +48,7 @@ window.Shell = (function () {
       const items = g.ids.map(id => {
         const a = window.APP_BY_ID[id];
         if (!a) return '';
-        return '<a data-app="' + a.id + '"><span class="i">' + (NAV_ICONS[a.id] || esc(a.icon)) + '</span>' +
+        return '<a data-app="' + a.id + '"><span class="i">' + (iconSvg(a.id) || esc(a.icon)) + '</span>' +
                '<span class="n">' + esc(a.name) + '</span></a>';
       }).join('');
       return '<div class="grp">' + g.title + '</div>' + items;

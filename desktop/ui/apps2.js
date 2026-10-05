@@ -754,6 +754,170 @@ async function renderSkills(root) {
   await refresh();
 }
 
+/* ================= 6.5 人设 ================= */
+/* 数据：GET /api/agent/persona → {enabled, dir, files[{name,enabled,exists,tokens,preview,builtin}],
+        builtin[], tokens, promptPreview}
+        读单文件：GET /api/agent/persona/file?name=xx.md
+   动作：POST /api/agent/persona {action: save|enable|disable|order|archive|reset|master, ...}
+   说明：人设每次运行现读（热重载），保存后下一句话就生效，不用重启。 */
+async function renderPersona(root) {
+  root.innerHTML = `
+    <div style="padding:14px 16px">
+      <div class="sect" style="margin-top:0">
+        <h3>人设 <span class="sub" id="peMaster" style="margin:0"></span></h3>
+        <div class="sub">决定白泽「是谁、按什么规矩办事」的一组 Markdown 文件，按顺序整篇拼进系统提示（顺序 = 由上到下）。
+          改完保存立即生效，不用重启。</div>
+        <div class="sub mono" id="peDir" style="margin:0 0 8px"></div>
+        <div id="peList"></div>
+        <div class="fields" style="grid-template-columns:240px 1fr">
+          <div><label>新建文件</label><input id="peNewName" class="mono" placeholder="RULES.md"></div>
+          <div style="display:flex;align-items:flex-end;gap:8px">
+            <button class="btn ghost" id="peNew">新建（默认不启用）</button>
+            <button class="btn ghost" id="peMasterBtn">人设总开关</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sect">
+        <h3 id="peEdTitle">编辑</h3>
+        <div class="sub" id="peEdHint">点上面任意文件的「编辑」，或新建一个。</div>
+        <textarea id="peBody" class="mono" style="min-height:220px;width:100%" placeholder="Markdown 正文…" hidden></textarea>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+          <button class="btn" id="peSave" hidden>保存</button>
+          <button class="btn ghost" id="peCancel" hidden>取消</button>
+          <span class="sub" id="peMsg" style="margin:0"></span>
+        </div>
+      </div>
+
+      <div class="sect">
+        <h3>拼装预览 <span class="sub" id="peTokens" style="margin:0"></span></h3>
+        <div class="sub">白泽实际读到的开头（截断显示）。没启用的文件不会出现在这里。</div>
+        <div class="pre" id="pePreview" style="max-height:260px;overflow:auto"></div>
+      </div>
+    </div>`;
+
+  const $i = id => root.querySelector('#' + id);
+  let files = [];
+  let edit = null; // 正在编辑的文件 {name, content}
+
+  const paintEdit = () => {
+    const box = $i('peBody'), save = $i('peSave'), cancel = $i('peCancel');
+    if (!edit) {
+      $i('peEdTitle').textContent = '编辑';
+      $i('peEdHint').textContent = '点上面任意文件的「编辑」，或新建一个。';
+      $i('peEdHint').hidden = false;
+      box.hidden = true; save.hidden = true; cancel.hidden = true;
+      return;
+    }
+    $i('peEdTitle').textContent = '编辑：' + edit.name;
+    $i('peEdHint').textContent = '支持 front-matter（会被自动去掉）；心跳段用 <!-- heartbeat:start/end --> 包起来，心跳没启用时整段不会进提示。';
+    $i('peEdHint').hidden = false;
+    box.hidden = false; save.hidden = false; cancel.hidden = false;
+    box.value = edit.content;
+  };
+
+  const refresh = async () => {
+    const r = await API.get('/api/agent/persona');
+    if (!r.ok) { showErr($i('peList'), r); return; }
+    const d = r.data || {};
+    files = d.files || [];
+    $i('peMaster').innerHTML = d.enabled ? '<span class="tag on">已启用</span>' : '<span class="tag off">已停用</span>';
+    $i('peDir').textContent = '目录：' + (d.dir || '');
+    $i('peTokens').textContent = d.tokens ? `（约 ${d.tokens} token）` : '';
+    $i('pePreview').textContent = d.promptPreview || (d.enabled ? '（没有任何启用的文件，人设不注入）' : '（人设已停用，不注入）');
+    const enabledOrder = files.filter(f => f.enabled).map(f => f.name);
+    $i('peList').innerHTML = files.length ? files.map(f => `
+      <div class="row" style="align-items:flex-start">
+        <div class="who">
+          <b class="mono">${esc(f.name)} ${f.builtin ? '<span class="tag">模板</span>' : ''}
+            ${f.enabled ? '<span class="tag on">加载中</span>' : '<span class="tag off">未启用</span>'}
+            ${f.exists ? '' : '<span class="tag warn">文件缺失</span>'}</b>
+          <span class="mono">${f.tokens || 0} token${f.enabled ? ' · 第 ' + (enabledOrder.indexOf(f.name) + 1) + ' 个拼进去' : ''}</span>
+          <div class="sub" style="margin:4px 0 0">${esc(f.preview || '')}</div>
+        </div>
+        <div class="tags">
+          <button class="btn sm ghost" data-edit="${esc(f.name)}">编辑</button>
+          <button class="btn sm ghost" data-toggle="${esc(f.name)}">${f.enabled ? '停用' : '启用'}</button>
+          <button class="btn sm ghost" data-up="${esc(f.name)}" ${f.enabled ? '' : 'disabled'}>↑</button>
+          <button class="btn sm ghost" data-down="${esc(f.name)}" ${f.enabled ? '' : 'disabled'}>↓</button>
+          ${f.builtin ? `<button class="btn sm ghost" data-reset="${esc(f.name)}">恢复默认</button>` : ''}
+          <button class="btn sm ghost" data-arch="${esc(f.name)}">归档</button>
+        </div>
+      </div>`).join('') + '<div class="sub" style="margin-top:8px">未启用的文件不会进系统提示；「归档」会移进 .archive，不硬删。</div>'
+      : '<div class="empty">还没有人设文件</div>';
+
+    $i('peList').querySelectorAll('[data-edit]').forEach(b => b.onclick = async () => {
+      const rr = await API.get('/api/agent/persona/file?name=' + encodeURIComponent(b.dataset.edit));
+      if (!rr.ok) { Shell.toast('读取失败：' + rr.error, 'err'); return; }
+      edit = { name: rr.data.name, content: rr.data.content || '' };
+      paintEdit();
+      $i('peMsg').textContent = '';
+    });
+    $i('peList').querySelectorAll('[data-toggle]').forEach(b => b.onclick = async () => {
+      const f = files.find(x => x.name === b.dataset.toggle);
+      const r2 = await API.post('/api/agent/persona', { action: f && f.enabled ? 'disable' : 'enable', name: b.dataset.toggle });
+      if (!r2.ok) { Shell.toast('失败：' + r2.error, 'err'); return; }
+      await refresh();
+    });
+    $i('peList').querySelectorAll('[data-up],[data-down]').forEach(b => b.onclick = async () => {
+      const name = b.dataset.up || b.dataset.down;
+      const order = enabledOrder.slice();
+      const i = order.indexOf(name);
+      const j = b.dataset.up ? i - 1 : i + 1;
+      if (i < 0 || j < 0 || j >= order.length) return;
+      order[i] = order[j]; order[j] = name;
+      const r2 = await API.post('/api/agent/persona', { action: 'order', files: order });
+      if (!r2.ok) { Shell.toast('失败：' + r2.error, 'err'); return; }
+      await refresh();
+    });
+    $i('peList').querySelectorAll('[data-reset]').forEach(b => b.onclick = async () => {
+      if (!confirm('把「' + b.dataset.reset + '」恢复成内置模板？你的修改会丢。')) return;
+      const r2 = await API.post('/api/agent/persona', { action: 'reset', name: b.dataset.reset });
+      if (!r2.ok) { Shell.toast('失败：' + r2.error, 'err'); return; }
+      Shell.toast('已恢复默认', 'ok');
+      await refresh();
+    });
+    $i('peList').querySelectorAll('[data-arch]').forEach(b => b.onclick = async () => {
+      if (!confirm('归档「' + b.dataset.arch + '」？（移进 .archive，不硬删）')) return;
+      const r2 = await API.post('/api/agent/persona', { action: 'archive', name: b.dataset.arch });
+      if (!r2.ok) { Shell.toast('失败：' + r2.error, 'err'); return; }
+      if (edit && edit.name === b.dataset.arch) { edit = null; paintEdit(); }
+      Shell.toast('已归档', 'ok');
+      await refresh();
+    });
+  };
+
+  $i('peNew').onclick = () => {
+    const name = $i('peNewName').value.trim();
+    if (!name) { Shell.toast('先填文件名（如 RULES.md）', 'err'); return; }
+    edit = { name: name, content: '# ' + name + '\n\n' };
+    paintEdit();
+    $i('peMsg').textContent = '新文件默认不启用：保存后回到列表里点「启用」才生效';
+  };
+  $i('peMasterBtn').onclick = async () => {
+    const cur = $i('peMaster').textContent.indexOf('已启用') >= 0;
+    const r = await API.post('/api/agent/persona', { action: 'master', enabled: !cur });
+    if (!r.ok) { Shell.toast('失败：' + r.error, 'err'); return; }
+    Shell.toast(!cur ? '人设已启用' : '人设已停用', 'ok');
+    await refresh();
+  };
+  $i('peCancel').onclick = () => { edit = null; paintEdit(); $i('peMsg').textContent = ''; };
+  $i('peSave').onclick = async () => {
+    if (!edit) return;
+    const content = $i('peBody').value;
+    $i('peMsg').textContent = '保存中…';
+    const r = await API.post('/api/agent/persona', { action: 'save', name: edit.name, content: content });
+    if (!r.ok) { $i('peMsg').textContent = '失败：' + r.error; return; }
+    $i('peMsg').textContent = '';
+    Shell.toast('人设已保存（立即生效）', 'ok');
+    edit = null; paintEdit();
+    await refresh();
+  };
+
+  paintEdit();
+  await refresh();
+}
+
 /* ================= 7. 定时任务 ================= */
 /* 数据：GET /api/agent/cron → {jobs[{...CronJob, nextAt, parseError}]}
         CronJob：id、expr、goal、recipe、enabled（外加 nextAt / parseError / runs / lastStatus / lastError）
@@ -1012,13 +1176,14 @@ async function renderActivity(root) {
 }
 
 /* ================= 回填注册表 =================
-   apps.js 里这 9 个只声明了 id/名字/图标/尺寸，render 在这里挂上去。
+   apps.js 里这 10 个只声明了 id/名字/图标/尺寸，render 在这里挂上去。
    为什么不直接在 apps.js 写 render: renderXxx？因为 apps.js 先加载，那一刻这些函数
    还没定义，对象字面量求值会直接 ReferenceError（整个 window.APPS 就废了）。 */
 (function wireD2Apps() {
   const map = {
     tasks: renderTasks, kb: renderKB, memory: renderMemory, providers: renderProviders,
-    mcp: renderMCP, skills: renderSkills, cron: renderCron, backup: renderBackup, activity: renderActivity,
+    mcp: renderMCP, skills: renderSkills, persona: renderPersona, cron: renderCron,
+    backup: renderBackup, activity: renderActivity,
   };
   Object.keys(map).forEach(id => {
     const app = window.APP_BY_ID && window.APP_BY_ID[id];

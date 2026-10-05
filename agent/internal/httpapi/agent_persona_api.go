@@ -164,7 +164,7 @@ func (s *Server) personaState() map[string]any {
 	out["files"] = lib.List(cfg.Persona.Files)
 	// 拼装预览：让人直观看到"白泽实际读到的开头长什么样"（截断，不让界面扛整篇）
 	if cfg.Persona.Enabled {
-		built := lib.Build(cfg.Persona.Files, false)
+		built := lib.Build(cfg.Persona.Files, cfg.Heartbeat.Enabled)
 		out["tokens"] = estimatePromptTokens(built)
 		out["promptPreview"] = truncateRunes(built, 1200)
 	}

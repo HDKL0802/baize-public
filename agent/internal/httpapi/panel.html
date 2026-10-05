@@ -365,6 +365,7 @@ const S = {
   memHits: null, memNote: "", memThreshold: 0,   // 记忆检索的最近一次结果与说明
   memNodes: null, memStale: 0,                   // 记忆树节点 + 摘要没跟上的天数
   persona: null, personaEdit: null,              // 人设状态 + 正在编辑的文件
+  heartbeat: null, hbContent: null, hbDirty: false, // 心跳状态 + 编辑器内容（hbDirty=用户动过，别让轮询盖掉）
 };
 const CHAT_KEY = "bz_console_chat_v1";
 function loadChat() { try { S.chat = JSON.parse(localStorage.getItem(CHAT_KEY) || "[]") || []; } catch (e) { S.chat = []; } }
@@ -388,6 +389,7 @@ const PAGES = [
   { id: "mcp", name: "MCP 服务", icon: "🔌", title: "MCP 服务", sub: "热插拔，加删重载都不用重启", ep: "/api/agent/mcp" },
   { id: "backups", name: "备份与恢复", icon: "🗄️", title: "备份与恢复", sub: "zip + sha256 清单，恢复前自动打安全点", ep: "/api/agent/backups" },
   { id: "cron", name: "定时任务", icon: "⏰", title: "定时任务", sub: "cron 表达式 + 一句目标", ep: "/api/agent/state.cron" },
+  { id: "heartbeat", name: "心跳", icon: "💓", title: "心跳", sub: "定时拿 HEARTBEAT.md 里的待办跑一次 Agent", ep: "/api/agent/heartbeat" },
   { id: "logs", name: "日志", icon: "📜", title: "日志", sub: "后端运行日志（倒序）", ep: "/api/logs" },
   { id: "settings", name: "设置", icon: "⚙️", title: "设置", sub: "运行参数与安全开关", ep: "/api/agent/config" },
 ];
@@ -902,6 +904,48 @@ function pageCron() {
   return h;
 }
 
+/* 心跳：人设管"你是谁"，心跳管"要办的事"——到点拿 HEARTBEAT.md 当查询词跑一次 Agent */
+function pageHeartbeat() {
+  const hb = (S.heartbeat && S.heartbeat.state) || {};
+  const targets = (S.heartbeat && S.heartbeat.targets) || ["main", "last", "inbox"];
+  const tName = { main: "main（只留在运行记录）", last: "last（上次聊天的渠道）", inbox: "inbox（收件箱）" };
+  let h = '<div class="card"><header><h2>心跳</h2><span class="ep mono">/api/agent/heartbeat</span>' +
+    '<span class="pill" style="margin-left:auto"><i class="dot' + (hb.enabled ? " ok" : "") + '"></i>' +
+    (hb.enabled ? "已启用" : "已停用") + '</span>' +
+    '<button class="btn sm primary" id="btn-hbrun" style="margin-left:8px">立即跑一次</button>' +
+    '<button class="btn sm" id="btn-hbmaster" style="margin-left:8px">' + (hb.enabled ? "停用" : "启用") + '</button></header>' +
+    '<p class="desc">到点拿工作区里的 <code>HEARTBEAT.md</code> 当查询词跑一次 Agent；排期复用定时任务那套表达式，改完立即生效，不用重启。</p>' +
+    '<table><tbody>' +
+    row("下次触发", hb.enabled ? (hb.nextAt ? fmtMs(hb.nextAt) : "（还没排上）") : "—") +
+    row("上次运行", hb.lastRunAt ? fmtAgo(hb.lastRunAt) : "—") +
+    '<tr><td class="nowrap cell-sub">上次状态</td><td>' +
+      (hb.lastStatus ? '<span class="tag ' + (hb.lastStatus === "done" ? "ok" : "err") + '">' + esc(hb.lastStatus) + "</span>" +
+        (hb.lastError ? ' <span class="cell-sub">' + esc(hb.lastError) + "</span>" : "") : "—") + "</td></tr>" +
+    row("累计运行", (hb.runs || 0) + " 次") +
+    '<tr><td class="nowrap cell-sub">HEARTBEAT.md</td><td>' +
+      (hb.hasFile ? '<code>' + esc(hb.path) + '</code> <span class="cell-sub">（' + hb.size + " 字节）</span>" : '<span class="tag err">还没创建（在下面写了保存就有）</span>') + "</td></tr>" +
+    (hb.parseError ? '<tr><td class="nowrap cell-sub">表达式错误</td><td><span class="tag err">' + esc(hb.parseError) + "</span></td></tr>" : "") +
+    '</tbody></table></div>';
+
+  // 参数：每个字段都在后端先校验再落盘，坏值会被当场打回来
+  h += '<div class="card"><header><h2>参数</h2><span class="ep mono">POST /api/agent/heartbeat</span></header><div class="pad"><div class="grid2">' +
+    '<div class="field"><label>间隔（@every 30m 或 cron 表达式）</label><input type="text" id="hb-every" value="' + esc(hb.every || "") + '"></div>' +
+    '<div class="field"><label>结果分发</label><select id="hb-target">' +
+    targets.map((t) => '<option value="' + esc(t) + '"' + (t === (hb.target || "main") ? " selected" : "") + '>' + esc(tName[t] || t) + "</option>").join("") +
+    '</select></div>' +
+    '<div class="field"><label>单次超时（秒，0 = 默认 600）</label><input type="number" id="hb-timeout" value="' + (hb.timeoutSec || 0) + '"></div>' +
+    '<div class="field"><label>活跃时段（如 08:00-22:00，可跨夜 22:00-08:00；留空 = 全天）</label><input type="text" id="hb-hours" value="' + esc(hb.activeHours || "") + '"></div>' +
+    '</div><div class="row"><button class="btn primary" id="btn-hbsave">保存参数</button>' +
+    '<span class="cell-sub">last / inbox 要等渠道能力落地才真正发得出去，先选了存着也行</span></div></div></div>';
+
+  // 编辑器：就是工作区里那个文件的正文
+  h += '<div class="card"><header><h2>HEARTBEAT.md</h2><span class="ep mono">POST /api/agent/heartbeat (save)</span></header><div class="pad">' +
+    '<textarea id="hb-content" class="mono" style="min-height:220px;width:100%" placeholder="每次心跳要办的事，Markdown 随便写，例如：&#10;- 看看收件箱有没有急事&#10;- 待办里有到期的就提醒我">' + esc(S.hbContent || "") + "</textarea>" +
+    '<div class="row" style="margin-top:8px"><button class="btn primary" id="btn-hbfilesave">保存文件</button>' +
+    '<span class="cell-sub">空内容不让存——不想让心跳干活，请关掉总开关，而不是清空文件</span></div></div></div>';
+  return h;
+}
+
 function pageLogs() {
   const lines = (S.logs || []).map((l) => l.line || l.text || JSON.stringify(l));
   return '<div class="card"><header><h2>日志</h2><span class="ep mono">/api/logs</span>' +
@@ -1114,6 +1158,7 @@ async function pollActivity() {
 const RENDER = {
   agent: pageAgent, kb: pageKb, runs: pageRuns, devices: pageDevices, tasks: pageTasks, memory: pageMemory,
   skills: pageSkills, persona: pagePersona, models: pageModels, voice: pageVoice, mcp: pageMCP, backups: pageBackups, cron: pageCron,
+  heartbeat: pageHeartbeat,
   logs: pageLogs, settings: pageSettings,
 };
 
@@ -1374,6 +1419,32 @@ function bind() {
       toast("已保存（立即生效）"); render();
     } catch (e) { toast("保存失败：" + e.message, true); }
   });
+  /* 心跳：总开关 / 立即跑 / 保存参数 / 保存文件 */
+  on("btn-hbmaster", () =>
+    api("/api/agent/heartbeat", { method: "POST", body: { action: "config", enabled: !(S.heartbeat && S.heartbeat.state && S.heartbeat.state.enabled) } })
+      .then((r) => { S.heartbeat = r; toast(r.state.enabled ? "心跳已启用" : "心跳已停用"); render(); })
+      .catch((e) => toast("失败：" + e.message, true)));
+  on("btn-hbrun", () =>
+    api("/api/agent/heartbeat", { method: "POST", body: { action: "run" } })
+      .then((r) => { S.heartbeat = r; toast("已派发，运行 " + shortId(r.runId) + "（结果看运行记录）"); })
+      .catch((e) => toast("触发失败：" + e.message, true)));
+  on("btn-hbsave", () =>
+    api("/api/agent/heartbeat", {
+      method: "POST", body: {
+        action: "config",
+        every: $("hb-every").value.trim(),
+        target: $("hb-target").value,
+        timeoutSec: parseInt($("hb-timeout").value || "0", 10) || 0,
+        activeHours: $("hb-hours").value.trim(),
+      }
+    }).then((r) => { S.heartbeat = r; toast("参数已保存（立即生效）"); render(); })
+      .catch((e) => toast("保存失败：" + e.message, true)));
+  on("btn-hbfilesave", () =>
+    api("/api/agent/heartbeat", { method: "POST", body: { action: "save", content: $("hb-content").value } })
+      .then((r) => { S.heartbeat = r; S.hbDirty = false; toast("HEARTBEAT.md 已保存"); render(); })
+      .catch((e) => toast("保存失败：" + e.message, true)));
+  const hbc = $("hb-content");
+  if (hbc) hbc.addEventListener("input", () => { S.hbDirty = true; S.hbContent = hbc.value; });
   document.querySelectorAll("[data-mre]").forEach((b) => b.onclick = () =>
     api("/api/agent/mcp", { method: "POST", body: { action: "reload", server: b.dataset.mre } })
       .then(() => { toast("已重载"); load(true); }).catch((e) => toast(e.message, true)));
@@ -1589,6 +1660,15 @@ async function load(silent) {
     if (S.page === "persona" && !S.personaEdit) {
       const pp = await api("/api/agent/persona").catch(() => null);
       S.persona = pp || S.persona;
+    }
+    if (S.page === "heartbeat") {
+      const [hb, hbf] = await Promise.all([
+        api("/api/agent/heartbeat").catch(() => null),
+        api("/api/agent/heartbeat/file").catch(() => null),
+      ]);
+      S.heartbeat = hb || S.heartbeat;
+      // 用户正在编辑时不要用磁盘内容盖掉他手上的改动
+      if (hbf && !S.hbDirty) S.hbContent = hbf.content || "";
     }
     render();
   } catch (e) {

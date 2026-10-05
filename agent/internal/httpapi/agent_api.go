@@ -630,6 +630,8 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	s.registerCronSkills(mux)
 	// 人设文件的管理（QwenPaw 人设机制的 Go 版）
 	s.registerPersona(mux)
+	// 心跳任务的管理（配置 / HEARTBEAT.md / 手动触发）
+	s.registerHeartbeat(mux)
 }
 
 func operatorFrom(r *http.Request) string {

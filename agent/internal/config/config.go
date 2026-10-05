@@ -92,6 +92,21 @@ type CronJob struct {
 	Runs        int    `json:"runs,omitempty"`
 }
 
+// HeartbeatConfig 心跳任务配置（定期运行 agent 并可选择分发结果）
+type HeartbeatConfig struct {
+	Enabled        bool   `json:"enabled"`
+	Every          string `json:"every"`           // 间隔：@every 30m 或 cron 表达式
+	Target         string `json:"target,omitempty"` // 分发目标：main（仅运行）、last（上次聊天渠道）、inbox（收件箱）
+	TimeoutSec     int    `json:"timeoutSec,omitempty"`
+	// ActiveHours 不能加 omitempty：零值 ""（全天）与默认值 "08:00-22:00" 语义不同，
+	// 一旦省略键，Load 时会被 Default() 重新填回默认值，用户永远清不掉。
+	ActiveHours    string `json:"activeHours"`          // 活跃时间段，如 "08:00-22:00"，空=全天
+	LastRunAt      int64  `json:"lastRunAt,omitempty"`
+	LastStatus     string `json:"lastStatus,omitempty"`
+	LastError      string `json:"lastError,omitempty"`
+	Runs           int    `json:"runs,omitempty"`
+}
+
 // Config 后端 Agent 配置
 type Config struct {
 	AllowRemote        bool       `json:"allowRemote"` // 是否允许非本机模型地址 / 远端 MCP 服务
@@ -114,6 +129,7 @@ type Config struct {
 	Memory         Memory             `json:"memory"`         // 记忆术设置
 	Voice          Voice              `json:"voice"`          // 语音通道（说话 / 听写）
 	Persona        Persona            `json:"persona"`        // 人设文件（Markdown 进系统提示）
+	Heartbeat      HeartbeatConfig    `json:"heartbeat"`      // 心跳任务（定期运行 agent）
 }
 
 // 记忆检索的权重档位（非法值一律回落到 balanced）
@@ -139,6 +155,13 @@ func Default() Config {
 			Namespace:      "default",
 		},
 		Persona: Persona{Enabled: true, Files: append([]string{}, persona.DefaultFiles...)},
+		Heartbeat: HeartbeatConfig{
+			Enabled:     false,
+			Every:       "@every 30m",
+			Target:      "main",
+			TimeoutSec:  600,
+			ActiveHours: "08:00-22:00",
+		},
 	}
 }
 
@@ -272,6 +295,17 @@ func (c *Config) normalize() {
 	if c.Voice.Speed <= 0 || c.Voice.Speed > 4 {
 		c.Voice.Speed = 1
 	}
+	// 心跳任务：every 缺省给默认值，target 收敛到合法值，超时给默认值
+	if c.Heartbeat.Every == "" {
+		c.Heartbeat.Every = "@every 30m"
+	}
+	if c.Heartbeat.TimeoutSec <= 0 {
+		c.Heartbeat.TimeoutSec = 600
+	}
+	c.Heartbeat.Target = normalizeHeartbeatTarget(c.Heartbeat.Target)
+	if c.Heartbeat.ActiveHours != "" {
+		c.Heartbeat.ActiveHours = strings.TrimSpace(c.Heartbeat.ActiveHours)
+	}
 }
 
 // 语音通道支持的协议
@@ -323,6 +357,34 @@ func normalizeRecallProfile(v string) string {
 		}
 	}
 	return "balanced"
+}
+
+var heartbeatTargets = []string{"main", "last", "inbox"}
+
+// HeartbeatTargets 心跳结果的分发目标清单（界面下拉用）：
+// main = 只留在运行记录里；last / inbox 要等渠道能力落地才真正发得出去。
+func HeartbeatTargets() []string { return append([]string{}, heartbeatTargets...) }
+
+// ValidHeartbeatTarget 目标是否合法。接口层先用它挡住笔误，
+// 免得写错的目标被 normalize 悄悄改成 main（用户以为设成了 last，其实没有）。
+func ValidHeartbeatTarget(v string) bool {
+	v = strings.ToLower(strings.TrimSpace(v))
+	for _, t := range heartbeatTargets {
+		if v == t {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeHeartbeatTarget(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	for _, t := range heartbeatTargets {
+		if v == t {
+			return v
+		}
+	}
+	return "main"
 }
 
 // MainProviders 主通道（非回退）

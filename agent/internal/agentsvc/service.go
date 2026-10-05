@@ -65,6 +65,17 @@ type JobState struct {
 	ParseErr string `json:"parseError,omitempty"`
 }
 
+// HeartbeatState 心跳任务状态（配置 + 排期 + HEARTBEAT.md 的落地情况）
+type HeartbeatState struct {
+	config.HeartbeatConfig
+	NextAt   int64  `json:"nextAt,omitempty"`
+	ParseErr string `json:"parseError,omitempty"`
+	Path     string `json:"path"`
+	HasFile  bool   `json:"hasFile"`
+	Size     int64  `json:"size,omitempty"`
+	ModTime  int64  `json:"modTime,omitempty"`
+}
+
 // State 控制台需要的全部状态
 type State struct {
 	Version      string              `json:"version"`
@@ -81,6 +92,7 @@ type State struct {
 	Runs         []agentrt.RunRecord `json:"runs"`
 	Approvals    []Approval          `json:"approvals"`
 	Cron         []JobState          `json:"cron"`
+	Heartbeat    HeartbeatState      `json:"heartbeat"`
 	Memory       memory.Stats        `json:"memory"`
 	Embedding    EmbeddingInfo       `json:"embedding"`
 	MemoryCfg    config.Memory       `json:"memoryCfg"`
@@ -678,7 +690,7 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 	// 人设：现读文件拼好（热重载），紧跟身份行进系统提示
 	personaText := ""
 	if cfg.Persona.Enabled && personaLib != nil {
-		personaText = personaLib.Build(cfg.Persona.Files, false)
+		personaText = personaLib.Build(cfg.Persona.Files, cfg.Heartbeat.Enabled)
 	}
 
 	runner := agentrt.New(agentrt.Config{
@@ -924,6 +936,7 @@ func (s *Service) State() State {
 		CurrentRunID: curRun,
 		Providers:    providers, Runs: runs, Approvals: s.approvals.List(),
 		Cron: s.jobStates(), Memory: stats, LastRun: last,
+		Heartbeat: s.heartbeatState(),
 		BackupDir: backup.Dir(s.dataDir),
 		MemoryCfg: cfg.Memory, Embedding: s.embeddingInfo(),
 		Activity: s.Activity(),

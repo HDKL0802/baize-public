@@ -753,6 +753,55 @@ try {
     if (-not $rejected) { throw "没有模板的文件恢复默认竟然成功了" }
   }
 
+  # ================= I3. 心跳 =================
+  Step "I3. 心跳（HEARTBEAT.md 定时跑）"
+  Check "I10 心跳初始状态：target 清单齐全、默认没有 HEARTBEAT.md" {
+    $r = Get-Json "$base/api/agent/heartbeat" $h
+    foreach ($t in @("main", "last", "inbox")) {
+      if ($r.targets -notcontains $t) { throw "target 清单里缺 $t：$($r.targets -join ',')" }
+    }
+    if ($r.state.hasFile) { throw "初始不该有 HEARTBEAT.md" }
+    $f = Get-Json "$base/api/agent/heartbeat/file" $h
+    if ($f.exists) { throw "文件不存在时 exists 应为 false" }
+    $rejected = $false
+    try { $null = Send-Json "Post" "$base/api/agent/heartbeat" @{ action = "run" } $h } catch { $rejected = $true }
+    if (-not $rejected) { throw "没有 HEARTBEAT.md 时竟然允许跑" }
+  }
+  Check "I11 保存 HEARTBEAT.md + 空内容被拒" {
+    $r = Send-Json "Post" "$base/api/agent/heartbeat" @{ action = "save"; content = "自检心跳任务：检查有没有急事。`n" } $h
+    if (-not $r.state.hasFile) { throw "保存后状态里应看到文件" }
+    $f = Get-Json "$base/api/agent/heartbeat/file" $h
+    if ($f.content -notmatch "自检心跳任务") { throw "读回的内容不对：$($f.content)" }
+    $rejected = $false
+    try { $null = Send-Json "Post" "$base/api/agent/heartbeat" @{ action = "save"; content = "   " } $h } catch { $rejected = $true }
+    if (-not $rejected) { throw "空内容竟然被接受了（停用应关开关，不该清空）" }
+  }
+  Check "I12 心跳参数校验：坏表达式/坏目标/坏时段一律被拒 + 合法值回显" {
+    foreach ($badBody in @(
+        @{ action = "config"; every = "* * * *" },
+        @{ action = "config"; target = "lasst" },
+        @{ action = "config"; activeHours = "8点到22点" },
+        @{ action = "config"; timeoutSec = -1 })) {
+      $rejected = $false
+      try { $null = Send-Json "Post" "$base/api/agent/heartbeat" $badBody $h } catch { $rejected = $true }
+      if (-not $rejected) { throw ("坏参数竟然被接受：" + ($badBody | ConvertTo-Json -Compress)) }
+    }
+    $r = Send-Json "Post" "$base/api/agent/heartbeat" @{
+      action = "config"; enabled = $true; every = "@every 30m"; target = "last"; timeoutSec = 60; activeHours = "08:00-22:00" } $h
+    if ($r.state.every -ne "@every 30m" -or $r.state.target -ne "last" -or $r.state.timeoutSec -ne 60 -or $r.state.activeHours -ne "08:00-22:00") {
+      throw ("配置回显不对：" + ($r.state | ConvertTo-Json -Compress))
+    }
+  }
+  Check "I13 手动跑一次：运行记录的查询就是 HEARTBEAT.md 内容" {
+    Clear-Runs
+    $null = Send-Json "Post" "$mockBase/_mock/script" @( @{ text = "好" } ) $h
+    $r = Send-Json "Post" "$base/api/agent/heartbeat" @{ action = "run" } $h
+    if (-not $r.runId) { throw "run 应带回 runId" }
+    $null = Wait-For { try { $x = Get-Json "$base/api/agent/runs/$($r.runId)" $h; if ($x.run.finishedAt) { $x } } catch { } } 60
+    $rec = Get-Json "$base/api/agent/runs/$($r.runId)" $h
+    if ($rec.run.goal -notmatch "自检心跳任务") { throw "运行记录的 goal 应是 HEARTBEAT.md 内容：$($rec.run.goal)" }
+  }
+
   # ================= J. 桌面端分发 =================
   Step "J. 桌面端分发"
   Check "J1 /dl/ 能取到升级清单" {

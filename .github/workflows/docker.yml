@@ -10,6 +10,8 @@
 #
 # 注意：镜像只用得上 core / shared / agent（见 .dockerignore）；平台固定 linux/amd64，
 # 与 NAS 上的运行环境一致。
+# 私有仓 HDKL0802/baize 负责 push 到 ghcr；公开镜像仓 baize-public 只构建不推
+# （GHCR 包只 linked 到 baize，镜像仓的 GITHUB_TOKEN 没权限）。
 name: docker
 
 on:
@@ -75,7 +77,11 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
-          push: true
+          # 只有「包所属的规范仓」能推：GHCR 包 linked 到 HDKL0802/baize，
+          # 公开镜像仓 baize-public 的 GITHUB_TOKEN 对该包没有权限
+          # （否则报 denied: permission_denied: read_package）。
+          # 镜像仓仍照常构建（只不推）—— 顺便验证脱敏后的公开代码能编出镜像。
+          push: ${{ github.repository == 'HDKL0802/baize' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

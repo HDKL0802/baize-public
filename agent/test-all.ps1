@@ -77,12 +77,17 @@ function Wait-Task($id, [int]$seconds = 30) {
 }
 
 # mock 模型「看到过什么」（工具表 / 工具结果），用来断言模型侧的真实输入
+# text = 所有历史请求的拼接（适合断言「曾经看到过」）；lastText = 最后一次请求（适合断言「现在看到什么」）
 function Mock-Saw() {
   $ms = (Get-Json "$mockBase/_mock/state" $h).requests
   $tools = @()
   if ($ms.Count -gt 0 -and $ms[-1].tools) { $tools = @($ms[-1].tools) }
   $text = (($ms | ForEach-Object { $_.messages | ForEach-Object { $_.content } }) -join "`n")
-  return @{ tools = $tools; text = $text }
+  $lastText = ""
+  if ($ms.Count -gt 0) {
+    $lastText = (($ms[-1].messages | ForEach-Object { $_.content }) -join "`n")
+  }
+  return @{ tools = $tools; text = $text; lastText = $lastText }
 }
 
 function Find-Go {
@@ -697,6 +702,55 @@ try {
   Check "I4 删除技能（归档，清单里不再出现）" {
     $r = Send-Json "Post" "$base/api/agent/skills" @{ action = "delete"; name = "sweeptest" } $h
     if (@($r.skills | Where-Object { $_.slug -eq "sweeptest" }).Count -ne 0) { throw "删除后还在清单里" }
+  }
+
+  # ================= I2. 人设 =================
+  Step "I2. 人设（Markdown 进系统提示）"
+  Check "I5 首次启动自动生成默认人设（AGENTS/SOUL/PROFILE 都启用）" {
+    $r = Get-Json "$base/api/agent/persona" $h
+    if (-not $r.enabled) { throw "人设默认应启用" }
+    foreach ($n in @("AGENTS.md", "SOUL.md", "PROFILE.md")) {
+      $one = @($r.files | Where-Object { $_.name -eq $n })[0]
+      if (-not $one) { throw "清单里缺 $n" }
+      if (-not $one.enabled -or -not $one.exists) { throw "$n 应已生成且启用：$($one | ConvertTo-Json -Compress)" }
+    }
+  }
+  Check "I6 保存人设 + 非法文件名被拒" {
+    $r = Send-Json "Post" "$base/api/agent/persona" @{
+      action = "save"; name = "SOUL.md"; content = "自检人设标记：说话简短直接。`n" } $h
+    if ($r.promptPreview -notmatch "自检人设标记") { throw "保存后拼装预览里应能看到：$($r.promptPreview)" }
+    $rejected = $false
+    try { $null = Send-Json "Post" "$base/api/agent/persona" @{ action = "save"; name = "../evil.md"; content = "x" } $h } catch { $rejected = $true }
+    if (-not $rejected) { throw "带路径的文件名竟然被接受了" }
+    $rejected = $false
+    try { $null = Send-Json "Post" "$base/api/agent/persona" @{ action = "save"; name = "SOUL.md"; content = "  " } $h } catch { $rejected = $true }
+    if (-not $rejected) { throw "空内容竟然被接受了（停用应关开关，不该清空）" }
+  }
+  Check "I7 人设真的进模型系统提示（跑一次后从 mock 侧回看）" {
+    Clear-Runs
+    $null = Send-Json "Post" "$mockBase/_mock/script" @( @{ text = "好" } ) $h
+    $null = Send-Json "Post" "$base/api/agent/run" @{ goal = "随便说句话"; wait = $true } $h
+    $saw = Mock-Saw
+    if ($saw.lastText -notmatch "自检人设标记") { throw "系统提示里没有带上人设内容" }
+  }
+  Check "I8 关掉总开关后人设不再注入" {
+    $null = Send-Json "Post" "$base/api/agent/persona" @{ action = "master"; enabled = $false } $h
+    Clear-Runs
+    $null = Send-Json "Post" "$mockBase/_mock/script" @( @{ text = "好" } ) $h
+    $null = Send-Json "Post" "$base/api/agent/run" @{ goal = "再说一句话"; wait = $true } $h
+    $saw = Mock-Saw
+    if ($saw.lastText -match "自检人设标记") { throw "总开关关掉后竟然还在注入" }
+    if ($saw.lastText -notmatch "你是白泽") { throw "身份行不该被人设开关影响" }
+    $null = Send-Json "Post" "$base/api/agent/persona" @{ action = "master"; enabled = $true } $h
+  }
+  Check "I9 归档不硬删 + 没模板的文件不能恢复默认" {
+    $r = Send-Json "Post" "$base/api/agent/persona" @{ action = "save"; name = "TMP.md"; content = "临时人设" } $h
+    if (-not (@($r.files | Where-Object { $_.name -eq "TMP.md" })[0])) { throw "新建的文件应出现在清单里" }
+    $r = Send-Json "Post" "$base/api/agent/persona" @{ action = "archive"; name = "TMP.md" } $h
+    if (@($r.files | Where-Object { $_.name -eq "TMP.md" }).Count -ne 0) { throw "归档后不该还在清单里" }
+    $rejected = $false
+    try { $null = Send-Json "Post" "$base/api/agent/persona" @{ action = "reset"; name = "TMP.md" } $h } catch { $rejected = $true }
+    if (-not $rejected) { throw "没有模板的文件恢复默认竟然成功了" }
   }
 
   # ================= J. 桌面端分发 =================

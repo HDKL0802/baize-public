@@ -37,9 +37,12 @@ $ProgressPreference = "SilentlyContinue"
 $Root = Split-Path -Parent $PSScriptRoot          # script lives in tools\, so root is its parent
 
 # ---------- load deploy.local.env (does not override real env vars) ----------
+# NOTE: read as UTF8 explicitly. PowerShell 5.1 defaults to the ANSI/GBK codepage,
+# and a non-ASCII comment there can swallow the next newline (the following key
+# then looks like part of the comment and gets silently skipped).
 $envFile = Join-Path $Root "deploy.local.env"
 if (Test-Path $envFile) {
-    Get-Content $envFile | ForEach-Object {
+    Get-Content $envFile -Encoding UTF8 | ForEach-Object {
         $line = $_.Trim()
         if ($line -eq "" -or $line.StartsWith("#")) { return }
         $i = $line.IndexOf("=")

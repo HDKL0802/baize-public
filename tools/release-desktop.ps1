@@ -11,11 +11,13 @@ $desk = Join-Path $root "desktop"
 # ---- 1. credentials from deploy.local.env (gitignored) ----
 # Parsing deliberately mirrors tools/deploy-nas.ps1 (IndexOf/Substring) instead of
 # String.Split, so both scripts fail/succeed exactly the same way.
+# Read as UTF8 explicitly: PS 5.1 defaults to ANSI/GBK, where a non-ASCII comment
+# in the env file can swallow the next newline and hide the following key.
 $envFile = Join-Path $root "deploy.local.env"
 if (-not (Test-Path $envFile)) { throw "missing deploy.local.env (see deploy.local.env.example)" }
 $nasHost = ""; $nasUser = ""; $nasPass = ""; $token = ""
 $seen = @()
-Get-Content $envFile | ForEach-Object {
+Get-Content $envFile -Encoding UTF8 | ForEach-Object {
   $line = $_.Trim()
   if ($line -eq "" -or $line.StartsWith("#")) { return }
   $i = $line.IndexOf("=")

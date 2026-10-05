@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"baize/internal/mcp"
+	"baize/internal/persona"
 )
 
 // Provider 一个模型通道
@@ -69,6 +70,14 @@ type Memory struct {
 	Namespace      string  `json:"namespace"`      // 本机默认记忆分区（多用户/多智能体隔离用）
 }
 
+// Persona 人设（一组 Markdown 文件，按顺序拼进系统提示；改完立即生效）。
+// Files 就是「加载清单」：顺序 = 拼进提示的顺序，不在清单里的文件不生效。
+// 空数组 = 一个都不加载；字段缺失（null）时回落成默认三件套。
+type Persona struct {
+	Enabled bool     `json:"enabled"`
+	Files   []string `json:"files"`
+}
+
 // CronJob 定时任务（昆帕定时任务机制的 Go 版）
 type CronJob struct {
 	ID          string `json:"id"`
@@ -104,6 +113,7 @@ type Config struct {
 	Embedding      Embedding          `json:"embedding"`      // 向量化通道（记忆语义检索）
 	Memory         Memory             `json:"memory"`         // 记忆术设置
 	Voice          Voice              `json:"voice"`          // 语音通道（说话 / 听写）
+	Persona        Persona            `json:"persona"`        // 人设文件（Markdown 进系统提示）
 }
 
 // 记忆检索的权重档位（非法值一律回落到 balanced）
@@ -128,6 +138,7 @@ func Default() Config {
 			RecallMinScore: 0.35,
 			Namespace:      "default",
 		},
+		Persona: Persona{Enabled: true, Files: append([]string{}, persona.DefaultFiles...)},
 	}
 }
 
@@ -217,6 +228,23 @@ func (c *Config) normalize() {
 	if c.Memory.RecallMinScore <= 0 || c.Memory.RecallMinScore > 1 {
 		c.Memory.RecallMinScore = 0.35
 	}
+	// 人设：顺序与启停都在 Files 里（顺序 = 拼进系统提示的顺序）。
+	// 只做"清理"不做"补默认"：字段缺失时 Load 已用 Default 兜底，这里再补会把
+	// 用户刻意留空的清单又填回去。
+	if c.Persona.Files == nil {
+		c.Persona.Files = append([]string{}, persona.DefaultFiles...)
+	}
+	cleaned := make([]string, 0, len(c.Persona.Files))
+	seen := map[string]bool{}
+	for _, name := range c.Persona.Files {
+		name = strings.TrimSpace(name)
+		if !persona.Valid(name) || seen[name] {
+			continue // 非法文件名 / 重复项直接丢掉，别让它们躺在配置里装样子
+		}
+		seen[name] = true
+		cleaned = append(cleaned, name)
+	}
+	c.Persona.Files = cleaned
 	if c.Embedding.Protocol == "" {
 		c.Embedding.Protocol = "openai"
 	}

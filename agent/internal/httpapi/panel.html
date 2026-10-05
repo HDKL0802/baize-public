@@ -364,6 +364,7 @@ const S = {
   activity: null,                                // 活动快照（顶栏"现在在干什么" + 对话页卡片）
   memHits: null, memNote: "", memThreshold: 0,   // 记忆检索的最近一次结果与说明
   memNodes: null, memStale: 0,                   // 记忆树节点 + 摘要没跟上的天数
+  persona: null, personaEdit: null,              // 人设状态 + 正在编辑的文件
 };
 const CHAT_KEY = "bz_console_chat_v1";
 function loadChat() { try { S.chat = JSON.parse(localStorage.getItem(CHAT_KEY) || "[]") || []; } catch (e) { S.chat = []; } }
@@ -380,6 +381,7 @@ const PAGES = [
   { id: "tasks", name: "任务与审批", icon: "📋", title: "任务与审批", sub: "危险动作要人工放行后才真的执行", ep: "/api/tasks" },
   { id: "memory", name: "长期记忆", icon: "🧠", title: "长期记忆", sub: "任务结论自动落盘，动手前先检索", ep: "/api/agent/memory" },
   { id: "skills", name: "技能", icon: "📦", title: "技能", sub: "工作目录里的可复用技能包", ep: "/api/agent/state.skills" },
+  { id: "persona", name: "人设", icon: "🎭", title: "人设", sub: "一组 Markdown 文件，按顺序拼进系统提示；改完立即生效", ep: "/api/agent/persona" },
   { group: "配置" },
   { id: "models", name: "模型通道", icon: "✨", title: "模型通道", sub: "只认 OpenAI / Anthropic 两种协议", ep: "/api/agent/providers" },
   { id: "voice", name: "语音", icon: "🎙️", title: "语音", sub: "说得出话（合成）+ 听得懂话（听写），手机端按住说话走这里", ep: "/api/agent/voice" },
@@ -760,6 +762,57 @@ function pageSkills() {
   return h + "</div>";
 }
 
+/* 人设：一组 Markdown 文件按顺序拼进系统提示（QwenPaw 人设机制的 Go 版） */
+function pagePersona() {
+  const p = S.persona || {};
+  const files = p.files || [];
+  const ed = S.personaEdit;
+  let h = '<div class="card"><header><h2>人设</h2><span class="ep mono">/api/agent/persona</span>' +
+    '<span class="pill" style="margin-left:auto"><i class="dot' + (p.enabled ? " ok" : "") + '"></i>' +
+    (p.enabled ? "已启用" : "已停用") + '</span>' +
+    '<button class="btn sm" id="btn-pmaster" style="margin-left:8px">' + (p.enabled ? "停用" : "启用") + '</button></header>' +
+    '<p class="desc">人设决定白泽"是谁、按什么规矩办事"，每次运行整篇进系统提示（顺序 = 拼接顺序）。' +
+    '改完保存即生效，不用重启。目录：<code>' + esc(p.dir || "") + '</code></p>';
+  if (!files.length) h += '<div class="empty">还没有人设文件（下面新建一个，或点「新建」后保存）</div>';
+  else {
+    h += '<table><thead><tr><th>文件</th><th class="nowrap">状态</th><th class="nowrap">预览</th><th class="nowrap">token</th><th class="nowrap">操作</th></tr></thead><tbody>';
+    files.forEach((f) => {
+      h += '<tr><td class="cell-title mono">' + esc(f.name) + (f.builtin ? '<span class="tag">模板</span>' : "") + "</td>" +
+        '<td class="nowrap">' + (f.enabled ? '<span class="tag ok">加载中</span>' : '<span class="tag">未启用</span>') +
+        (f.exists ? "" : '<span class="tag err">文件缺失</span>') + "</td>" +
+        '<td class="cell-sub">' + esc(f.preview || "") + "</td>" +
+        '<td class="nowrap cell-sub">' + (f.tokens || 0) + "</td>" +
+        '<td class="nowrap">' +
+        '<button class="btn sm" data-pedit="' + esc(f.name) + '">编辑</button> ' +
+        '<button class="btn sm" data-ptoggle="' + esc(f.name) + '">' + (f.enabled ? "停用" : "启用") + "</button> " +
+        (f.builtin ? '<button class="btn sm" data-preset="' + esc(f.name) + '">恢复默认</button> ' : "") +
+        '<button class="btn sm danger" data-parch="' + esc(f.name) + '">归档</button></td></tr>';
+    });
+    h += "</tbody></table>";
+  }
+  h += '<div class="pad" style="border-top:1px solid var(--app-border-subtle)"><div class="row">' +
+    '<input type="text" id="p-newname" placeholder="新文件名（如 RULES.md）" style="width:220px">' +
+    '<button class="btn" id="btn-pnew">新建</button>' +
+    '<span class="cell-sub">新建的文件默认不启用，需要时再打开开关</span></div></div></div>';
+
+  // 编辑器：点「编辑」或「新建」后出现
+  h += '<div class="card"><header><h2>' + (ed ? "编辑：" + esc(ed.name) : "编辑人设文件") + '</h2>' +
+    '<span class="ep mono">POST /api/agent/persona</span></header><div class="pad">';
+  if (!ed) h += '<div class="empty">点上面任意文件的「编辑」，或新建一个</div>';
+  else {
+    h += '<textarea id="p-content" class="mono" style="min-height:300px;width:100%" placeholder="Markdown 正文…">' + esc(ed.content) + "</textarea>" +
+      '<div class="row" style="margin-top:8px"><button class="btn primary" id="btn-psave">保存</button>' +
+      '<button class="btn" id="btn-pcancel">取消</button>' +
+      '<span class="cell-sub">支持 front-matter（会被自动去掉）；心跳段用 &lt;!-- heartbeat:start/end --&gt; 包起来</span></div>';
+  }
+  h += "</div></div>";
+
+  // 拼装预览：白泽实际读到的开头
+  h += '<div class="card"><header><h2>拼装预览</h2><span class="ep mono">' + ((p.tokens || 0) + " token 估算") + '</span></header>' +
+    '<pre class="logbox" style="max-height:320px">' + esc(p.promptPreview || (p.enabled ? "（没有任何启用的文件，人设不注入）" : "（人设已停用，不注入）")) + "</pre></div>";
+  return h;
+}
+
 function pageModels() {
   const ps = (S.agent && S.agent.providers) || [];
   let h = '<div class="card"><header><h2>模型通道</h2><span class="ep mono">/api/agent/providers</span></header>' +
@@ -1060,7 +1113,7 @@ async function pollActivity() {
 /* ---------------- 路由与事件 ---------------- */
 const RENDER = {
   agent: pageAgent, kb: pageKb, runs: pageRuns, devices: pageDevices, tasks: pageTasks, memory: pageMemory,
-  skills: pageSkills, models: pageModels, voice: pageVoice, mcp: pageMCP, backups: pageBackups, cron: pageCron,
+  skills: pageSkills, persona: pagePersona, models: pageModels, voice: pageVoice, mcp: pageMCP, backups: pageBackups, cron: pageCron,
   logs: pageLogs, settings: pageSettings,
 };
 
@@ -1275,6 +1328,52 @@ function bind() {
       await api("/api/agent/providers", { method: "POST", body: { action: "remove", name: b.dataset.pd } });
       toast("已删除"); load(true);
     }));
+  /* 人设：编辑 / 启停 / 恢复默认 / 归档 / 新建 / 总开关 */
+  document.querySelectorAll("[data-pedit]").forEach((b) => b.onclick = async () => {
+    try {
+      const r = await api("/api/agent/persona/file?name=" + encodeURIComponent(b.dataset.pedit));
+      S.personaEdit = { name: r.name, content: r.content };
+      render();
+    } catch (e) { toast("读取失败：" + e.message, true); }
+  });
+  document.querySelectorAll("[data-ptoggle]").forEach((b) => b.onclick = () => {
+    const f = ((S.persona && S.persona.files) || []).find((x) => x.name === b.dataset.ptoggle);
+    api("/api/agent/persona", { method: "POST", body: { action: f && f.enabled ? "disable" : "enable", name: b.dataset.ptoggle } })
+      .then((r) => { S.persona = r; toast(f && f.enabled ? "已停用" : "已启用"); render(); })
+      .catch((e) => toast("失败：" + e.message, true));
+  });
+  document.querySelectorAll("[data-preset]").forEach((b) => b.onclick = () =>
+    confirmBox("恢复默认模板", "会把「" + b.dataset.preset + "」的内容覆盖成内置模板，你的修改会丢。", "恢复默认", async () => {
+      S.persona = await api("/api/agent/persona", { method: "POST", body: { action: "reset", name: b.dataset.preset } });
+      S.personaEdit = null;
+      toast("已恢复默认"); render();
+    }));
+  document.querySelectorAll("[data-parch]").forEach((b) => b.onclick = () =>
+    confirmBox("归档人设文件", "「" + b.dataset.parch + "」会移进 .archive（不硬删），并从加载清单里移除。", "归档", async () => {
+      S.persona = await api("/api/agent/persona", { method: "POST", body: { action: "archive", name: b.dataset.parch } });
+      if (S.personaEdit && S.personaEdit.name === b.dataset.parch) S.personaEdit = null;
+      toast("已归档"); render();
+    }));
+  on("btn-pnew", () => {
+    const name = ($("p-newname").value || "").trim();
+    if (!name) { toast("先填文件名（如 RULES.md）", true); return; }
+    S.personaEdit = { name: name, content: "# " + name + "\n\n" };
+    render();
+  });
+  on("btn-pmaster", () =>
+    api("/api/agent/persona", { method: "POST", body: { action: "master", enabled: !(S.persona && S.persona.enabled) } })
+      .then((r) => { S.persona = r; toast(r.enabled ? "人设已启用" : "人设已停用"); render(); })
+      .catch((e) => toast("失败：" + e.message, true)));
+  on("btn-pcancel", () => { S.personaEdit = null; render(); });
+  on("btn-psave", async () => {
+    if (!S.personaEdit) return;
+    const content = $("p-content").value;
+    try {
+      S.persona = await api("/api/agent/persona", { method: "POST", body: { action: "save", name: S.personaEdit.name, content: content } });
+      S.personaEdit = null;
+      toast("已保存（立即生效）"); render();
+    } catch (e) { toast("保存失败：" + e.message, true); }
+  });
   document.querySelectorAll("[data-mre]").forEach((b) => b.onclick = () =>
     api("/api/agent/mcp", { method: "POST", body: { action: "reload", server: b.dataset.mre } })
       .then(() => { toast("已重载"); load(true); }).catch((e) => toast(e.message, true)));
@@ -1486,6 +1585,10 @@ async function load(silent) {
     if (S.page === "voice") {
       const v = await api("/api/agent/voice").catch(() => null);
       S.voice = v || S.voice;
+    }
+    if (S.page === "persona" && !S.personaEdit) {
+      const pp = await api("/api/agent/persona").catch(() => null);
+      S.persona = pp || S.persona;
     }
     render();
   } catch (e) {

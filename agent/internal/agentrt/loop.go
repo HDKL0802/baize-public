@@ -37,6 +37,9 @@ type Config struct {
 	MaxRetries  int    // 单次模型调用重试次数，默认 2
 	TokenBudget int    // 上下文预算，默认 8000
 	SystemExtra string
+	// Persona 人设文本（由 agentsvc 从人设文件拼好塞进来）：紧跟在身份行之后，
+	// 比 SystemExtra 更靠前 —— 人设是"你是谁、按什么规矩办事"，应当先于工具说明被读到。
+	Persona string
 	// Approve 危险操作的审批回调：返回 true 才执行；nil 表示没有审批通道（一律拒绝）
 	Approve func(tool string, args map[string]any) bool
 	// ApproveAllTools 审批松紧度「严」：不只危险操作，**每一次**工具调用都要人批。
@@ -342,10 +345,13 @@ func (r *Runner) chat(ctx context.Context, system string, messages []llm.Message
 	return llm.Response{}, retries, lastErr
 }
 
-// buildSystemPrompt 组装系统提示：角色 + 工作目录 + 工具 + 策略 + 相关记忆
+// buildSystemPrompt 组装系统提示：角色 + 人设 + 工作目录 + 工具 + 策略 + 相关记忆
 func (r *Runner) buildSystemPrompt(ctx context.Context, goal string) string {
 	var b strings.Builder
 	b.WriteString("你是白泽，一个跑在本机的私人智能体。目标：用尽量少的步骤把事情真正做完。\n")
+	if p := strings.TrimSpace(r.cfg.Persona); p != "" {
+		b.WriteString("\n" + p + "\n")
+	}
 	if r.cfg.Workspace != nil {
 		b.WriteString("工作目录：" + r.cfg.Workspace.Root() + "\n")
 	}

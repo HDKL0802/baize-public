@@ -628,3 +628,62 @@ func TestStartReturnsRunIDAndSerializes(t *testing.T) {
 		t.Fatalf("运行状态不对：%+v", runs[0])
 	}
 }
+
+/* ---------- 人设 ---------- */
+
+// 人设文件要真的进系统提示（热重载：改完立即生效，不用重启）；
+// 总开关关掉后同一份文件不能再生效；心跳段在心跳没启用时要从提示里消失。
+func TestPersonaInjectedAndHotReload(t *testing.T) {
+	f := newFakeLLM(t, func(map[string]any) map[string]any { return sayBody("好") })
+	s := newService(t, f, nil)
+
+	// 首次初始化应自动落模板
+	lib := s.Persona()
+	if lib == nil {
+		t.Fatal("人设库没建起来")
+	}
+	if _, err := os.Stat(filepath.Join(lib.Dir(), "SOUL.md")); err != nil {
+		t.Fatalf("首次应生成默认人设模板：%v", err)
+	}
+
+	// 改文件 → 立即生效（不重启）
+	if err := lib.Write("SOUL.md", "灵魂：说话像老友，先给结论。\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.Write("AGENTS.md", "工作方式：先列清单。\n\n<!-- heartbeat:start -->\n心跳专属规则\n<!-- heartbeat:end -->\n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Run(context.Background(), "随便", "chat", "loose"); err != nil {
+		t.Fatalf("运行失败：%v", err)
+	}
+	f.mu.Lock()
+	joined, _ := json.Marshal(f.bodies[len(f.bodies)-1]["messages"])
+	f.mu.Unlock()
+	text := string(joined)
+	if !strings.Contains(text, "说话像老友，先给结论") || !strings.Contains(text, "先列清单") {
+		t.Fatalf("系统提示里应带上人设文件内容：%s", text)
+	}
+	// 心跳没启用 → 心跳段整体不进提示
+	if strings.Contains(text, "心跳专属规则") {
+		t.Fatalf("心跳未启用时不该注入心跳段：%s", text)
+	}
+
+	// 总开关关掉 → 人设不再注入（身份行还在）
+	cfg := s.Config()
+	cfg.Persona.Enabled = false
+	if err := s.SaveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Run(context.Background(), "随便", "chat", "loose"); err != nil {
+		t.Fatalf("运行失败：%v", err)
+	}
+	f.mu.Lock()
+	joined2, _ := json.Marshal(f.bodies[len(f.bodies)-1]["messages"])
+	f.mu.Unlock()
+	if strings.Contains(string(joined2), "说话像老友，先给结论") {
+		t.Fatalf("总开关关掉后不该注入人设：%s", string(joined2))
+	}
+	if !strings.Contains(string(joined2), "你是白泽") {
+		t.Fatal("身份行不该被人设开关影响")
+	}
+}

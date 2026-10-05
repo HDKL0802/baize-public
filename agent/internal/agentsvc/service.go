@@ -23,6 +23,7 @@ import (
 	"baize/internal/llm"
 	"baize/internal/mcp"
 	"baize/internal/memory"
+	"baize/internal/persona"
 	"baize/internal/skills"
 	"baize/internal/tools"
 )
@@ -116,6 +117,7 @@ type Service struct {
 	ws       *tools.Workspace
 	mcp      *mcp.Manager
 	kbs      *kb.Service
+	persona  *persona.Library
 
 	hooks     *hooks.Bus
 	approvals *ApprovalQueue
@@ -189,11 +191,19 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 		runs.Close()
 		return nil, err
 	}
+	// 人设文件：首次初始化落一份默认模板（之后用户改/删都不再自动重建）
+	personaLib := persona.New(filepath.Join(dataDir, "persona"))
+	if created, err := personaLib.EnsureTemplates(); err != nil {
+		lg.Warn("人设模板初始化失败（不影响运行）", "err", err)
+	} else if created {
+		lg.Info("已创建默认人设文件", "dir", personaLib.Dir())
+	}
 
 	s := &Service{
 		dataDir: dataDir, lg: lg, cfg: cfg,
 		mem: mem, runs: runs, ck: ck, ws: ws, skills: lib, skillMgr: skills.NewManager(lib), kbs: kbs,
-		mcp:   mcp.NewManager(lg, cfg.AllowRemote),
+		persona: personaLib,
+		mcp:     mcp.NewManager(lg, cfg.AllowRemote),
 		hooks: hooks.NewBus(), approvals: NewApprovalQueue(200),
 		activity:  activity.New(50),
 		schedStop: make(chan struct{}),
@@ -264,6 +274,13 @@ func (s *Service) SkillManager() *skills.Manager {
 
 // Jobs 定时任务状态（含下次触发时间与表达式解析错误），供 /api/agent/cron 用
 func (s *Service) Jobs() []JobState { return s.jobStates() }
+
+// Persona 人设库（控制台/桌面端管理人设文件用）
+func (s *Service) Persona() *persona.Library {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.persona
+}
 
 // Reload 重新读配置、重建通道与技能库
 func (s *Service) Reload() error {
@@ -602,6 +619,7 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 	cfg := s.cfg
 	lib := s.skills
 	skillMgr := s.skillMgr
+	personaLib := s.persona
 	s.mu.RUnlock()
 
 	provider, err := router.Pick(recipe)
@@ -657,13 +675,19 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 		s.lg.Info("已注入自动召回的记忆", "tokens", tokens)
 	}
 
+	// 人设：现读文件拼好（热重载），紧跟身份行进系统提示
+	personaText := ""
+	if cfg.Persona.Enabled && personaLib != nil {
+		personaText = personaLib.Build(cfg.Persona.Files, false)
+	}
+
 	runner := agentrt.New(agentrt.Config{
 		Provider: provider, Fallbacks: router.Fallbacks(),
 		Tools: reg, Memory: s.mem, Hooks: s.hooks, Store: s.runs,
 		Workspace: s.ws, Checkpoints: s.ck, Summarizer: memory.NewLLMSummarizer(provider),
 		Logger: s.lg, Recipe: recipe, SessionID: "backend", RunID: runID,
 		MaxSteps: cfg.MaxSteps, MaxRetries: cfg.MaxRetries, TokenBudget: cfg.TokenBudget,
-		SystemExtra: sysExtra,
+		SystemExtra: sysExtra, Persona: personaText,
 		Approve:     approver, ApproveAllTools: allTools, CheckpointBeforeWrite: true,
 	})
 

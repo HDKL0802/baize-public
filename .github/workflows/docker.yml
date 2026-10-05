@@ -15,6 +15,15 @@ name: docker
 on:
   push:
     branches: [main]
+    # 只有会影响镜像的改动才触发：文档 / 桌面端 / 手机端 / 小工具都不进后端镜像，
+    # 改它们就别白白重建一次（tag 触发的路径过滤不生效，backend-v* 仍会跑）。
+    paths-ignore:
+      - "**.md"
+      - "desktop/**"
+      - "android-app/**"
+      - "todo-app/**"
+      - "cli/**"
+      - "tools/**"
     tags: ["backend-v*"]
   workflow_dispatch:
     inputs:

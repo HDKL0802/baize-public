@@ -217,7 +217,7 @@ window.Vault = (function () {
         const head = document.createElement('div');
         head.className = 'vault-group-head' + (g ? '' : ' none');
         head.innerHTML = g
-          ? `<span>🏷 ${esc(g)}</span><span>${arr.length} 个账号</span>`
+          ? `<span>${esc(g)}</span><span>${arr.length} 个账号</span>`
           : `<span>未分组</span><span>${arr.length} 个账号</span>`;
         box.appendChild(head);
         arr.forEach(v => box.appendChild(card(v)));
@@ -241,7 +241,7 @@ window.Vault = (function () {
             <div class="vc-sub">${v.url ? esc(v.url) : srcLabel}</div>
           </div>
         </div>
-        ${v.group ? `<span class="vc-group">🏷 ${esc(v.group)}</span>` : ''}
+        ${v.group ? `<span class="vc-group">${esc(v.group)}</span>` : ''}
       </div>
       <div class="vc-field">
         <div class="vc-field-main">
@@ -260,7 +260,7 @@ window.Vault = (function () {
       </div>
       ${his.length ? `
       <div class="vc-history">
-        <button class="vc-his-toggle" data-his="${v.id}">🕘 历史密码 ${his.length} 个 ▾</button>
+        <button class="vc-his-toggle" data-his="${v.id}">历史密码 ${his.length} 个 ▾</button>
         <div class="vc-his-list" hidden>
           ${his.map((h, i) => `
             <div class="vc-his-row">
@@ -287,7 +287,7 @@ window.Vault = (function () {
     if (tog) tog.addEventListener('click', () => {
       const box = el.querySelector('.vc-his-list');
       box.hidden = !box.hidden;
-      tog.textContent = `🕘 历史密码 ${his.length} 个 ` + (box.hidden ? '▾' : '▴');
+      tog.textContent = `历史密码 ${his.length} 个 ` + (box.hidden ? '▾' : '▴');
     });
     el.querySelectorAll('[data-hshow]').forEach(sp => sp.addEventListener('click', () => {
       const h = his[Number(sp.dataset.hshow.split(':')[1])];
@@ -453,17 +453,17 @@ window.Vault = (function () {
     tip.onclick = null;
     if (!Store.hasMasterPwd()) {
       tip.className = 'vault-lock-tip';
-      tip.innerHTML = '🔓 未设置主密码，凭据将以明文存储。点此设为 AES-GCM 加密。';
+      tip.innerHTML = '未设置主密码，凭据将以明文存储。点此设为 AES-GCM 加密。';
       tip.style.display = 'block';
       tip.onclick = () => window.dispatchEvent(new CustomEvent('bz:toggleMasterPwd'));
     } else if (Store.isVaultLocked()) {
       tip.className = 'vault-lock-tip';
-      tip.innerHTML = '🔒 密码本已锁定（顶栏 🔒 或点这里输入主密码解锁）';
+      tip.innerHTML = '密码本已锁定（点这里输入主密码解锁）';
       tip.style.display = 'block';
       tip.onclick = () => requireUnlock();
     } else {
       tip.className = 'vault-lock-tip safe';
-      tip.innerHTML = '🔐 已解锁 · 凭据以 AES-GCM 加密存储于本机（点此可重新锁定）';
+      tip.innerHTML = '已解锁 · 凭据以 AES-GCM 加密存储于本机（点此可重新锁定）';
       tip.style.display = 'block';
       tip.onclick = () => lockVault();
     }

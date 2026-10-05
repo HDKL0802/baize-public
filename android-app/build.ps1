@@ -44,13 +44,13 @@ $SRC     = $PSScriptRoot                       # source project (path may contai
 $WEBAPP  = Join-Path $SRC "..\todo-app"        # web frontend
 $KERNEL  = Join-Path $SRC "..\core\bin\bzcore-android-arm64"   # Go kernel (linux/arm64)
 $STAGE   = "C:\bz-apk-build"                   # ASCII-only staging dir for the toolchain
-$OUTNAME = "bz-todo-v0.10.11.apk"
+$OUTNAME = "bz-todo-v0.10.12.apk"
 
 $PKG      = "com.baize.todo"
 $MIN_SDK  = 24
 $TARGET   = 34
-$VER_CODE = 1011
-$VER_NAME = "0.10.11"
+$VER_CODE = 1012
+$VER_NAME = "0.10.12"
 
 Write-Host "=== 0. stage clean ===" -ForegroundColor Cyan
 if (Test-Path $STAGE) { Remove-Item $STAGE -Recurse -Force }

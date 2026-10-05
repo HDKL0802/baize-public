@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#0B0F19">
+<meta name="theme-color" content="#0b0e13">
 <title>白泽 · Baize</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -53,7 +53,7 @@
       <button class="btn primary" id="btnQuickNew">＋ 新建</button>
     </div>
 
-    <p class="hint">💡 左右滑动屏幕可在这两个视图间快速切换；时间越近的任务排在越前面。</p>
+    <p class="hint">左右滑动屏幕可在这两个视图间快速切换；时间越近的任务排在越前面。</p>
 
     <div id="todoList" class="todo-list"></div>
     <div class="empty-tip" id="todoEmpty" hidden>暂无待办<br>输入框回车，或点「＋ 新建」</div>
@@ -264,7 +264,7 @@
     </div>
 
     <div class="settings-group" id="aiGroup">
-      <h3 class="group-title">🤖 AI 智能体</h3>
+      <h3 class="group-title">AI 智能体</h3>
       <p class="group-desc">只走 OpenAI 兼容 / Anthropic 两家协议，BaseURL 与模型全部自己填；DeepSeek、AGNES 这类选「OpenAI 兼容」即可。最多存 5 个模型，随时切换；改动即时生效。</p>
 
       <div class="ai-status" id="aiStatus"></div>
@@ -293,7 +293,7 @@
 
     </div>
     <div class="settings-group">
-      <h3 class="group-title">🗂 Markdown 格式数据中心（兼容 Obsidian）</h3>
+      <h3 class="group-title">Markdown 格式数据中心（兼容 Obsidian）</h3>
       <p class="group-desc">非私有格式！所有待办与密码可一键导出为标准 Markdown，即便应用异常也能直接用 Obsidian 打开无缝使用。</p>
       <div class="field-row" style="gap:10px">
         <button class="btn primary" id="btnExport" style="flex:1">导出 Markdown</button>
@@ -302,7 +302,7 @@
     </div>
 
     <div class="settings-group">
-      <h3 class="group-title">🔌 跨端（把这台手机接进白泽后端）</h3>
+      <h3 class="group-title">跨端（把这台手机接进白泽后端）</h3>
       <p class="group-desc">开启后，App 会在本机拉起 Go 内核（bzcore）并以「设备」身份注册到白泽后端。<b>连上之后，待办、密码本、附件文件的正本都在 NAS 上的白泽知识库</b>：手机只留一份待办缓存（断网还能看见列表）与附件缩略图，密码和原始文件一律不在手机上留（打开附件时才临时取回，关掉预览就删）。地址填跑后端那台电脑/NAS 的局域网 IP，令牌在后端数据目录的 token 文件里；后端要用 <b>--addr 0.0.0.0:8787</b> 启动，手机才连得上。</p>
       <div class="field"><label>后端地址</label><input id="dwServer" placeholder="http://192.168.1.100:8787"></div>
       <div class="field"><label>配对令牌</label><input id="dwToken" type="password" placeholder="留空 = 不改已存的令牌"></div>
@@ -316,7 +316,7 @@
     </div>
 
     <div class="settings-group">
-      <h3 class="group-title">🔔 通知与提醒</h3>
+      <h3 class="group-title">通知与提醒</h3>
       <div class="field-row"><span>待办到点提醒</span><button class="toggle" id="tglRemind"><span></span></button></div>
       <div class="field-row">
         <span>通知权限</span>
@@ -330,7 +330,7 @@
     </div>
 
     <div class="settings-group">
-      <h3 class="group-title">🧹 数据管理</h3>
+      <h3 class="group-title">数据管理</h3>
       <div class="field-row" style="gap:10px">
         <button class="btn ghost" id="btnLoadSample" style="flex:1">恢复初始示例</button>
         <button class="btn danger-ghost" id="btnClearAll" style="flex:1">清空全部数据</button>
@@ -339,7 +339,7 @@
 
     <div class="settings-group">
       <h3 class="group-title">关于</h3>
-      <p class="desc">白泽 v0.10.11 —— 手机端是「白泽」的一个入口：底栏三个入口 = 对话（快捷方式）· 知识库 · 其他功能。知识库按 <b>主要 / 资源 / 配置</b> 三类收口：主要=待办 + 密码本，资源=附件 + 记忆，配置=API 服务（各模型站密钥）+ 模型审批 + 语音。语音这一块：对话里每条回复都能点 <b>🔊 朗读</b>，输入栏那个 <b>🎤</b> 是<b>按住说话</b>（松手出字、检查完再发）；音色、自动朗读、以及「真念一遍再听回来」的自检都在<b>其他功能 → 配置 → 语音</b>里。声音和听写都由后端那条独立的<b>语音通道</b>出（可以是阿里百炼的 qwen-tts + paraformer，也可以是任何 OpenAI 兼容的音频接口），手机上不留音频文件。连上白泽后端后，<b>正本（待办 + 密码本 + 附件文件 + 记忆）全部落在 NAS 的知识库上</b>：手机只留一份待办缓存和缩略图，密码与附件一律不在手机上留文件（打开附件时才临时取回，关掉就删）。记忆的语义搜索按「最低语义相似度」卡一道，不够相关的就不显示（并告诉你挡掉了几条），档位可在记忆页切换；记忆页还带「记忆树」（按天/周压出来的摘要，可手动重建）。对话里遇到要人工放行的危险操作（删除等），<b>直接在气泡里放行或驳回</b>，放行后白泽会接着把这次跑完——不用再跑去电脑。另提供 Go 版 CLI 供计算机侧使用。</p>
+      <p class="desc">白泽 v0.10.12 —— 手机端是「白泽」的一个入口：底栏三个入口 = 对话（快捷方式）· 知识库 · 其他功能。知识库按 <b>主要 / 资源 / 配置</b> 三类收口：主要=待办 + 密码本，资源=附件 + 记忆，配置=API 服务（各模型站密钥）+ 模型审批 + 语音。语音这一块：对话里每条回复都能点 <b>朗读</b>，输入栏那个 <b>麦克风</b> 是<b>按住说话</b>（松手出字、检查完再发）；音色、自动朗读、以及「真念一遍再听回来」的自检都在<b>其他功能 → 配置 → 语音</b>里。声音和听写都由后端那条独立的<b>语音通道</b>出（可以是阿里百炼的 qwen-tts + paraformer，也可以是任何 OpenAI 兼容的音频接口），手机上不留音频文件。连上白泽后端后，<b>正本（待办 + 密码本 + 附件文件 + 记忆）全部落在 NAS 的知识库上</b>：手机只留一份待办缓存和缩略图，密码与附件一律不在手机上留文件（打开附件时才临时取回，关掉就删）。记忆的语义搜索按「最低语义相似度」卡一道，不够相关的就不显示（并告诉你挡掉了几条），档位可在记忆页切换；记忆页还带「记忆树」（按天/周压出来的摘要，可手动重建）。对话里遇到要人工放行的危险操作（删除等），<b>直接在气泡里放行或驳回</b>，放行后白泽会接着把这次跑完——不用再跑去电脑。另提供 Go 版 CLI 供计算机侧使用。</p>
       <p class="desc" id="envInfo"></p>
     </div>
   </section>
@@ -528,7 +528,7 @@
       <label class="f-label">密码凭据<span class="req">*</span></label>
       <div style="display:flex;gap:8px">
         <input class="f-input" id="vPassword" type="text" placeholder="密码" style="flex:1">
-        <button class="btn ghost" id="vGen" style="flex:none">⚡ 生成强密码</button>
+        <button class="btn ghost" id="vGen" style="flex:none">生成强密码</button>
       </div>
       <div class="f-note" id="vHisNote" hidden></div>
     </div>
@@ -600,7 +600,7 @@
       </div>
     </div>
 
-    <button class="btn-block" id="ppStart">⚡ 开始自动智能排期</button>
+    <button class="btn-block" id="ppStart">开始自动智能排期</button>
 
     <div class="plan-result" id="ppResult" hidden>
       <h4>建议执行顺序</h4>

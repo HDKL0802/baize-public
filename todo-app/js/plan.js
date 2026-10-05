@@ -102,7 +102,7 @@ window.Plan = (function () {
         const rank = i + 1;
         let reason = x.why;
         if (x.depth > 0) reason = `第 ${x.depth} 层（需先完成前置） · ` + reason;
-        if (cyclic) reason += ' · ⚠ 检测到依赖闭环';
+        if (cyclic) reason += ' · 检测到依赖闭环';
         return { t: x.t, score: x.score, rank, why: reason };
       });
   }

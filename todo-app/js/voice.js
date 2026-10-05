@@ -53,8 +53,8 @@ window.VzVoice = (function () {
   function isSpeaking() { return !!(audio && !audio.paused && !audio.ended); }
   function setBtn(btn, on) {
     if (!btn) return;
-    if (!btn.dataset.idle) btn.dataset.idle = btn.textContent || '🔊 朗读';
-    btn.textContent = on ? (btn.dataset.busy || '⏹ 停止') : btn.dataset.idle;
+    if (!btn.dataset.idle) btn.dataset.idle = btn.textContent || '朗读';
+    btn.textContent = on ? (btn.dataset.busy || '停止') : btn.dataset.idle;
     btn.classList.toggle('speaking', !!on);
   }
 
@@ -294,8 +294,8 @@ window.VzVoice = (function () {
   /** 在气泡的按钮行里加一个「朗读」（chat.js 渲染气泡时调用，传选择器结果） */
   function mountSpeakBtn(btn, text) {
     if (!btn) return;
-    btn.textContent = '🔊 朗读';
-    btn.dataset.busy = '⏹ 停止';
+    btn.textContent = '朗读';
+    btn.dataset.busy = '停止';
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       speak(text, { btn: btn });

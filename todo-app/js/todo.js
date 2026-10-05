@@ -63,12 +63,12 @@ window.Todo = (function () {
     const meta = [];
     if (t.category) meta.push(`<span class="tag cat">${esc(t.category)}</span>`);
     meta.push(`<span class="tag p-${t.priority}">${PRI[t.priority] || t.priority}</span>`);
-    if (t.due) meta.push(`<span class="tag due">🕐 ${UI_.dueLabel(t.due)}</span>`);
-    if (t.weekly) meta.push(`<span class="tag weekly">🔁 每周提醒</span>`);
-    if (t.estimate) meta.push(`<span class="tag">⏱ ${t.estimate}m</span>`);
+    if (t.due) meta.push(`<span class="tag due">${UI_.dueLabel(t.due)}</span>`);
+    if (t.weekly) meta.push(`<span class="tag weekly">每周提醒</span>`);
+    if (t.estimate) meta.push(`<span class="tag">${t.estimate}m</span>`);
     if ((t.deps || []).length) meta.push(`<span class="tag dep">依赖 ${t.deps.length} 项</span>`);
     const atts = Array.isArray(t.atts) ? t.atts : [];
-    if (atts.length) meta.push(`<span class="tag att">📎 附件 ${atts.length}</span>`);
+    if (atts.length) meta.push(`<span class="tag att">附件 ${atts.length}</span>`);
     if (t.status === 'doing') meta.push('<span class="tag state">进行中</span>');
     if (t.status === 'done') meta.push('<span class="tag state done">已完成</span>');
     if (t.owner === 'agent' && t.status !== 'done' && t.status !== 'cancelled') {
@@ -87,7 +87,7 @@ window.Todo = (function () {
       ${atts.length ? `<div class="tc-atts">${atts.slice(0, 3).map((a, i) =>
         a.kind === 'image' && a.thumb
           ? `<img class="tc-att-thumb" data-att="${t.id}:${i}" src="${a.thumb}" alt="">`
-          : `<span class="tc-att-file" data-att="${t.id}:${i}">📎 ${esc(a.name || '文件')}</span>`
+          : `<span class="tc-att-file" data-att="${t.id}:${i}">${window.Icon.svg('file')} ${esc(a.name || '文件')}</span>`
       ).join('')}${atts.length > 3 ? `<span class="tc-att-more">+${atts.length - 3}</span>` : ''}</div>` : ''}`;
 
     el.addEventListener('click', (e) => {
@@ -162,7 +162,7 @@ window.Todo = (function () {
         .forEach(([k, arr]) => {
           const head = document.createElement('div');
           head.className = 'group-head';
-          head.innerHTML = `<span>${k === '未排期' ? '📌 未排期' : '🗓 ' + fmtDay(new Date(k))}</span><span>${arr.length} 项</span>`;
+          head.innerHTML = `<span>${k === '未排期' ? '未排期' : fmtDay(new Date(k))}</span><span>${arr.length} 项</span>`;
           box.appendChild(head);
           sortItems(arr).forEach(t => box.appendChild(card(t)));
         });
@@ -329,9 +329,9 @@ window.Todo = (function () {
   function pickAtt() {
     if ((draft.atts || []).length >= MAX_ATT) { UI_.toast('一条待办最多 ' + MAX_ATT + ' 个附件'); return; }
     UI_.actionSheet([
-      { label: '📷 拍照', onTap: () => chooseAtt('camera') },
-      { label: '🖼 从相册选图', onTap: () => chooseAtt('album') },
-      { label: '📎 选文件（pdf / docx / zip…）', onTap: () => chooseAtt('file') },
+      { label: '拍照', onTap: () => chooseAtt('camera') },
+      { label: '从相册选图', onTap: () => chooseAtt('album') },
+      { label: '选文件（pdf / docx / zip…）', onTap: () => chooseAtt('file') },
       { label: '取消', cancel: true },
     ]);
   }
@@ -442,7 +442,7 @@ window.Todo = (function () {
       el.className = 'att-item';
       el.innerHTML = (a.kind === 'image' && a.thumb)
         ? `<img src="${a.thumb}" alt="">`
-        : `<div class="att-item-file">📎<br>${esc(a.name)}</div>`;
+        : `<div class="att-item-file">${window.Icon.svg('file')}<br>${esc(a.name)}</div>`;
       const del = document.createElement('div');
       del.className = 'att-del';
       del.textContent = '×';
@@ -510,7 +510,7 @@ window.Todo = (function () {
     } else {
       const cardEl = document.createElement('div');
       cardEl.className = 'att-file-card';
-      cardEl.innerHTML = `<div class="att-file-icon">📎</div>
+      cardEl.innerHTML = `<div class="att-file-icon">${window.Icon.svg('file')}</div>
         <div class="att-file-name">${esc(a.name || '附件')}</div>
         <div class="att-file-sub">${fmtSize(a.size)}${a.mime ? ' · ' + esc(a.mime) : ''}${a.nasId ? ' · 存在 NAS' : ''}</div>`;
       body.appendChild(cardEl);

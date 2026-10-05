@@ -157,7 +157,7 @@ window.Settings = (function () {
       const out = await AI.test();
       // 「通了但没正文」是提醒不是通过，别用绿勾糊过去
       const warn = /^接口连通，但/.test(out);
-      res.textContent = (warn ? '⚠ ' : '✓ ') + out;
+      res.textContent = (warn ? '' : '✓ ') + out;
       res.className = 'test-result ' + (warn ? '' : 'ok');
     } catch (e) {
       res.textContent = '✗ ' + e.message;

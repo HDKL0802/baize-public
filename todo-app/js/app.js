@@ -1,5 +1,41 @@
 /* 白泽待办中心 - UI 公共层（tab 路由 / 弹层 / 操作单 / toast） */
 'use strict';
+
+/* 线性图标（24×24，stroke=currentColor）—— 与桌面端 shell.js 的 NAV_ICONS 同一套。
+   emoji 在深色界面里又跳又廉价，统一换成这套。用法：Icon.svg('chat') 或 Icon.svg('file', 'ic2')。 */
+window.Icon = (function () {
+  const P = {
+    chat: '<path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v6a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 12.5z"/>',
+    kb: '<path d="M12 6.6C10.4 5.1 7.9 4.5 4 4.5v13c3.9 0 6.4.6 8 2.1 1.6-1.5 4.1-2.1 8-2.1v-13c-3.9 0-6.4.6-8 2.1z"/><path d="M12 6.6v13"/>',
+    devices: '<rect x="3" y="4.5" width="18" height="11.5" rx="1.5"/><path d="M9 20h6M12 16v4"/>',
+    tasks: '<rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9.5 4.5h5v2.5h-5z"/><path d="m9.5 12.5 2 2 3.5-4"/>',
+    memory: '<rect x="7" y="7" width="10" height="10" rx="1.6"/><path d="M10 3.5v3.5M14 3.5v3.5M10 17v3.5M14 17v3.5M3.5 10h3.5M3.5 14h3.5M17 10h3.5M17 14h3.5"/>',
+    skills: '<path d="M12 3.2l2 5.3 5.3 2-5.3 2-2 5.3-2-5.3-5.3-2 5.3-2z"/><path d="M18.5 16.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+    cron: '<circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3.2 2"/>',
+    mcp: '<path d="M9 3.5v4M15 3.5v4"/><path d="M6.5 7.5h11v3.5a5.5 5.5 0 0 1-11 0z"/><path d="M12 16.5v4"/>',
+    backups: '<rect x="3.5" y="4.5" width="17" height="4.6" rx="1.4"/><path d="M5.5 9.1V19a1.4 1.4 0 0 0 1.4 1.4h10.2A1.4 1.4 0 0 0 18.5 19V9.1"/><path d="M10 13h4"/>',
+    runs: '<path d="M8.5 6.5h11M8.5 12h11M8.5 17.5h7"/><path d="M4 6.5h.01M4 12h.01M4 17.5h.01"/>',
+    logs: '<path d="M6 3.5h8l4 4V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"/><path d="M14 3.5V8h4"/><path d="M8 12h7M8 15.5h5"/>',
+    settings: '<circle cx="12" cy="12" r="3.2"/><path d="M12 3.4v2.3M12 18.3v2.3M3.4 12h2.3M18.3 12h2.3M5.9 5.9l1.6 1.6M16.5 16.5l1.6 1.6M18.1 5.9l-1.6 1.6M7.5 16.5l-1.6 1.6"/>',
+    voice: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21M8.5 21h7"/>',
+    approve: '<path d="M12 3.4l7 2.9v5.3c0 4.3-2.9 7.6-7 8.9-4.1-1.3-7-4.6-7-8.9V6.3z"/><path d="m9.3 11.8 1.9 1.9 3.6-3.9"/>',
+    apikeys: '<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l2.3 2.3M14.7 8.3 17 10.6"/>',
+    file: '<path d="M20 11.5 12.6 19a4.2 4.2 0 0 1-6-6l7.4-7.4a2.8 2.8 0 0 1 4 4L10.5 17a1.4 1.4 0 0 1-2-2l6.6-6.6"/>',
+    image: '<rect x="3" y="4.5" width="18" height="15" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="m4 17 5-5 4 4 3-3 4 4"/>',
+    camera: '<path d="M4 8.5h3l1.4-2h7.2L17 8.5h3a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.2"/>',
+    magic: '<path d="M5 19 15.5 8.5"/><path d="M13.5 6.5 17 10"/><path d="M18 3.5v3M19.5 5h-3M6 12.6v2.4M7.2 13.8H4.8"/>',
+    speak: '<path d="M4 9.5h3l4-3.5v12l-4-3.5H4z"/><path d="M14.5 9a4 4 0 0 1 0 6"/><path d="M17 6.8a7 7 0 0 1 0 10.4"/>',
+    warn: '<path d="M12 4.2 21 19.5H3z"/><path d="M12 10v4.2M12 17.2h.01"/>',
+  };
+  function svg(id, cls) {
+    const p = P[id];
+    if (!p) return '';
+    return '<svg class="' + (cls || 'ic') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + '</svg>';
+  }
+  return { svg, has: (id) => !!P[id] };
+})();
+
 window.UI = (function () {
   function $(id) { return document.getElementById(id); }
 

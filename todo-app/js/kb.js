@@ -101,7 +101,7 @@ window.KBExt = (function () {
     el.innerHTML = `
       <div class="kb-head-row">
         <div class="vc-site">
-          <div class="vc-icon">${f.kind === 'image' ? '🖼' : '📎'}</div>
+          <div class="vc-icon">${window.Icon.svg(f.kind === 'image' ? 'image' : 'file')}</div>
           <div style="min-width:0">
             <div class="vc-title">${esc(f.name || '附件')}</div>
             <div class="vc-sub">${fmtSize(f.size)} · ${fmtTime(f.at)}${f.refs ? ' · 被引用 ' + f.refs + ' 处' : ''}</div>
@@ -190,9 +190,9 @@ window.KBExt = (function () {
       return;
     }
     UI.actionSheet([
-      { label: '📷 拍照', onTap: () => nb.pickKbAttachment('camera') },
-      { label: '🖼 从相册选图', onTap: () => nb.pickKbAttachment('album') },
-      { label: '📎 选文件（pdf / docx / zip…）', onTap: () => nb.pickKbAttachment('file') },
+      { label: '拍照', onTap: () => nb.pickKbAttachment('camera') },
+      { label: '从相册选图', onTap: () => nb.pickKbAttachment('album') },
+      { label: '选文件（pdf / docx / zip…）', onTap: () => nb.pickKbAttachment('file') },
       { label: '取消', cancel: true },
     ]);
   }

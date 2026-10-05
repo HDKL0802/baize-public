@@ -57,29 +57,29 @@ window.More = (function () {
   const GROUPS = [
     {
       name: '主要', items: [
-        { id: 'chat', icon: '💬', name: '对话', desc: '跟白泽智能体说话，一句话派活', go: () => UI.switchTab('view-baize') },
-        { id: 'kb', icon: '📚', name: '知识库', desc: '待办 / 密码本 / 附件 / 记忆的正本', go: () => UI.switchTab('view-kb') },
+        { id: 'chat', icon: 'chat', name: '对话', desc: '跟白泽智能体说话，一句话派活', go: () => UI.switchTab('view-baize') },
+        { id: 'kb', icon: 'kb', name: '知识库', desc: '待办 / 密码本 / 附件 / 记忆的正本', go: () => UI.switchTab('view-kb') },
       ],
     },
     {
       name: '资源', items: [
-        { id: 'devices', icon: '🖥️', name: '设备', desc: '电脑 / 手机 / NAS 注册上来的执行端' },
-        { id: 'tasks', icon: '📋', name: '任务与审批', desc: '危险动作要人工放行后才真的执行' },
-        { id: 'memory', icon: '🧠', name: '长期记忆', desc: '任务结论自动落盘，动手前先检索', go: () => UI.switchTab('view-memory') },
-        { id: 'skills', icon: '📦', name: '技能', desc: '工作目录里的可复用技能包' },
-        { id: 'cron', icon: '⏰', name: '定时任务', desc: 'cron 表达式 + 一句目标' },
+        { id: 'devices', icon: 'devices', name: '设备', desc: '电脑 / 手机 / NAS 注册上来的执行端' },
+        { id: 'tasks', icon: 'tasks', name: '任务与审批', desc: '危险动作要人工放行后才真的执行' },
+        { id: 'memory', icon: 'memory', name: '长期记忆', desc: '任务结论自动落盘，动手前先检索', go: () => UI.switchTab('view-memory') },
+        { id: 'skills', icon: 'skills', name: '技能', desc: '工作目录里的可复用技能包' },
+        { id: 'cron', icon: 'cron', name: '定时任务', desc: 'cron 表达式 + 一句目标' },
       ],
     },
     {
       name: '配置', items: [
-        { id: 'approve', icon: '🛡️', name: '模型审批', desc: '危险动作人工放行 + 审批超时', go: () => UI.switchTab('view-approval') },
-        { id: 'apikeys', icon: '🔑', name: 'API 服务', desc: '各模型站的 API Key 与 baseURL', go: () => UI.switchTab('view-keys') },
-        { id: 'voice', icon: '🎙️', name: '语音', desc: '说得出话（朗读）+ 听得懂话（按住说话）' },
-        { id: 'mcp', icon: '🔌', name: 'MCP 服务', desc: '热插拔，加删重载都不用重启' },
-        { id: 'backups', icon: '🗄️', name: '备份与恢复', desc: 'zip + sha256 清单，恢复前自动打安全点' },
-        { id: 'runs', icon: '🧾', name: '运行记录', desc: '每次派活的步骤、工具链路与用量' },
-        { id: 'logs', icon: '📜', name: '日志', desc: '后端运行日志（倒序）' },
-        { id: 'settings', icon: '⚙️', name: '设置', desc: '跨端 / 通知 / 运行参数', go: () => UI.switchTab('view-settings') },
+        { id: 'approve', icon: 'approve', name: '模型审批', desc: '危险动作人工放行 + 审批超时', go: () => UI.switchTab('view-approval') },
+        { id: 'apikeys', icon: 'apikeys', name: 'API 服务', desc: '各模型站的 API Key 与 baseURL', go: () => UI.switchTab('view-keys') },
+        { id: 'voice', icon: 'voice', name: '语音', desc: '说得出话（朗读）+ 听得懂话（按住说话）' },
+        { id: 'mcp', icon: 'mcp', name: 'MCP 服务', desc: '热插拔，加删重载都不用重启' },
+        { id: 'backups', icon: 'backups', name: '备份与恢复', desc: 'zip + sha256 清单，恢复前自动打安全点' },
+        { id: 'runs', icon: 'runs', name: '运行记录', desc: '每次派活的步骤、工具链路与用量' },
+        { id: 'logs', icon: 'logs', name: '日志', desc: '后端运行日志（倒序）' },
+        { id: 'settings', icon: 'settings', name: '设置', desc: '跨端 / 通知 / 运行参数', go: () => UI.switchTab('view-settings') },
       ],
     },
   ];
@@ -98,7 +98,7 @@ window.More = (function () {
         b.className = 'link-item';
         b.innerHTML = `
           <div class="li-main">
-            <span class="li-icon">${it.icon}</span>
+            <span class="li-icon">${window.Icon.svg(it.icon)}</span>
             <div style="min-width:0">
               <div class="li-name">${esc(it.name)}</div>
               <div class="li-desc">${esc(it.desc)}</div>
@@ -463,7 +463,7 @@ window.More = (function () {
       const pre = document.createElement('pre');
       pre.className = 'logbox';
       pre.style.cssText = 'white-space:pre-wrap;word-break:break-all;font-size:11px;line-height:1.6;'
-        + 'background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px;margin:0';
+        + 'background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);padding:10px;margin:0';
       pre.textContent = lines.slice(-300).join('\n') || '（还没有日志）';
       body.appendChild(pre);
     },

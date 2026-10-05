@@ -93,7 +93,7 @@ window.Chat = (function () {
       el.className = 'attach-chip';
       el.innerHTML = (a.kind === 'image' && (a.thumb || a.dataUrl))
         ? `<img src="${a.thumb || a.dataUrl}" alt="">`
-        : `<div class="ac-file">📎<br>${esc(a.name)}</div>`;
+        : `<div class="ac-file">${window.Icon.svg('file')}<br>${esc(a.name)}</div>`;
       const del = document.createElement('div');
       del.className = 'ac-del';
       del.textContent = '×';
@@ -106,10 +106,10 @@ window.Chat = (function () {
 
   function openPlusMenu() {
     UI_.actionSheet([
-      { label: '📷 拍照', onTap: () => pickAttachment('camera') },
-      { label: '🖼 从相册选图', onTap: () => pickAttachment('album') },
-      { label: '📎 选文件（md / txt / pdf…）', onTap: () => pickAttachment('file') },
-      { label: '🪄 魔法命令（/help）', onTap: () => send('/help') },
+      { label: '拍照', onTap: () => pickAttachment('camera') },
+      { label: '从相册选图', onTap: () => pickAttachment('album') },
+      { label: '选文件（md / txt / pdf…）', onTap: () => pickAttachment('file') },
+      { label: '魔法命令（/help）', onTap: () => send('/help') },
       { label: '取消', cancel: true },
     ]);
   }
@@ -235,7 +235,7 @@ window.Chat = (function () {
     return atts.map(a => {
       const url = a.thumb || a.dataUrl;
       if (a.kind === 'image' && url) return `<img class="chat-img" src="${url}" alt="${esc(a.name)}">`;
-      return `<div class="chat-file-tag">📎 ${esc(a.name)} · ${fmtSize(a.size)}</div>`;
+      return `<div class="chat-file-tag">${window.Icon.svg('file')} ${esc(a.name)} · ${fmtSize(a.size)}</div>`;
     }).join('');
   }
 
@@ -587,7 +587,7 @@ window.Chat = (function () {
         ${approvalHtml(m)}
         ${m.traceOpen && m.trace ? traceHtml(m) : ''}
         <div class="chat-meta">${fmtTime(m.ts)}
-          ${m.text && !pending ? '<button class="chat-mini" data-speak="1">🔊 朗读</button>' : ''}
+          ${m.text && !pending ? '<button class="chat-mini" data-speak="1">朗读</button>' : ''}
           ${m.text ? '<button class="chat-mini" data-copy="1">复制</button>' : ''}
           ${m.runId ? `<button class="chat-mini" data-trace="1">${traceLabel(m)}</button>` : ''}
           ${err ? '<button class="chat-mini" data-retry="1">重试</button>' : ''}
@@ -729,7 +729,7 @@ window.Chat = (function () {
       return `<div class="chat-card done"><div class="cc-head">等待你放行 · 已处理</div>${items}</div>`;
     }
     return `<div class="chat-card">
-      <div class="cc-head">⚠ 有危险操作等你放行</div>
+      <div class="cc-head"><span style="color:var(--amber)">${window.Icon.svg('warn')}</span> 有危险操作等你放行</div>
       ${items}
       <div class="cc-actions">
         <button class="btn danger-ghost sm" data-appr-no="1">驳回</button>

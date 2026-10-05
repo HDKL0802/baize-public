@@ -7,45 +7,49 @@
 <!--
   白泽智能体 控制台（产品自带 UI）
   ─────────────────────────────────
-  视觉照 QwenPaw 自带的那个控制台做（third_party/qwenpaw/console/src/styles/tokens.css）：
-    · 暖灰底 #f9f8f4 + 白卡片 + 8px 圆角 + 1px 细边框 #eae8e7
-    · 主色 #ff7f16（hover #ff9d4d，文字态 mix 72% 黑）
-    · 状态色沿用 antd：成功 #52c41a / 警告 #faad14 / 错误 #ff4d4f
-    · 骨架：左 sidebar（分组导航 + 当前项暖色高亮） + 顶栏（动作/状态） + 主内容区
+  设计语言与桌面端 desktop/ui/shell.css 完全对齐（冷色暗色 + 1px 描边 + 2px 直角 + 天青点缀）：
+    · 近黑冷灰底 #0b0e13 / 面 #12161d + 1px 细边框 #232a35 + 2px 直角
+    · 主色天青 #38bdf8；状态色 绿 #34d399 / 琥珀 #fbbf24 / 红 #f87171
+    · 字体 Segoe UI / 微软雅黑，等宽 Consolas；图标一律线性 SVG（不用 emoji）
+    · 骨架：左 sidebar（分组导航 + 当前项青色高亮） + 顶栏（动作/状态） + 主内容区
   令牌由后端在响应时替换（handlePanel 会把 __BAIZE_TOKEN__ 换成真令牌），
   所以这个文件里所有接口调用都自带鉴权，不用手填。
 -->
 <style>
   :root {
-    --app-radius: 8px;
-    --app-bg: #f9f8f4;
-    --app-surface: #ffffff;
-    --app-surface-subtle: #faf9f7;
-    --app-shell-bg: #f9f8f4;
-    --app-fill: rgba(0, 0, 0, .06);
-    --app-fill-subtle: rgba(0, 0, 0, .04);
-    --app-fill-strong: rgba(0, 0, 0, .09);
-    --app-border: #eae8e7;
-    --app-border-strong: #d8d4cf;
-    --app-border-subtle: #f0eeeb;
-    --app-text: rgba(20, 20, 19, .88);
-    --app-text-2: rgba(20, 20, 19, .58);
-    --app-text-3: rgba(20, 20, 19, .45);
-    --app-text-4: rgba(20, 20, 19, .25);
-    --app-accent: #ff7f16;
-    --app-accent-hover: #ff9d4d;
-    --app-accent-text: color-mix(in srgb, var(--app-accent) 72%, black);
-    --app-accent-soft: color-mix(in srgb, var(--app-accent) 10%, transparent);
-    --app-accent-faint: color-mix(in srgb, var(--app-accent) 4%, transparent);
-    --app-nav-selected-bg: rgba(43, 18, 0, .08);
-    --app-success: #52c41a; --app-success-text: #389e0d; --app-success-bg: #f6ffed; --app-success-border: #b7eb8f;
-    --app-warning: #faad14; --app-warning-text: #d48806; --app-warning-bg: #fffbe6; --app-warning-border: #ffe58f;
-    --app-error: #ff4d4f; --app-error-text: #cf1322; --app-error-bg: #fff2f0; --app-error-border: #ffccc7;
-    --app-info-text: #1668dc; --app-info-bg: rgba(22, 119, 255, .06); --app-info-border: rgba(22, 119, 255, .16);
-    --app-shadow-sm: 0 2px 8px rgba(0, 0, 0, .06);
-    --app-shadow-md: 0 4px 16px rgba(0, 0, 0, .08);
-    --app-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    --app-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+    color-scheme: dark;
+    /* 令牌值直接取自 desktop/ui/shell.css，保证控制台与桌面端是同一套观感 */
+    --app-radius: 2px;
+    --app-bg: #0b0e13;
+    --app-surface: #12161d;
+    --app-surface-subtle: #171c25;
+    --app-shell-bg: #12161d;
+    --app-fill: rgba(148, 163, 180, .10);
+    --app-fill-subtle: rgba(148, 163, 180, .06);
+    --app-fill-strong: rgba(148, 163, 180, .16);
+    --app-border: #232a35;
+    --app-border-strong: #313b4a;
+    --app-border-subtle: #1b222c;
+    --app-text: #dbe4ee;
+    --app-text-2: #94a3b4;
+    --app-text-3: #64748b;
+    --app-text-4: #4a5568;
+    --app-accent: #38bdf8;
+    --app-accent-hover: #7dd3fc;
+    --app-accent-text: #7dd3fc;
+    --app-accent-ink: #06121b;
+    --app-accent-soft: rgba(56, 189, 248, .12);
+    --app-accent-faint: rgba(56, 189, 248, .05);
+    --app-accent-border: rgba(56, 189, 248, .42);
+    --app-nav-selected-bg: rgba(56, 189, 248, .12);
+    --app-success: #34d399; --app-success-text: #34d399; --app-success-bg: rgba(52, 211, 153, .10); --app-success-border: rgba(52, 211, 153, .34);
+    --app-warning: #fbbf24; --app-warning-text: #fbbf24; --app-warning-bg: rgba(251, 191, 36, .10); --app-warning-border: rgba(251, 191, 36, .34);
+    --app-error: #f87171; --app-error-text: #f87171; --app-error-bg: rgba(248, 113, 113, .10); --app-error-border: rgba(248, 113, 113, .34);
+    --app-info-text: #7dd3fc; --app-info-bg: rgba(56, 189, 248, .08); --app-info-border: rgba(56, 189, 248, .22);
+    --app-shadow-sm: none;
+    --app-shadow-md: 0 12px 30px rgba(0, 0, 0, .5);
+    --app-font: "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, "PingFang SC", sans-serif;
+    --app-mono: Consolas, "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -56,6 +60,9 @@
   button, input, select, textarea { font: inherit; color: inherit; }
   a { color: var(--app-info-text); text-decoration: none; }
   code, .mono { font-family: var(--app-mono); font-size: 12px; }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: #1d2430; border: 1px solid var(--app-border); }
+  ::-webkit-scrollbar-track { background: transparent; }
 
   /* ---------- 骨架 ---------- */
   .shell { display: flex; min-height: 100vh; }
@@ -66,8 +73,8 @@
   }
   .brand { display: flex; align-items: center; gap: 8px; padding: 6px 10px 14px; }
   .brand .mark {
-    width: 26px; height: 26px; border-radius: 7px; flex: none;
-    background: var(--app-accent); color: #fff; display: grid; place-items: center;
+    width: 26px; height: 26px; border-radius: var(--app-radius); flex: none;
+    background: var(--app-accent); color: var(--app-accent-ink); display: grid; place-items: center;
     font-weight: 700; font-size: 14px;
   }
   .brand b { font-size: 15px; font-weight: 600; }
@@ -84,10 +91,13 @@
   }
   .nav-item:hover { background: var(--app-fill-subtle); color: var(--app-text); }
   .nav-item.on { background: var(--app-nav-selected-bg); color: var(--app-text); font-weight: 500; }
-  .nav-item .ico { width: 16px; text-align: center; flex: none; opacity: .85; }
+  .nav-item .ico { width: 16px; display: grid; place-items: center; flex: none; opacity: .9; }
+  .nav-item .ico svg { width: 16px; height: 16px; display: block; }
+  .ic { width: 16px; height: 16px; display: block; }
+  .msg .av svg { width: 15px; height: 15px; display: block; }
   .nav-item .cnt {
     margin-left: auto; font-size: 11px; color: var(--app-text-3);
-    background: var(--app-fill-subtle); border-radius: 9px; padding: 0 6px;
+    background: var(--app-fill-subtle); border-radius: var(--app-radius); padding: 0 6px;
   }
   .nav-item.on .cnt { background: var(--app-surface); }
 
@@ -109,8 +119,8 @@
     color: var(--app-text); cursor: pointer; white-space: nowrap;
   }
   .btn:hover { border-color: var(--app-accent); color: var(--app-accent-text); }
-  .btn.primary { background: var(--app-accent); border-color: var(--app-accent); color: #fff; }
-  .btn.primary:hover { background: var(--app-accent-hover); border-color: var(--app-accent-hover); color: #fff; }
+  .btn.primary { background: var(--app-accent); border-color: var(--app-accent); color: var(--app-accent-ink); }
+  .btn.primary:hover { background: var(--app-accent-hover); border-color: var(--app-accent-hover); color: var(--app-accent-ink); }
   .btn.danger { border-color: var(--app-error-border); color: var(--app-error-text); }
   .btn.danger:hover { background: var(--app-error-bg); border-color: var(--app-error); }
   .btn.sm { height: 26px; padding: 0 10px; font-size: 12px; }
@@ -163,7 +173,7 @@
 
   .tag {
     display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px;
-    border-radius: 4px; font-size: 12px; line-height: 1;
+    border-radius: var(--app-radius); font-size: 12px; line-height: 1;
     background: var(--app-bg); border: 1px solid var(--app-border); color: var(--app-text-2);
     margin-right: 4px; white-space: nowrap;
   }
@@ -172,15 +182,15 @@
   .tag.err { background: var(--app-error-bg); border-color: var(--app-error-border); color: var(--app-error-text); }
   .tag.info { background: var(--app-info-bg); border-color: var(--app-info-border); color: var(--app-info-text); }
   .tag.accent { background: var(--app-accent-soft); border-color: var(--app-accent-border, color-mix(in srgb, var(--app-accent) 42%, transparent)); color: var(--app-accent-text); }
-  .dot { width: 7px; height: 7px; border-radius: 9999px; background: #94a3b8; display: inline-block; }
+  .dot { width: 7px; height: 7px; border-radius: 9999px; background: var(--app-text-3); display: inline-block; }
   .dot.ok { background: var(--app-success); }
   .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--app-text-2); }
   /* 活动追踪：正在跑的时候，顶栏那个点是"呼吸"的，一眼看出它在干活 */
   .dot.live { background: var(--app-accent); animation: livepulse 1.6s ease-out infinite; }
   @keyframes livepulse {
-    0% { box-shadow: 0 0 0 0 rgba(255, 127, 22, .45); }
-    70% { box-shadow: 0 0 0 6px rgba(255, 127, 22, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(255, 127, 22, 0); }
+    0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, .45); }
+    70% { box-shadow: 0 0 0 6px rgba(56, 189, 248, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
   }
   .pill.act .act-detail { color: var(--app-text-3); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pill.act .act-time { color: var(--app-text-3); }
@@ -239,7 +249,7 @@
       transform: translateX(-100%); transition: transform .2s ease; box-shadow: var(--app-shadow-md);
     }
     .side.open { transform: none; }
-    .side-mask.show { display: block; position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, .35); }
+    .side-mask.show { display: block; position: fixed; inset: 0; z-index: 30; background: rgba(2, 6, 12, .58); }
     .burger { display: inline-flex; }
     .body { padding: 14px; }
     .top { padding: 0 14px; gap: 8px; }
@@ -265,7 +275,7 @@
   .toast.show { display: block; }
   .toast.err { border-color: var(--app-error-border); background: var(--app-error-bg); color: var(--app-error-text); }
   .modal-mask {
-    position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: none;
+    position: fixed; inset: 0; background: rgba(2, 6, 12, .62); display: none;
     align-items: center; justify-content: center; z-index: 98;
   }
   .modal-mask.show { display: flex; }
@@ -291,7 +301,7 @@
 
   <div class="main">
     <header class="top">
-      <button class="btn sm burger" id="btn-burger">☰</button>
+      <button class="btn sm burger" id="btn-burger" title="菜单"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
       <h1 id="pg-title">总览</h1>
       <span class="sub" id="pg-sub"></span>
       <div class="right" id="pg-actions"></div>
@@ -376,27 +386,57 @@ loadChat();
 
 const PAGES = [
   { group: "主要" },
-  { id: "agent", name: "对话", icon: "💬", title: "对话", sub: "一句话派活，Agent 自己决定调哪些工具" },
-  { id: "kb", name: "知识库", icon: "📚", title: "知识库", sub: "待办 + 密码本 + 附件的正本，手机端读的就是这里", ep: "/api/kb/state" },
-  { id: "runs", name: "运行记录", icon: "🧾", title: "运行记录", sub: "每次派活的步骤、工具链路与 token 用量", ep: "/api/agent/runs" },
+  { id: "agent", name: "对话", title: "对话", sub: "一句话派活，Agent 自己决定调哪些工具" },
+  { id: "kb", name: "知识库", title: "知识库", sub: "待办 + 密码本 + 附件的正本，手机端读的就是这里", ep: "/api/kb/state" },
+  { id: "runs", name: "运行记录", title: "运行记录", sub: "每次派活的步骤、工具链路与 token 用量", ep: "/api/agent/runs" },
   { group: "资源" },
-  { id: "devices", name: "设备", icon: "🖥️", title: "设备", sub: "电脑 / 手机 / NAS 注册上来的执行端", ep: "/api/state.devices" },
-  { id: "tasks", name: "任务与审批", icon: "📋", title: "任务与审批", sub: "危险动作要人工放行后才真的执行", ep: "/api/tasks" },
-  { id: "memory", name: "长期记忆", icon: "🧠", title: "长期记忆", sub: "任务结论自动落盘，动手前先检索", ep: "/api/agent/memory" },
-  { id: "skills", name: "技能", icon: "📦", title: "技能", sub: "工作目录里的可复用技能包", ep: "/api/agent/state.skills" },
-  { id: "persona", name: "人设", icon: "🎭", title: "人设", sub: "一组 Markdown 文件，按顺序拼进系统提示；改完立即生效", ep: "/api/agent/persona" },
+  { id: "devices", name: "设备", title: "设备", sub: "电脑 / 手机 / NAS 注册上来的执行端", ep: "/api/state.devices" },
+  { id: "tasks", name: "任务与审批", title: "任务与审批", sub: "危险动作要人工放行后才真的执行", ep: "/api/tasks" },
+  { id: "memory", name: "长期记忆", title: "长期记忆", sub: "任务结论自动落盘，动手前先检索", ep: "/api/agent/memory" },
+  { id: "skills", name: "技能", title: "技能", sub: "工作目录里的可复用技能包", ep: "/api/agent/state.skills" },
+  { id: "persona", name: "人设", title: "人设", sub: "一组 Markdown 文件，按顺序拼进系统提示；改完立即生效", ep: "/api/agent/persona" },
   { group: "配置" },
-  { id: "models", name: "模型通道", icon: "✨", title: "模型通道", sub: "只认 OpenAI / Anthropic 两种协议", ep: "/api/agent/providers" },
-  { id: "voice", name: "语音", icon: "🎙️", title: "语音", sub: "说得出话（合成）+ 听得懂话（听写），手机端按住说话走这里", ep: "/api/agent/voice" },
-  { id: "mcp", name: "MCP 服务", icon: "🔌", title: "MCP 服务", sub: "热插拔，加删重载都不用重启", ep: "/api/agent/mcp" },
-  { id: "backups", name: "备份与恢复", icon: "🗄️", title: "备份与恢复", sub: "zip + sha256 清单，恢复前自动打安全点", ep: "/api/agent/backups" },
-  { id: "cron", name: "定时任务", icon: "⏰", title: "定时任务", sub: "cron 表达式 + 一句目标", ep: "/api/agent/state.cron" },
-  { id: "heartbeat", name: "心跳", icon: "💓", title: "心跳", sub: "定时拿 HEARTBEAT.md 里的待办跑一次 Agent", ep: "/api/agent/heartbeat" },
-  { id: "commands", name: "魔法命令", icon: "🪄", title: "魔法命令", sub: "以 / 开头、不经模型的即时指令", ep: "/api/agent/commands" },
-  { id: "channels", name: "频道", icon: "📡", title: "频道", sub: "IM / webhook 接入：白泽在「哪里」跟你对话", ep: "/api/agent/channels" },
-  { id: "logs", name: "日志", icon: "📜", title: "日志", sub: "后端运行日志（倒序）", ep: "/api/logs" },
-  { id: "settings", name: "设置", icon: "⚙️", title: "设置", sub: "运行参数与安全开关", ep: "/api/agent/config" },
+  { id: "models", name: "模型通道", title: "模型通道", sub: "只认 OpenAI / Anthropic 两种协议", ep: "/api/agent/providers" },
+  { id: "voice", name: "语音", title: "语音", sub: "说得出话（合成）+ 听得懂话（听写），手机端按住说话走这里", ep: "/api/agent/voice" },
+  { id: "mcp", name: "MCP 服务", title: "MCP 服务", sub: "热插拔，加删重载都不用重启", ep: "/api/agent/mcp" },
+  { id: "backups", name: "备份与恢复", title: "备份与恢复", sub: "zip + sha256 清单，恢复前自动打安全点", ep: "/api/agent/backups" },
+  { id: "cron", name: "定时任务", title: "定时任务", sub: "cron 表达式 + 一句目标", ep: "/api/agent/state.cron" },
+  { id: "heartbeat", name: "心跳", title: "心跳", sub: "定时拿 HEARTBEAT.md 里的待办跑一次 Agent", ep: "/api/agent/heartbeat" },
+  { id: "commands", name: "魔法命令", title: "魔法命令", sub: "以 / 开头、不经模型的即时指令", ep: "/api/agent/commands" },
+  { id: "channels", name: "频道", title: "频道", sub: "IM / webhook 接入：白泽在「哪里」跟你对话", ep: "/api/agent/channels" },
+  { id: "logs", name: "日志", title: "日志", sub: "后端运行日志（倒序）", ep: "/api/logs" },
+  { id: "settings", name: "设置", title: "设置", sub: "运行参数与安全开关", ep: "/api/agent/config" },
 ];
+
+/* 线性图标（24×24，stroke=currentColor）—— 与桌面端 shell.js 的 NAV_ICONS 同一套，
+   另外补控制台独有的几个（运行记录 / 语音 / 心跳 / 魔法命令 / 频道 / 日志）。
+   emoji 在深色界面里又跳又廉价，用户明确否了。 */
+const ICONS = {
+  agent: '<path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v6a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 12.5z"/>',
+  kb: '<path d="M12 6.6C10.4 5.1 7.9 4.5 4 4.5v13c3.9 0 6.4.6 8 2.1 1.6-1.5 4.1-2.1 8-2.1v-13c-3.9 0-6.4.6-8 2.1z"/><path d="M12 6.6v13"/>',
+  runs: '<path d="M8.5 6.5h11M8.5 12h11M8.5 17.5h7"/><path d="M4 6.5h.01M4 12h.01M4 17.5h.01"/>',
+  devices: '<rect x="3" y="4.5" width="18" height="11.5" rx="1.5"/><path d="M9 20h6M12 16v4"/>',
+  tasks: '<rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9.5 4.5h5v2.5h-5z"/><path d="m9.5 12.5 2 2 3.5-4"/>',
+  memory: '<rect x="7" y="7" width="10" height="10" rx="1.6"/><path d="M10 3.5v3.5M14 3.5v3.5M10 17v3.5M14 17v3.5M3.5 10h3.5M3.5 14h3.5M17 10h3.5M17 14h3.5"/>',
+  skills: '<path d="M12 3.2l2 5.3 5.3 2-5.3 2-2 5.3-2-5.3-5.3-2 5.3-2z"/><path d="M18.5 16.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+  persona: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10.6" r="2.1"/><path d="M5.7 16.4c.6-1.6 1.8-2.4 3.3-2.4s2.7.8 3.3 2.4"/><path d="M15 10.2h3.6M15 13.4h3.6"/>',
+  models: '<path d="M13.5 3 5.5 13.5H11l-1 7.5 8.5-10.5H13z"/>',
+  voice: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21M8.5 21h7"/>',
+  mcp: '<path d="M9 3.5v4M15 3.5v4"/><path d="M6.5 7.5h11v3.5a5.5 5.5 0 0 1-11 0z"/><path d="M12 16.5v4"/>',
+  backups: '<rect x="3.5" y="4.5" width="17" height="4.6" rx="1.4"/><path d="M5.5 9.1V19a1.4 1.4 0 0 0 1.4 1.4h10.2A1.4 1.4 0 0 0 18.5 19V9.1"/><path d="M10 13h4"/>',
+  cron: '<circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3.2 2"/>',
+  heartbeat: '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
+  commands: '<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="m7 9.5 3 2.5-3 2.5"/><path d="M12.5 14.5h4"/>',
+  channels: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/>',
+  logs: '<path d="M6 3.5h8l4 4V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"/><path d="M14 3.5V8h4"/><path d="M8 12h7M8 15.5h5"/>',
+  settings: '<circle cx="12" cy="12" r="3.2"/><path d="M12 3.4v2.3M12 18.3v2.3M3.4 12h2.3M18.3 12h2.3M5.9 5.9l1.6 1.6M16.5 16.5l1.6 1.6M18.1 5.9l-1.6 1.6M7.5 16.5l-1.6 1.6"/>',
+};
+function ic(id, cls) {
+  const p = ICONS[id];
+  if (!p) return "";
+  return '<svg class="' + (cls || "ic") + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + "</svg>";
+}
 
 function renderNav() {
   let html = "";
@@ -416,7 +456,7 @@ function renderNav() {
       if (n) cnt = '<span class="cnt">' + n + '</span>';
     }
     html += '<button class="nav-item' + (S.page === p.id ? " on" : "") + '" data-p="' + p.id + '">' +
-      '<span class="ico">' + p.icon + '</span>' + esc(p.name) + cnt + '</button>';
+      '<span class="ico">' + ic(p.id) + '</span>' + esc(p.name) + cnt + '</button>';
   });
   $("nav").innerHTML = html;
   $("nav").querySelectorAll("[data-p]").forEach((b) => {
@@ -513,7 +553,7 @@ function pageRuns() {
     h += '<div class="card"><header><h2>运行详情</h2><span class="ep mono">GET /api/agent/runs/{id}</span></header><div class="pad chat">';
     (S.run.messages || []).forEach((m) => {
       const isUser = m.role === "user", isTool = m.role === "tool";
-      h += '<div class="msg' + (isUser ? " user" : "") + '"><div class="av">' + (isUser ? "你" : isTool ? "🔧" : "泽") + "</div>" +
+      h += '<div class="msg' + (isUser ? " user" : "") + '"><div class="av">' + (isUser ? "你" : isTool ? ic("mcp") : "泽") + "</div>" +
         '<div style="min-width:0;flex:1"><div class="bubble"' + (isTool ? ' style="background:var(--app-surface);border-style:dashed"' : "") + ">" +
         esc(m.content) + "</div></div></div>";
     });
@@ -530,7 +570,7 @@ function pageDevices() {
   // 主设备：白泽后端自己跑在哪台机器上
   let h = '<div class="card"><header><h2>主设备</h2><span class="ep mono">/api/state.self</span></header>' +
     '<table><tbody><tr>' +
-    '<td style="width:56px"><span style="font-size:20px">🗄️</span></td>' +
+    '<td style="width:56px"><span style="color:var(--app-accent)">' + ic("backups") + '</span></td>' +
     '<td><div class="cell-title">' + esc(self.hostname || "未知主机") + '</div>' +
     '<div class="cell-sub">白泽后端就跑在这一台上 · 设备表里其它端都由它调度</div></td>' +
     '<td class="nowrap"><span class="tag ok">主设备</span></td>' +
@@ -605,7 +645,7 @@ function pageKb() {
   let h = '<div class="card"><header><h2>知识库概览</h2><span class="ep mono">/api/kb/stats</span></header><div class="pad">' +
     '<div class="stats">' +
     '<div><b>' + todos.length + '</b><span>待办</span></div>' +
-    '<div><b>' + (k.vaultLocked ? "🔒" : vault.length) + '</b><span>密码记录</span></div>' +
+    '<div><b>' + (k.vaultLocked ? "已锁" : vault.length) + '</b><span>密码记录</span></div>' +
     '<div><b>' + files.length + '</b><span>附件</span></div>' +
     '<div><b>' + fmtBytes(stats.fileBytes) + '</b><span>附件占用</span></div>' +
     '</div><p class="cell-sub" style="margin:14px 0 0">正本目录 <code>' + esc(stats.dir || "—") + '</code>' +

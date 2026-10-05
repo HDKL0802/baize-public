@@ -48,10 +48,18 @@ Write-Host "version = $ver"
 & powershell -ExecutionPolicy Bypass -File (Join-Path $desk "build.ps1")
 $exe = Join-Path $desk "bin\baize-desktop.exe"
 if (-not (Test-Path $exe)) { throw "build output missing: $exe" }
+$ui = Join-Path $desk "ui"
+if (-not (Test-Path $ui)) { throw "missing ui dir: $ui (multi-file layout needs it)" }
 
-# ---- 4. hash + size ----
-$sha = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
-$size = (Get-Item $exe).Length
+# ---- 3b. pack the multi-file update (zip: baize-desktop.exe + ui/) ----
+$zip = Join-Path $desk ("bin\baize-desktop-" + $ver + ".zip")
+if (Test-Path $zip) { Remove-Item $zip -Force }
+Compress-Archive -Path $exe, $ui -DestinationPath $zip -Force
+if (-not (Test-Path $zip)) { throw "zip not created: $zip" }
+
+# ---- 4. hash + size (of the zip the client downloads) ----
+$sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+$size = (Get-Item $zip).Length
 $notes = ""
 $notesFile = Join-Path $desk "RELEASE_NOTES.txt"
 if (Test-Path $notesFile) {
@@ -62,7 +70,7 @@ Write-Host ("sha256 = " + $sha + "  size = " + [math]::Round($size / 1MB, 2) + "
 # ---- 5. latest.json (url is relative so it follows the client's own backend address) ----
 $man = [ordered]@{
   version    = $ver
-  url        = "/dl/baize-desktop.exe"
+  url        = "/dl/baize-desktop-$ver.zip"
   sha256     = $sha
   sizeBytes  = $size
   notes      = $notes
@@ -80,7 +88,7 @@ $remote = "/vol1/@appdata/baize/data/dl"
 
 Write-Host "--- upload ---"
 & $sshrun -host $nasHost -user $nasUser -pass $nasPass -cmd "mkdir -p $remote" | Out-Host
-& $sshrun -host $nasHost -user $nasUser -pass $nasPass -put "$exe`:$remote/baize-desktop.exe" | Out-Host
+& $sshrun -host $nasHost -user $nasUser -pass $nasPass -put "$zip`:$remote/baize-desktop-$ver.zip" | Out-Host
 & $sshrun -host $nasHost -user $nasUser -pass $nasPass -put "$jsonPath`:$remote/latest.json" | Out-Host
 
 # ---- 7. smoke test: can the backend serve it? ----

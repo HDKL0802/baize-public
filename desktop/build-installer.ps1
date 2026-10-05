@@ -53,6 +53,12 @@ New-Item -ItemType Directory -Path $Stage | Out-Null
 Copy-Item -LiteralPath $Nsi  -Destination (Join-Path $Stage "installer.nsi") -Force
 Copy-Item -LiteralPath $Exe  -Destination (Join-Path $Stage "baize-desktop.exe") -Force
 
+# Multi-file layout: bundle the ui/ folder into the installer so the install has exe + ui/.
+$Ui = Join-Path $Src "ui"
+if (-not (Test-Path $Ui)) { throw "missing ui dir: $Ui (the ui folder is part of the installer)" }
+Copy-Item -LiteralPath $Ui -Destination (Join-Path $Stage "ui") -Recurse -Force
+$UiStage = Join-Path $Stage "ui"
+
 # The .nsi pulls its icon from ${__FILEDIR__}\icon.ico, so stage that too.
 $Icon = Join-Path $Src "assets\icon.ico"
 if (-not (Test-Path $Icon)) { throw "missing $Icon - run build-icon.ps1 first" }
@@ -62,7 +68,7 @@ $OutStage = Join-Path $Stage "baize-desktop-setup.exe"
 $OutFinal = Join-Path $Bin ("baize-desktop-setup-" + $Version + ".exe")
 
 Write-Host "=== build installer: Baize $Version ===" -ForegroundColor Cyan
-& $Maker "/V2" "/DVERSION=$Version" "/DVERNUM=$VerNum" "/DOUTFILE=$OutStage" (Join-Path $Stage "installer.nsi")
+& $Maker "/V2" "/DVERSION=$Version" "/DVERNUM=$VerNum" "/DOUTFILE=$OutStage" "/DUIDIR=$UiStage" (Join-Path $Stage "installer.nsi")
 if ($LASTEXITCODE -ne 0) { throw "makensis failed (exit $LASTEXITCODE)" }
 if (-not (Test-Path $OutStage)) { throw "makensis produced no output" }
 

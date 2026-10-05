@@ -11,6 +11,7 @@ Unicode true
 
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
+!include "LogicLib.nsh"
 
 !ifndef VERSION
   !define VERSION "0.0.0"
@@ -27,6 +28,12 @@ Unicode true
 !ifndef ICON
   !define ICON "${__FILEDIR__}\icon.ico"
 !endif
+; 界面目录（多文件形态）：build-installer.ps1 用 /DUIDIR 传进来
+!ifndef UIDIR
+  !define UIDIR "${__FILEDIR__}\ui"
+!endif
+
+Var IsUpdate
 
 !define APPNAME   "白泽"
 !define APPEXE    "baize-desktop.exe"
@@ -46,7 +53,6 @@ UninstallIcon "${ICON}"
 ; Per-user install: no UAC, no admin, and it lines up with the app writing its
 ; own autostart entry to HKCU (see autostart_windows.go).
 InstallDir "$LOCALAPPDATA\Programs\Baize"
-InstallDirRegKey HKCU "Software\Baize\Desktop" "InstallDir"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 ShowInstDetails show
@@ -66,7 +72,10 @@ VIAddVersionKey /LANG=2052 "LegalCopyright" "MIT License"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APPEXE}"
 !define MUI_FINISHPAGE_RUN_TEXT "立即启动白泽"
 
+; 更新模式（检测到已安装）时跳过欢迎页与选目录页，直接更新
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfUpdate
 !insertmacro MUI_PAGE_WELCOME
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfUpdate
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
@@ -77,6 +86,33 @@ VIAddVersionKey /LANG=2052 "LegalCopyright" "MIT License"
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "English"
 
+; .onInit：先判断是不是「已装过」——
+;  - 已装过：沿用原目录、进更新模式（跳过欢迎/选目录），不再像「重新安装」；
+;  - 全新安装：优先装到非系统盘（有 D/E/F 就装过去），否则回退到 %LOCALAPPDATA%。
+Function .onInit
+  ReadRegStr $0 HKCU "Software\Baize\Desktop" "InstallDir"
+  ${If} $0 != ""
+    StrCpy $INSTDIR $0
+    StrCpy $IsUpdate 1
+  ${Else}
+    ${If} ${FileExists} "D:\*.*"
+      StrCpy $INSTDIR "D:\Programs\Baize"
+    ${ElseIf} ${FileExists} "E:\*.*"
+      StrCpy $INSTDIR "E:\Programs\Baize"
+    ${ElseIf} ${FileExists} "F:\*.*"
+      StrCpy $INSTDIR "F:\Programs\Baize"
+    ${Else}
+      StrCpy $INSTDIR "$LOCALAPPDATA\Programs\Baize"
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
+Function SkipIfUpdate
+  ${If} $IsUpdate == 1
+    Abort
+  ${EndIf}
+FunctionEnd
+
 Section "白泽桌面端（必需）" SEC_MAIN
   SectionIn RO
   SetOutPath "$INSTDIR"
@@ -84,9 +120,15 @@ Section "白泽桌面端（必需）" SEC_MAIN
   ; A running instance holds the exe open; auto-update may also have parked a
   ; ".old" rename behind. Clear both before laying down the new file.
   ExecWait '"$SYSDIR\taskkill.exe" /IM ${APPEXE} /F' $0
+  Sleep 1000  ; 给被结束的进程一点时间释放 exe 句柄，否则覆盖可能失败（装了还是旧 exe）
   Delete "$INSTDIR\${APPEXE}.old"
   File "${ROOTEXE}"
   Delete "$INSTDIR\${APPEXE}.old"
+
+  ; 界面目录（多文件形态：装出来是 exe + ui/ 多个文件）
+  SetOutPath "$INSTDIR\ui"
+  File /r "${UIDIR}\*.*"
+  SetOutPath "$INSTDIR"
 
   CreateDirectory "$SMPROGRAMS\${APPNAME}"
   CreateShortcut "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk" "$INSTDIR\${APPEXE}" "" "$INSTDIR\${APPEXE}" 0
@@ -121,6 +163,7 @@ SectionEnd
 
 Section "Uninstall"
   ExecWait '"$SYSDIR\taskkill.exe" /IM ${APPEXE} /F' $0
+  Sleep 800
   DeleteRegValue HKCU "${RUNKEY}" "${RUNVAL}"
   DeleteRegKey HKCU "${UNKEY}"
   DeleteRegKey HKCU "Software\Baize\Desktop"
@@ -130,6 +173,7 @@ Section "Uninstall"
   Delete "$INSTDIR\${APPEXE}"
   Delete "$INSTDIR\${APPEXE}.old"
   Delete "$INSTDIR\uninstall.exe"
+  RMDir /r "$INSTDIR\ui"
   ; User data under %LOCALAPPDATA%\Baize (config / cache) is left alone.
   RMDir "$INSTDIR"
 SectionEnd

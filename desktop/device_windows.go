@@ -28,7 +28,7 @@ import (
 	"baize/shared/proto"
 )
 
-const desktopAppVersion = "0.4.1"
+const desktopAppVersion = "0.5.0"
 
 /* ---------------- 本机信息（与 agent/internal/sysinfo 同一口径） ---------------- */
 
@@ -283,7 +283,10 @@ func (d *devState) snapshot() map[string]any {
 /* ---------------- 设备客户端（可随配置变化重启） ---------------- */
 
 // 平台钩子在 server.go 里声明；这里注册 Windows 的真实实现。
-func init() { deviceRestart = restartDevice; deviceSnapshot = func() map[string]any { return devSt.snapshot() } }
+func init() {
+	deviceRestart = restartDevice
+	deviceSnapshot = func() map[string]any { return devSt.snapshot() }
+}
 
 var (
 	devMu     sync.Mutex

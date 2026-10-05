@@ -24,7 +24,15 @@ Write-Host "=== build desktop (windows/amd64, CGO off, GUI subsystem) ===" -Fore
 $env:GOOS = $g0; $env:GOARCH = $g1
 if ($LASTEXITCODE -ne 0) { throw "go build failed" }
 
+# Multi-file layout: the UI lives in a ui/ folder next to the exe (no longer embedded).
+# Copy it to bin\ui so bin\baize-desktop.exe runs standalone (dev/portable) -- same layout as installed.
+$UiSrc = Join-Path $Src "ui"
+$UiDst = Join-Path $Src "bin\ui"
+if (Test-Path $UiDst) { Remove-Item $UiDst -Recurse -Force }
+Copy-Item $UiSrc $UiDst -Recurse -Force
+
 $sz = [math]::Round((Get-Item $Out).Length / 1MB, 2)
 Write-Host ""
 Write-Host "OK -> $Out ($sz MB)" -ForegroundColor Green
+Write-Host ("ui -> " + $UiDst + " (" + (Get-ChildItem $UiDst -Recurse -File | Measure-Object).Count + " files)") -ForegroundColor Green
 Write-Host "Run:  $Out --server http://192.168.1.100:8787 --token <token>" -ForegroundColor DarkGray

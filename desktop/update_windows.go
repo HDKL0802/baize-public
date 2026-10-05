@@ -1,18 +1,21 @@
 //go:build windows
 
-// 桌面端自动更新：从 NAS 拉 latest.json → 比版本 → 下载 → 校验 sha256 → 换掉自己 → 重启。
+// 桌面端自动更新：从 NAS 拉 latest.json → 比版本 → 下载更新包（zip：exe + ui/）→ 校验 sha256
+// → 换掉 exe 与界面 → 重启。多文件形态下，包内是 baize-desktop.exe 与 ui/ 目录。
 //
 // 为什么把包放 NAS 而不是 GitHub Releases：NAS 本来就是这套系统的中枢，而且本机
-// 没法用 gh 上传发布物；`tools/release-desktop.ps1` 一条命令就能把 exe 与清单传上去。
+// 没法用 gh 上传发布物；`tools/release-desktop.ps1` 一条命令就能把 zip 与清单传上去。
 package main
 
 import (
+	"archive/zip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -84,10 +87,10 @@ func CheckUpdate() (map[string]any, error) {
 	}, nil
 }
 
-// ApplyUpdate 下载 → 校验 → 换掉自己 → 起新进程 → 自己退出。
+// ApplyUpdate 下载更新包（zip：含 baize-desktop.exe + ui/）→ 校验 → 换掉 exe 与界面 → 起新进程 → 自己退出。
 //
 // ★为什么能覆盖「正在运行的自己」：Windows 不允许覆盖正在运行的 exe，但**允许改名**。
-// 所以顺序是：把自己改名为 xxx.old → 把新版写到原路径 → 起新进程 → 退出。
+// 顺序：先换 ui/（不是被占用的文件，可原地覆盖）→ 把自己改名为 xxx.old → 写新 exe → 起新进程 → 退出。
 // 另外必须在起新进程前**松开单实例锁**，否则新进程会被自己判成"已有实例"而退出。
 func ApplyUpdate() (map[string]any, error) {
 	m, err := fetchManifest()
@@ -98,22 +101,46 @@ func ApplyUpdate() (map[string]any, error) {
 		return map[string]any{"ok": false, "error": "已经是最新版本（" + desktopAppVersion + "）"}, nil
 	}
 
-	tmp, err := downloadVerified(m)
+	zipPath, err := downloadVerified(m)
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(tmp)
+	defer os.Remove(zipPath)
+
+	// 解开到临时目录：应含 baize-desktop.exe 与 ui/
+	pkgDir, err := extractZip(zipPath)
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(pkgDir)
 
 	self, err := os.Executable()
 	if err != nil {
 		return nil, err
+	}
+	exeDir := filepath.Dir(self)
+
+	// 1) 先换界面目录（多文件形态）
+	if src := filepath.Join(pkgDir, "ui"); dirExists(src) {
+		if err := replaceDir(src, filepath.Join(exeDir, "ui")); err != nil {
+			return nil, fmt.Errorf("替换界面目录失败：%w", err)
+		}
+	}
+
+	// 2) 再换 exe
+	newExe := filepath.Join(pkgDir, filepath.Base(self))
+	if !fileExists(newExe) {
+		newExe = filepath.Join(pkgDir, "baize-desktop.exe")
+	}
+	if !fileExists(newExe) {
+		return nil, errors.New("更新包里没有可执行文件（baize-desktop.exe）")
 	}
 	old := self + ".old"
 	_ = os.Remove(old)
 	if err := os.Rename(self, old); err != nil {
 		return nil, fmt.Errorf("挪开旧版本失败：%w", err)
 	}
-	if err := copyFile(tmp, self); err != nil {
+	if err := copyFile(newExe, self); err != nil {
 		_ = os.Rename(old, self) // 换不成就回滚，别把自己搞没了
 		return nil, fmt.Errorf("写入新版本失败（已回滚）：%w", err)
 	}
@@ -121,7 +148,7 @@ func ApplyUpdate() (map[string]any, error) {
 	releaseSingleInstance() // 让即将起来的那个能拿到锁
 
 	cmd := exec.Command(self)
-	cmd.Dir = filepath.Dir(self)
+	cmd.Dir = exeDir
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("已替换但重启失败：%w（手动双击一次 exe 即可）", err)
 	}
@@ -132,10 +159,93 @@ func ApplyUpdate() (map[string]any, error) {
 	return map[string]any{"ok": true, "restarted": true, "version": m.Version}, nil
 }
 
+// extractZip 把更新包解到一个新临时目录；只接受普通文件/目录，挡掉越界路径（zip slip）。
+func extractZip(zipPath string) (string, error) {
+	dst, err := os.MkdirTemp("", "baize-update-")
+	if err != nil {
+		return "", err
+	}
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		_ = os.RemoveAll(dst)
+		return "", fmt.Errorf("打开更新包失败：%w", err)
+	}
+	defer r.Close()
+	for _, f := range r.File {
+		name := filepath.Clean(f.Name)
+		if name == "." || strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
+			continue
+		}
+		target := filepath.Join(dst, name)
+		if target != dst && !strings.HasPrefix(target, dst+string(os.PathSeparator)) {
+			continue
+		}
+		if f.FileInfo().IsDir() {
+			_ = os.MkdirAll(target, 0o755)
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			_ = os.RemoveAll(dst)
+			return "", err
+		}
+		in, err := f.Open()
+		if err != nil {
+			_ = os.RemoveAll(dst)
+			return "", err
+		}
+		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
+		if err != nil {
+			in.Close()
+			_ = os.RemoveAll(dst)
+			return "", err
+		}
+		_, err = io.Copy(out, in)
+		in.Close()
+		out.Close()
+		if err != nil {
+			_ = os.RemoveAll(dst)
+			return "", err
+		}
+	}
+	return dst, nil
+}
+
+// replaceDir 用 src 覆盖 dst（先整目录删掉再拷）
+func replaceDir(src, dst string) error {
+	if err := os.RemoveAll(dst); err != nil {
+		return err
+	}
+	return copyTree(src, dst)
+}
+
+func copyTree(src, dst string) error {
+	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(src, p)
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		return copyFile(p, target)
+	})
+}
+
+func fileExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && !fi.IsDir()
+}
+
+func dirExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
+}
+
 func downloadVerified(m updateManifest) (string, error) {
 	u := strings.TrimSpace(m.URL)
 	if u == "" {
-		u = "/dl/baize-desktop.exe"
+		u = "/dl/baize-desktop.zip"
 	}
 	req, err := newBackendRequest(http.MethodGet, u)
 	if err != nil {

@@ -3,18 +3,16 @@ package main
 import (
 	"bytes"
 	"context"
-	"embed"
 	"encoding/json"
 	"errors"
 	"io"
-	"io/fs"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
-
-//go:embed ui
-var uiFS embed.FS
 
 // 平台钩子：由 device_windows.go 的 init() 覆盖成真实实现；非 Windows 就是空实现。
 var (
@@ -35,12 +33,13 @@ var beClient = &http.Client{Timeout: 180 * time.Second}
 func buildHandler() http.Handler {
 	mux := http.NewServeMux()
 
-	// 内嵌界面
-	sub, err := fs.Sub(uiFS, "ui")
+	// 界面：从磁盘上的 ui/ 目录读（多文件安装形态：exe + ui/ 目录）
+	root, err := findUIDir()
 	if err != nil {
-		panic(err)
+		log.Fatalf("找不到界面文件：%v", err)
 	}
-	mux.Handle("/", http.FileServer(http.FS(sub)))
+	log.Printf("界面目录：%s", root)
+	mux.Handle("/", http.FileServer(http.Dir(root)))
 
 	// 本机配置：只回"有没有令牌"，绝不回显令牌原文
 	mux.HandleFunc("/api/local/config", func(w http.ResponseWriter, r *http.Request) {
@@ -143,4 +142,27 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// findUIDir 定位界面目录。安装后是 exe 同级的 ui/；开发时 exe 在 desktop/bin/、
+// 界面在 desktop/ui/，所以也看上一级的 ui/，最后回退到当前工作目录。
+func findUIDir() (string, error) {
+	var cands []string
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		cands = append(cands,
+			filepath.Join(dir, "ui"),
+			filepath.Join(dir, "..", "ui"),
+		)
+	}
+	if wd, err := os.Getwd(); err == nil {
+		cands = append(cands, filepath.Join(wd, "ui"))
+	}
+	for _, c := range cands {
+		if fi, err := os.Stat(filepath.Join(c, "index.html")); err == nil && !fi.IsDir() {
+			abs, _ := filepath.Abs(c)
+			return abs, nil
+		}
+	}
+	return "", errors.New("没找到 ui/index.html（安装后 exe 同级应有 ui 目录；开发时应在 desktop/ui）")
 }

@@ -346,6 +346,8 @@ func (s *Service) rebuildChannels() {
 		switch ch.Kind {
 		case "webhook", "":
 			mgr.Register(ch, channels.NewWebhook(ch))
+		case "onebot":
+			mgr.Register(ch, channels.NewOneBot(ch))
 		default:
 			s.lg.Warn("未知频道类型，已跳过", "id", ch.ID, "kind", ch.Kind)
 		}

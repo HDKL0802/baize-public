@@ -34,7 +34,7 @@ import (
 	"baize/internal/store"
 )
 
-const version = "0.9.5"
+const version = "0.9.6"
 
 func main() {
 	var (

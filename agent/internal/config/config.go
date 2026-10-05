@@ -423,7 +423,7 @@ func normalizeHeartbeatTarget(v string) string {
 	return "main"
 }
 
-var channelKinds = []string{"webhook"}
+var channelKinds = []string{"webhook", "onebot"}
 var channelFormats = []string{"generic", "feishu", "dingtalk", "slack"}
 
 // ChannelKinds 支持的频道类型（界面下拉用）。目前只有 webhook：

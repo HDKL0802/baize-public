@@ -907,6 +907,16 @@ try {
     $after = Send-Json "Post" "$base/api/agent/channels" @{ action = "remove"; id = "sweep-ch" } $h
     if (@($after.channels | Where-Object { $_.id -eq "sweep-ch" }).Count -ne 0) { throw "删除后不该还在清单里" }
   }
+  Check "I25 onebot 频道：必须带令牌 + WS 路由错令牌被挡" {
+    $rejected = $false
+    try { $null = Send-Json "Post" "$base/api/agent/channels" @{ action = "save"; id = "sweep-ob"; kind = "onebot" } $h } catch { $rejected = $true }
+    if (-not $rejected) { throw "onebot 没令牌竟然被接受" }
+    $ok = Send-Json "Post" "$base/api/agent/channels" @{ action = "save"; id = "sweep-ob"; kind = "onebot"; token = "obtok" } $h
+    if (@($ok.channels | Where-Object { $_.id -eq "sweep-ob" -and $_.kind -eq "onebot" }).Count -ne 1) { throw "onebot 频道没保存上" }
+    $blocked = $false
+    try { $null = Invoke-RestMethod -Method Get -Uri "$base/api/channels/sweep-ob/ws?access_token=wrong" -Headers $h -TimeoutSec 10 } catch { $blocked = $true }
+    if (-not $blocked) { throw "WS 路由错令牌竟然放行" }
+  }
 
   # ================= J. 桌面端分发 =================
   Step "J. 桌面端分发"

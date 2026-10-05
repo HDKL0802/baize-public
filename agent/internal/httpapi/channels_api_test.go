@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 /* 频道接口测试（QwenPaw 频道机制的 Go 版）。
@@ -142,6 +144,59 @@ func TestChannelsAPI(t *testing.T) {
 		if c.ID == "c2" {
 			t.Fatalf("c2 应已删除：%+v", after.Channels)
 		}
+	}
+}
+
+// OneBot 反向 WS：令牌在升级前校验；连上后发一条群消息，能收到 send_group_msg 回发
+func TestOneBotChannelWS(t *testing.T) {
+	e, _ := newAgentEnv(t)
+
+	// onebot 必须带令牌
+	if code := e.do("POST", "/api/agent/channels", map[string]any{"action": "save", "id": "qq", "kind": "onebot"}, true, nil); code != 400 {
+		t.Fatalf("onebot 没令牌应 400，实际 %d", code)
+	}
+	if code := e.do("POST", "/api/agent/channels", map[string]any{"action": "save", "id": "qq", "kind": "onebot", "token": "obtok"}, true, nil); code != 200 {
+		t.Fatalf("保存 onebot 频道失败：%d", code)
+	}
+
+	wsBase := "ws" + strings.TrimPrefix(e.srv.URL, "http")
+	// 令牌不对：升级前就该被挡（拿不到连接）
+	if c, resp, err := websocket.DefaultDialer.Dial(wsBase+"/api/channels/qq/ws?access_token=wrong", nil); err == nil {
+		c.Close()
+		t.Fatal("令牌不对竟然连上了")
+	} else if resp == nil || resp.StatusCode != 401 {
+		code := 0
+		if resp != nil {
+			code = resp.StatusCode
+		}
+		t.Fatalf("令牌不对应 401，实际 %d（err=%v）", code, err)
+	}
+
+	// 配个假模型，正确令牌连上并发一条群消息
+	openai := fakeOpenAI(t)
+	if code := e.do("POST", "/api/agent/providers", map[string]any{
+		"action": "upsert",
+		"config": map[string]any{"name": "local", "protocol": "openai", "baseUrl": openai.URL + "/v1", "model": "fake-openai", "apiKey": "sk-x"},
+	}, true, nil); code != 200 {
+		t.Fatalf("配模型失败：%d", code)
+	}
+	c, _, err := websocket.DefaultDialer.Dial(wsBase+"/api/channels/qq/ws?access_token=obtok", nil)
+	if err != nil {
+		t.Fatalf("正确令牌应能连上：%v", err)
+	}
+	defer c.Close()
+
+	ev := `{"post_type":"message","message_type":"group","group_id":42,"user_id":7,"raw_message":"帮我看看"}`
+	if err := c.WriteMessage(websocket.TextMessage, []byte(ev)); err != nil {
+		t.Fatalf("发事件失败：%v", err)
+	}
+	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_, data, err := c.ReadMessage()
+	if err != nil {
+		t.Fatalf("没等到回发：%v", err)
+	}
+	if !strings.Contains(string(data), "send_group_msg") || !strings.Contains(string(data), "能通") {
+		t.Fatalf("回发不对：%s", data)
 	}
 }
 

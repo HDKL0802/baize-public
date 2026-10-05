@@ -29,6 +29,7 @@ func (s *Server) registerChannels(mux *http.ServeMux) {
 	}))
 	mux.HandleFunc("POST /api/agent/channels", s.api(s.handleChannelAdmin))
 	mux.HandleFunc("POST /api/channels/{id}/inbound", s.handleChannelInbound)
+	mux.HandleFunc("GET /api/channels/{id}/ws", s.handleChannelWS)
 }
 
 // channelsState 频道清单 + 可选类型 / 格式（GET 与管理接口回同一个形状）
@@ -117,14 +118,22 @@ func (s *Server) handleChannelAdmin(w http.ResponseWriter, r *http.Request) {
 			cur.BotPrefix = *req.BotPrefix
 		}
 		cur.ID = id
-		// webhook 频道必须有出站地址，否则回复没处发（宁可在门口拒绝，也别存一个发不出去的频道）
-		if cur.Kind == "webhook" {
+		// 按类型做各自的必要校验：宁可在门口拒绝，也别存一个收不到 / 发不出的频道
+		switch cur.Kind {
+		case "webhook":
+			// 出站地址必须有，否则回复没处发
 			if cur.OutboundURL == "" {
 				writeErr(w, http.StatusBadRequest, "webhook 频道必须给出站地址（outboundUrl）")
 				return
 			}
 			if u, err := url.Parse(cur.OutboundURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 				writeErr(w, http.StatusBadRequest, "出站地址要是一个 http/https URL")
+				return
+			}
+		case "onebot":
+			// 反向 WS 要鉴权：没令牌谁都能连进来派活
+			if strings.TrimSpace(cur.Token) == "" {
+				writeErr(w, http.StatusBadRequest, "onebot 频道必须设入站令牌（实现端连接时要带上它）")
 				return
 			}
 		}
@@ -219,6 +228,62 @@ func (s *Server) handleChannelInbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "channel": id})
+}
+
+// handleChannelWS "反向 WebSocket"频道的接入点（如 OneBot）：实现端主动连进来，
+// 事件从这条连接进（跑 Agent），回复也从这条连接出。令牌在升级之前就校验，错就干净地回状态码。
+func (s *Server) handleChannelWS(w http.ResponseWriter, r *http.Request) {
+	if s.agent == nil {
+		writeErr(w, http.StatusServiceUnavailable, "Agent 未就绪")
+		return
+	}
+	mgr := s.agent.Channels()
+	if mgr == nil {
+		writeErr(w, http.StatusServiceUnavailable, "频道未装配")
+		return
+	}
+	id := r.PathValue("id")
+	ch, ok := mgr.Get(id)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "没有这个频道："+id)
+		return
+	}
+	wc, ok := ch.(channels.WSChannel)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "频道 "+id+" 不支持反向 WebSocket 接入（这个类型不走 WS）")
+		return
+	}
+	// 令牌：OneBot 惯例用 access_token，也认 token / Authorization: Bearer
+	token := r.URL.Query().Get("access_token")
+	if token == "" {
+		token = r.URL.Query().Get("token")
+	}
+	if token == "" {
+		if a := r.Header.Get("Authorization"); strings.HasPrefix(a, "Bearer ") {
+			token = strings.TrimSpace(strings.TrimPrefix(a, "Bearer "))
+		}
+	}
+	if err := mgr.CheckInbound(id, token); err != nil {
+		var ie *channels.InboundError
+		if errors.As(err, &ie) {
+			writeErr(w, ie.Code, ie.Msg)
+			return
+		}
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		s.lg.Warn("频道 WebSocket 升级失败", "channel", id, "err", err)
+		return
+	}
+	defer conn.Close()
+	s.lg.Info("频道实现端已接入", "channel", id, "addr", r.RemoteAddr)
+	wc.Serve(conn, func(m channels.Message) {
+		if err := mgr.Inbound(m, token); err != nil {
+			s.lg.Warn("频道消息被拒", "channel", id, "err", err)
+		}
+	})
 }
 
 // validateChannelID 频道 id 会出现在 URL 路径里，限制成安全的字符集

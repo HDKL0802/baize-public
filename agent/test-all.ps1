@@ -802,6 +802,56 @@ try {
     if ($rec.run.goal -notmatch "自检心跳任务") { throw "运行记录的 goal 应是 HEARTBEAT.md 内容：$($rec.run.goal)" }
   }
 
+  # ================= I4. 魔法命令 =================
+  Step "I4. 魔法命令（/ 开头、不经模型的即时指令）"
+  Check "I14 命令清单齐全" {
+    $r = Get-Json "$base/api/agent/commands" $h
+    $names = @($r.commands | ForEach-Object { $_.name })
+    foreach ($want in @("help", "status", "skills", "new", "clear", "compact", "checkpoint")) {
+      if ($names -notcontains $want) { throw "命令清单里缺 $want：$($names -join ',')" }
+    }
+  }
+  Check "I15 光斜杠=帮助，/help 单条也通" {
+    $r = Send-Json "Post" "$base/api/agent/run" @{ goal = "/" } $h
+    if (-not $r.command) { throw "光一个斜杠应回执帮助，而不是派活" }
+    foreach ($want in @("/status", "/skills", "/checkpoint")) {
+      if ($r.reply -notmatch [regex]::Escape($want)) { throw "帮助里应含 $want：$($r.reply)" }
+    }
+    $one = Send-Json "Post" "$base/api/agent/run" @{ goal = "/help compact" } $h
+    if (-not $one.command -or $one.reply -notmatch "重复条目") { throw "单条帮助不对：$($one.reply)" }
+  }
+  Check "I16 /new 与 /clear 回客户端动作（让手机清本地）" {
+    $n = Send-Json "Post" "$base/api/agent/run" @{ goal = "/new" } $h
+    if ($n.action -ne "new") { throw "/new 应回 action=new：$($n | ConvertTo-Json -Compress)" }
+    $c = Send-Json "Post" "$base/api/agent/run" @{ goal = "/clear" } $h
+    if ($c.action -ne "clear") { throw "/clear 应回 action=clear：$($c | ConvertTo-Json -Compress)" }
+  }
+  Check "I17 /status /compact /skills /checkpoint 都秒回" {
+    foreach ($g in @("/status", "/compact", "/skills", "/checkpoint")) {
+      $r = Send-Json "Post" "$base/api/agent/run" @{ goal = $g } $h
+      if (-not $r.command) { throw "$g 应是命令回执" }
+    }
+  }
+  Check "I18 不认识的斜杠命令透传为普通任务（不是命令回执）" {
+    Clear-Runs
+    $r = Send-Json "Post" "$base/api/agent/run" @{ goal = "/nope-not-a-command" } $h
+    if ($r.command) { throw "未知命令不该当命令回执" }
+    if (-not $r.started -or -not $r.runId) { throw "未知命令应被当普通任务收下：$($r | ConvertTo-Json -Compress)" }
+  }
+  Check "I19 技能回退：/技能名 回说明，/技能名 要求 注入正文后照常跑" {
+    $content = "---`nname: sweep-skill`ndescription: 自检用的技能`n---`n`n正文：自检技能标记 SWEEP-SKILL-BODY。`n"
+    $null = Send-Json "Post" "$base/api/agent/skills" @{ action = "save"; name = "sweep-skill"; content = $content } $h
+    $info = Send-Json "Post" "$base/api/agent/run" @{ goal = "/sweep-skill" } $h
+    if (-not $info.command -or $info.reply -notmatch "sweep-skill") { throw "只给技能名应回说明：$($info.reply)" }
+    Clear-Runs
+    $run = Send-Json "Post" "$base/api/agent/run" @{ goal = "/sweep-skill 跑一下" } $h
+    if ($run.command) { throw "技能注入不该当命令回执" }
+    $null = Wait-For { try { $x = Get-Json "$base/api/agent/runs/$($run.runId)" $h; if ($x.run.finishedAt) { $x } } catch { } } 60
+    $rec = Get-Json "$base/api/agent/runs/$($run.runId)" $h
+    if ($rec.run.goal -notmatch "SWEEP-SKILL-BODY") { throw "技能正文没被注入目标：$($rec.run.goal)" }
+    if ($rec.run.goal -match "^/sweep-skill") { throw "目标不该还以斜杠命令开头：$($rec.run.goal)" }
+  }
+
   # ================= J. 桌面端分发 =================
   Step "J. 桌面端分发"
   Check "J1 /dl/ 能取到升级清单" {

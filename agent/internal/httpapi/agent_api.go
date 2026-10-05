@@ -25,6 +25,9 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	}
 	a := s.agent
 
+	// 魔法命令注册表：命令处理器要同时用到版本号与 Agent 能力，所以在这里装配
+	s.cmds = s.buildCommands()
+	s.registerCommands(mux)
 	mux.HandleFunc("GET /api/agent/state", s.api(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, a.State())
 	}))
@@ -51,6 +54,24 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 		if req.Goal == "" {
 			writeErr(w, http.StatusBadRequest, "goal 不能为空")
 			return
+		}
+		// 魔法命令：以 "/" 开头且命中命令的，直接回执（不派给模型、不占运行记录）。
+		// 技能注入类命令会改写 goal，然后照常往下跑。
+		if res, handled := s.dispatchCommand(r.Context(), req.Goal); handled {
+			if res.Reply != "" {
+				out := map[string]any{"command": true, "reply": res.Reply}
+				if res.Name != "" {
+					out["name"] = res.Name
+				}
+				if res.Action != "" {
+					out["action"] = res.Action
+				}
+				writeJSON(w, http.StatusOK, out)
+				return
+			}
+			if res.Goal != "" {
+				req.Goal = res.Goal
+			}
 		}
 		mode := req.Strictness
 		if mode == "" && req.AutoApprove {

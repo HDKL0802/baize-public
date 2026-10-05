@@ -366,6 +366,7 @@ const S = {
   memNodes: null, memStale: 0,                   // 记忆树节点 + 摘要没跟上的天数
   persona: null, personaEdit: null,              // 人设状态 + 正在编辑的文件
   heartbeat: null, hbContent: null, hbDirty: false, // 心跳状态 + 编辑器内容（hbDirty=用户动过，别让轮询盖掉）
+  commands: null,                                  // 魔法命令清单（/api/agent/commands）
 };
 const CHAT_KEY = "bz_console_chat_v1";
 function loadChat() { try { S.chat = JSON.parse(localStorage.getItem(CHAT_KEY) || "[]") || []; } catch (e) { S.chat = []; } }
@@ -390,6 +391,7 @@ const PAGES = [
   { id: "backups", name: "备份与恢复", icon: "🗄️", title: "备份与恢复", sub: "zip + sha256 清单，恢复前自动打安全点", ep: "/api/agent/backups" },
   { id: "cron", name: "定时任务", icon: "⏰", title: "定时任务", sub: "cron 表达式 + 一句目标", ep: "/api/agent/state.cron" },
   { id: "heartbeat", name: "心跳", icon: "💓", title: "心跳", sub: "定时拿 HEARTBEAT.md 里的待办跑一次 Agent", ep: "/api/agent/heartbeat" },
+  { id: "commands", name: "魔法命令", icon: "🪄", title: "魔法命令", sub: "以 / 开头、不经模型的即时指令", ep: "/api/agent/commands" },
   { id: "logs", name: "日志", icon: "📜", title: "日志", sub: "后端运行日志（倒序）", ep: "/api/logs" },
   { id: "settings", name: "设置", icon: "⚙️", title: "设置", sub: "运行参数与安全开关", ep: "/api/agent/config" },
 ];
@@ -946,6 +948,31 @@ function pageHeartbeat() {
   return h;
 }
 
+/* 魔法命令：以 / 开头、不经模型的即时指令（QwenPaw 斜杠命令的 Go 版） */
+function pageCommands() {
+  const list = (S.commands && S.commands.commands) || [];
+  let h = '<div class="card"><header><h2>魔法命令</h2><span class="ep mono">/api/agent/commands</span></header>' +
+    '<p class="desc">在对话里以 <code>/</code> 开头发出的即时指令：命令直接控制对话，不经过模型，秒回。' +
+    '单个 <code>/</code> 就是看帮助；技能另有一种写法 <code>/&lt;技能名&gt; &lt;要求&gt;</code>，会把技能正文注入后再交给模型照做。</p>' +
+    '<table><thead><tr><th class="nowrap">命令</th><th class="nowrap">类别</th><th>说明</th></tr></thead><tbody>';
+  if (!list.length) {
+    h += '<tr><td colspan="3"><div class="empty">没取到命令清单（后端可能没挂 Agent）。</div></td></tr>';
+  }
+  list.forEach((c) => {
+    const aliases = (c.aliases || []).map((a) => "/" + esc(a)).join("  ");
+    h += '<tr><td class="nowrap"><code>/' + esc(c.name) + '</code>' +
+      (aliases ? '<div class="cell-sub mono">' + aliases + "</div>" : "") + "</td>" +
+      '<td class="nowrap cell-sub">' + esc(c.category || "") + "</td>" +
+      '<td>' + esc(c.help || "") + "</td></tr>";
+  });
+  h += "</tbody></table></div>";
+
+  h += '<div class="card"><header><h2>技能命令</h2><span class="ep mono">/&lt;技能名&gt;</span></header><p class="desc">' +
+    '<code>/skills</code> 看有哪些技能；<code>/&lt;技能名&gt;</code> 看单个技能的说明；' +
+    '<code>/&lt;技能名&gt; &lt;要求&gt;</code> 强制用该技能（技能正文会注入这一次任务，再照常跑模型）。</p></div>';
+  return h;
+}
+
 function pageLogs() {
   const lines = (S.logs || []).map((l) => l.line || l.text || JSON.stringify(l));
   return '<div class="card"><header><h2>日志</h2><span class="ep mono">/api/logs</span>' +
@@ -1159,6 +1186,7 @@ const RENDER = {
   agent: pageAgent, kb: pageKb, runs: pageRuns, devices: pageDevices, tasks: pageTasks, memory: pageMemory,
   skills: pageSkills, persona: pagePersona, models: pageModels, voice: pageVoice, mcp: pageMCP, backups: pageBackups, cron: pageCron,
   heartbeat: pageHeartbeat,
+  commands: pageCommands,
   logs: pageLogs, settings: pageSettings,
 };
 
@@ -1669,6 +1697,10 @@ async function load(silent) {
       S.heartbeat = hb || S.heartbeat;
       // 用户正在编辑时不要用磁盘内容盖掉他手上的改动
       if (hbf && !S.hbDirty) S.hbContent = hbf.content || "";
+    }
+    if (S.page === "commands") {
+      const cc = await api("/api/agent/commands").catch(() => null);
+      S.commands = cc || S.commands;
     }
     render();
   } catch (e) {

@@ -21,6 +21,7 @@ import (
 	"baize/internal/hub"
 	"baize/internal/kb"
 	"baize/internal/logx"
+	"baize/internal/slash"
 	"baize/shared/proto"
 )
 
@@ -36,6 +37,7 @@ type Server struct {
 	started time.Time
 	agent   *agentsvc.Service // 可选：挂了才有 Agent 相关接口
 	kb      *kb.Service       // 可选：挂了才有知识库接口
+	cmds    *slash.Registry   // 魔法命令注册表（挂了 agent 才有）
 }
 
 // New 创建服务

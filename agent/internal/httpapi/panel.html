@@ -1618,7 +1618,16 @@ async function runText(text, wait) {
   if (S.page === "agent") render();
   try {
     const r = await api("/api/agent/run", { method: "POST", body: { goal: text, wait: !!wait } });
-    if (!wait) {
+    if (r.command) {
+      // 魔法命令：后端直接回执，不派活、不占运行记录
+      const note = {
+        role: "agent", trace: [], ts: Date.now(),
+        text: (r.reply || "").trim() || "（命令已执行）",
+        meta: "魔法命令 /" + (r.name || "") + (r.action ? " · 动作：" + r.action : ""),
+      };
+      // /new、/clear 要清的是本机这条对话线，只留回执这一条
+      if (r.action === "clear" || r.action === "new") S.chat = [note]; else S.chat.push(note);
+    } else if (!wait) {
       S.chat.push({
         role: "agent", trace: [], ts: Date.now(),
         text: "已经派下去了（" + (r.runId || "") + "）。跑完会出现在「运行记录」里；中途有危险动作会挂到「待审批」等你放行。",

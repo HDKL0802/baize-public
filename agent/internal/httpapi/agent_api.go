@@ -28,6 +28,8 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	// 魔法命令注册表：命令处理器要同时用到版本号与 Agent 能力，所以在这里装配
 	s.cmds = s.buildCommands()
 	s.registerCommands(mux)
+	// 频道（IM / webhook 接入）
+	s.registerChannels(mux)
 	mux.HandleFunc("GET /api/agent/state", s.api(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, a.State())
 	}))

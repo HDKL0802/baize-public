@@ -367,6 +367,7 @@ const S = {
   persona: null, personaEdit: null,              // 人设状态 + 正在编辑的文件
   heartbeat: null, hbContent: null, hbDirty: false, // 心跳状态 + 编辑器内容（hbDirty=用户动过，别让轮询盖掉）
   commands: null,                                  // 魔法命令清单（/api/agent/commands）
+  channels: null,                                  // 频道清单（/api/agent/channels）
 };
 const CHAT_KEY = "bz_console_chat_v1";
 function loadChat() { try { S.chat = JSON.parse(localStorage.getItem(CHAT_KEY) || "[]") || []; } catch (e) { S.chat = []; } }
@@ -392,6 +393,7 @@ const PAGES = [
   { id: "cron", name: "定时任务", icon: "⏰", title: "定时任务", sub: "cron 表达式 + 一句目标", ep: "/api/agent/state.cron" },
   { id: "heartbeat", name: "心跳", icon: "💓", title: "心跳", sub: "定时拿 HEARTBEAT.md 里的待办跑一次 Agent", ep: "/api/agent/heartbeat" },
   { id: "commands", name: "魔法命令", icon: "🪄", title: "魔法命令", sub: "以 / 开头、不经模型的即时指令", ep: "/api/agent/commands" },
+  { id: "channels", name: "频道", icon: "📡", title: "频道", sub: "IM / webhook 接入：白泽在「哪里」跟你对话", ep: "/api/agent/channels" },
   { id: "logs", name: "日志", icon: "📜", title: "日志", sub: "后端运行日志（倒序）", ep: "/api/logs" },
   { id: "settings", name: "设置", icon: "⚙️", title: "设置", sub: "运行参数与安全开关", ep: "/api/agent/config" },
 ];
@@ -973,6 +975,49 @@ function pageCommands() {
   return h;
 }
 
+/* 频道：你和白泽在「哪里」对话的接入点（QwenPaw 频道机制的 Go 版） */
+function pageChannels() {
+  const list = (S.channels && S.channels.channels) || [];
+  const kinds = (S.channels && S.channels.kinds) || ["webhook"];
+  const formats = (S.channels && S.channels.formats) || ["generic", "feishu", "dingtalk", "slack"];
+  const fName = { generic: "通用 JSON", feishu: "飞书群机器人", dingtalk: "钉钉群机器人", slack: "Slack" };
+
+  let h = '<div class="card"><header><h2>频道</h2><span class="ep mono">/api/agent/channels</span></header>' +
+    '<p class="desc">频道 = 你和白泽在「哪里」对话。出站把回复 POST 到 webhook 地址（可直接对接飞书 / 钉钉 / Slack 群机器人）；' +
+    '入站由外部向 <code>POST /api/channels/{id}/inbound</code> 发消息（带频道自己的令牌），跑一次 Agent 后把结论回发。' +
+    '心跳的 <code>last</code> / <code>inbox</code> 分发也走这里。</p>' +
+    '<table><thead><tr><th>频道</th><th class="nowrap">类型</th><th class="nowrap">出站格式</th><th class="nowrap">入站令牌</th><th class="nowrap">状态</th><th class="nowrap">操作</th></tr></thead><tbody>';
+  if (!list.length) {
+    h += '<tr><td colspan="6"><div class="empty">还没有频道。在下面新建一个。</div></td></tr>';
+  }
+  list.forEach((c) => {
+    h += '<tr>' +
+      '<td><div class="cell-title">' + esc(c.id) + '</div><div class="cell-sub mono">' + esc(c.outboundUrl || "（没配出站）") + "</div></td>" +
+      '<td class="nowrap cell-sub">' + esc(c.kind) + "</td>" +
+      '<td class="nowrap cell-sub">' + esc(fName[c.format] || c.format || "generic") + "</td>" +
+      '<td class="nowrap">' + (c.hasToken ? '<span class="tag ok">已设</span>' : '<span class="tag err">未设（收不了入站）</span>') + "</td>" +
+      '<td class="nowrap"><span class="tag ' + (c.enabled ? "ok" : "") + '">' + (c.enabled ? "启用" : "停用") + "</span></td>" +
+      '<td class="nowrap">' +
+        '<button class="btn sm" data-chtoggle="' + esc(c.id) + '">' + (c.enabled ? "停用" : "启用") + "</button> " +
+        '<button class="btn sm" data-chtest="' + esc(c.id) + '">测发送</button> ' +
+        '<button class="btn sm danger" data-chdel="' + esc(c.id) + '">删除</button>' +
+      "</td></tr>";
+  });
+  h += "</tbody></table></div>";
+
+  // 新建 / 覆盖（同 id 直接覆盖；webhook 必须有出站地址）
+  h += '<div class="card"><header><h2>新建 / 覆盖</h2><span class="ep mono">POST /api/agent/channels</span></header><div class="pad"><div class="grid2">' +
+    '<div class="field"><label>频道 id（字母 / 数字 / 连字符 / 下划线）</label><input type="text" id="ch-id" placeholder="如 feishu-ops"></div>' +
+    '<div class="field"><label>类型</label><select id="ch-kind">' + kinds.map((k) => '<option value="' + esc(k) + '">' + esc(k) + "</option>").join("") + "</select></div>" +
+    '<div class="field"><label>出站格式</label><select id="ch-format">' + formats.map((f) => '<option value="' + esc(f) + '">' + esc(fName[f] || f) + "</option>").join("") + "</select></div>" +
+    '<div class="field"><label>出站地址（webhook URL）</label><input type="text" id="ch-out" placeholder="https://..."></div>' +
+    '<div class="field"><label>入站令牌（留空 = 不收入站）</label><input type="text" id="ch-token" placeholder="随便一串，外部回调带上它"></div>' +
+    '<div class="field"><label>回复前缀（可选）</label><input type="text" id="ch-prefix" placeholder="如 [白泽] "></div>' +
+    '</div><div class="row" style="margin-top:8px"><button class="btn primary" id="btn-chsave">保存频道</button>' +
+    '<span class="cell-sub">保存即生效；改配置会即时重建，不用重启</span></div></div></div>';
+  return h;
+}
+
 function pageLogs() {
   const lines = (S.logs || []).map((l) => l.line || l.text || JSON.stringify(l));
   return '<div class="card"><header><h2>日志</h2><span class="ep mono">/api/logs</span>' +
@@ -1187,6 +1232,7 @@ const RENDER = {
   skills: pageSkills, persona: pagePersona, models: pageModels, voice: pageVoice, mcp: pageMCP, backups: pageBackups, cron: pageCron,
   heartbeat: pageHeartbeat,
   commands: pageCommands,
+  channels: pageChannels,
   logs: pageLogs, settings: pageSettings,
 };
 
@@ -1473,6 +1519,34 @@ function bind() {
       .catch((e) => toast("保存失败：" + e.message, true)));
   const hbc = $("hb-content");
   if (hbc) hbc.addEventListener("input", () => { S.hbDirty = true; S.hbContent = hbc.value; });
+
+  /* ---- 频道 ---- */
+  on("btn-chsave", () => {
+    const id = $("ch-id").value.trim();
+    if (!id) { toast("先写频道 id", true); return; }
+    api("/api/agent/channels", {
+      method: "POST", body: {
+        action: "save", id: id,
+        kind: $("ch-kind").value,
+        format: $("ch-format").value,
+        outboundUrl: $("ch-out").value.trim(),
+        token: $("ch-token").value,
+        botPrefix: $("ch-prefix").value,
+      }
+    }).then((r) => { S.channels = r; toast("频道已保存（立即生效）"); render(); })
+      .catch((e) => toast("保存失败：" + e.message, true));
+  });
+  document.querySelectorAll("[data-chtoggle]").forEach((b) => b.onclick = () =>
+    api("/api/agent/channels", { method: "POST", body: { action: "toggle", id: b.dataset.chtoggle } })
+      .then((r) => { S.channels = r; toast("已切换"); render(); }).catch((e) => toast(e.message, true)));
+  document.querySelectorAll("[data-chtest]").forEach((b) => b.onclick = () =>
+    api("/api/agent/channels", { method: "POST", body: { action: "test", id: b.dataset.chtest } })
+      .then(() => toast("测试已发出，去出站端看看收到没")).catch((e) => toast("测试失败：" + e.message, true)));
+  document.querySelectorAll("[data-chdel]").forEach((b) => b.onclick = () =>
+    confirmBox("删除频道", "删掉「" + b.dataset.chdel + "」后它不再收发消息。", "删除", async () => {
+      const r = await api("/api/agent/channels", { method: "POST", body: { action: "remove", id: b.dataset.chdel } });
+      S.channels = r; toast("已删除"); render();
+    }));
   document.querySelectorAll("[data-mre]").forEach((b) => b.onclick = () =>
     api("/api/agent/mcp", { method: "POST", body: { action: "reload", server: b.dataset.mre } })
       .then(() => { toast("已重载"); load(true); }).catch((e) => toast(e.message, true)));
@@ -1710,6 +1784,10 @@ async function load(silent) {
     if (S.page === "commands") {
       const cc = await api("/api/agent/commands").catch(() => null);
       S.commands = cc || S.commands;
+    }
+    if (S.page === "channels") {
+      const ch = await api("/api/agent/channels").catch(() => null);
+      S.channels = ch || S.channels;
     }
     render();
   } catch (e) {

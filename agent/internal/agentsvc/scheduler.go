@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"baize/internal/agentrt"
+	"baize/internal/channels"
 	"baize/internal/config"
 	"baize/internal/cron"
 )
@@ -441,16 +442,44 @@ func heartbeatTimeout(hb config.HeartbeatConfig) time.Duration {
 }
 
 // dispatchHeartbeat 把心跳结果送到指定出口。
-// main = 只留在运行记录里（默认）；last / inbox 要等 channels 落地才能接上，
-// 现在收到这两个值只记一条提示，绝不假装已经发出去了。
+// main = 只留在运行记录里（默认）；last = 最近收到过消息的频道；inbox = id 为 inbox 的频道。
+// 没有可用频道 / 没配 inbox 时只记一条日志，绝不假装已经发出去了。
 func (s *Service) dispatchHeartbeat(target string, res agentrt.RunResult) {
-	switch target {
-	case "main", "":
+	if target == "main" || target == "" {
 		return
-	default:
-		s.lg.Info("心跳结果暂未分发（渠道能力尚未落地）",
-			"target", target, "runId", res.RunID)
 	}
+	text := strings.TrimSpace(res.Text)
+	if text == "" {
+		s.lg.Info("心跳结果为空，不往外发", "target", target, "runId", res.RunID)
+		return
+	}
+	mgr := s.Channels()
+	if mgr == nil {
+		s.lg.Info("心跳结果未分发（频道未装配）", "target", target, "runId", res.RunID)
+		return
+	}
+	var id string
+	switch target {
+	case "last":
+		id = mgr.LastChannel()
+		if id == "" {
+			s.lg.Info("心跳结果未分发（还没有任何频道收过消息）", "target", target, "runId", res.RunID)
+			return
+		}
+	case "inbox":
+		id = "inbox"
+	default:
+		s.lg.Info("未知的心跳分发目标，未分发", "target", target, "runId", res.RunID)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	msg := channels.Message{Channel: id, Session: "heartbeat"}
+	if err := mgr.Send(ctx, id, msg, text); err != nil {
+		s.lg.Warn("心跳结果分发失败", "target", target, "channel", id, "err", err)
+		return
+	}
+	s.lg.Info("心跳结果已分发", "target", target, "channel", id, "runId", res.RunID)
 }
 
 // activeWindow 把 "HH:MM-HH:MM" 解析成起止分钟数；ok=false 表示没配或配错了（按全天处理）

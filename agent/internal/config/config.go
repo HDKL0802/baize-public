@@ -107,6 +107,19 @@ type HeartbeatConfig struct {
 	Runs           int    `json:"runs,omitempty"`
 }
 
+// ChannelConfig 一个频道（QwenPaw 频道机制的 Go 版）。
+// kind 目前支持 webhook：出站把回复 POST 到 outboundUrl（format 决定请求体形状，可直接对接
+// 飞书 / 钉钉 / Slack 的群机器人），入站 POST /api/channels/{id}/inbound（用 token 校验）。
+type ChannelConfig struct {
+	ID          string `json:"id"`                    // 频道 id（唯一，出现在 /api/channels/{id}/inbound）
+	Kind        string `json:"kind"`                  // 频道类型：webhook
+	Enabled     bool   `json:"enabled"`
+	Token       string `json:"token,omitempty"`       // 入站令牌（外部回调要带上；空 = 拒绝入站）
+	OutboundURL string `json:"outboundUrl,omitempty"` // 出站地址
+	Format      string `json:"format,omitempty"`      // 出站体格式：generic（默认）/ feishu / dingtalk / slack
+	BotPrefix   string `json:"botPrefix,omitempty"`   // 回复前缀
+}
+
 // Config 后端 Agent 配置
 type Config struct {
 	AllowRemote        bool       `json:"allowRemote"` // 是否允许非本机模型地址 / 远端 MCP 服务
@@ -130,6 +143,7 @@ type Config struct {
 	Voice          Voice              `json:"voice"`          // 语音通道（说话 / 听写）
 	Persona        Persona            `json:"persona"`        // 人设文件（Markdown 进系统提示）
 	Heartbeat      HeartbeatConfig    `json:"heartbeat"`      // 心跳任务（定期运行 agent）
+	Channels       []ChannelConfig    `json:"channels"`       // 频道（IM / webhook 接入）
 }
 
 // 记忆检索的权重档位（非法值一律回落到 balanced）
@@ -145,6 +159,7 @@ func Default() Config {
 		TokenBudget:        8000,
 		ApprovalTimeoutSec: 300,
 		Cron:               []CronJob{},
+		Channels:           []ChannelConfig{},
 		MCPServers:         []mcp.ServerConfig{},
 		BackupKeep:         10,
 		Memory: Memory{
@@ -306,6 +321,26 @@ func (c *Config) normalize() {
 	if c.Heartbeat.ActiveHours != "" {
 		c.Heartbeat.ActiveHours = strings.TrimSpace(c.Heartbeat.ActiveHours)
 	}
+	// 频道：只做"清理"（丢非法/重复 id、收敛 kind/format），不自动新建，也不因为字段缺失就补一个。
+	// 缺省时 Load 已给了空切片兜底。
+	if c.Channels == nil {
+		c.Channels = []ChannelConfig{}
+	}
+	cleanedCh := make([]ChannelConfig, 0, len(c.Channels))
+	seenCh := map[string]bool{}
+	for _, ch := range c.Channels {
+		ch.ID = strings.TrimSpace(ch.ID)
+		if ch.ID == "" || seenCh[ch.ID] {
+			continue // 没 id / 重复 id 的直接丢，别让它们躺在配置里装样子
+		}
+		seenCh[ch.ID] = true
+		ch.Kind = normalizeChannelKind(ch.Kind)
+		ch.Format = normalizeChannelFormat(ch.Format)
+		ch.OutboundURL = strings.TrimSpace(ch.OutboundURL)
+		ch.Token = strings.TrimSpace(ch.Token)
+		cleanedCh = append(cleanedCh, ch)
+	}
+	c.Channels = cleanedCh
 }
 
 // 语音通道支持的协议
@@ -362,7 +397,8 @@ func normalizeRecallProfile(v string) string {
 var heartbeatTargets = []string{"main", "last", "inbox"}
 
 // HeartbeatTargets 心跳结果的分发目标清单（界面下拉用）：
-// main = 只留在运行记录里；last / inbox 要等渠道能力落地才真正发得出去。
+// main = 只留在运行记录里；last = 最近收到过消息的频道；inbox = id 为 inbox 的频道。
+// last / inbox 在频道没配好时只会记一条日志，绝不假装已经发出去。
 func HeartbeatTargets() []string { return append([]string{}, heartbeatTargets...) }
 
 // ValidHeartbeatTarget 目标是否合法。接口层先用它挡住笔误，
@@ -385,6 +421,58 @@ func normalizeHeartbeatTarget(v string) string {
 		}
 	}
 	return "main"
+}
+
+var channelKinds = []string{"webhook"}
+var channelFormats = []string{"generic", "feishu", "dingtalk", "slack"}
+
+// ChannelKinds 支持的频道类型（界面下拉用）。目前只有 webhook：
+// 出站 POST 到一个 URL（飞书/钉钉/Slack 群机器人都只要一个 URL），入站走 /api/channels/{id}/inbound。
+func ChannelKinds() []string { return append([]string{}, channelKinds...) }
+
+// ChannelFormats webhook 出站请求体的形状（对接不同 IM 群机器人用）
+func ChannelFormats() []string { return append([]string{}, channelFormats...) }
+
+// ValidChannelKind 类型是否合法（接口层挡笔误，别让 normalize 悄悄改成 webhook）
+func ValidChannelKind(v string) bool {
+	v = strings.ToLower(strings.TrimSpace(v))
+	for _, k := range channelKinds {
+		if v == k {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidChannelFormat 出站格式是否合法
+func ValidChannelFormat(v string) bool {
+	v = strings.ToLower(strings.TrimSpace(v))
+	for _, k := range channelFormats {
+		if v == k {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeChannelKind(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	for _, k := range channelKinds {
+		if v == k {
+			return v
+		}
+	}
+	return "webhook"
+}
+
+func normalizeChannelFormat(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	for _, k := range channelFormats {
+		if v == k {
+			return v
+		}
+	}
+	return "generic"
 }
 
 // MainProviders 主通道（非回退）

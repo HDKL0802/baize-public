@@ -852,6 +852,62 @@ try {
     if ($rec.run.goal -match "^/sweep-skill") { throw "目标不该还以斜杠命令开头：$($rec.run.goal)" }
   }
 
+  # ================= I5. 频道 =================
+  Step "I5. 频道（IM / webhook 接入）"
+  Check "I20 频道清单初始为空 + 类型/格式齐全" {
+    $r = Get-Json "$base/api/agent/channels" $h
+    if (@($r.channels).Count -ne 0) { throw "sweep 环境里不该有频道：$($r.channels | ConvertTo-Json -Compress)" }
+    if ($r.kinds -notcontains "webhook") { throw "kinds 里应有 webhook：$($r.kinds -join ',')" }
+    if ($r.formats -notcontains "feishu") { throw "formats 里应有 feishu：$($r.formats -join ',')" }
+  }
+  Check "I21 频道参数校验：坏类型/坏格式/坏 id/缺出站一律被拒 + 合法回显" {
+    foreach ($bad in @(
+        @{ action = "save"; id = "c1"; kind = "nope"; outboundUrl = "http://127.0.0.1:1/x" },
+        @{ action = "save"; id = "c1"; format = "nope"; outboundUrl = "http://127.0.0.1:1/x" },
+        @{ action = "save"; id = "c1" },
+        @{ action = "save"; id = "bad id"; outboundUrl = "http://127.0.0.1:1/x" },
+        @{ action = "wat"; id = "c1" })) {
+      $rejected = $false
+      try { $null = Send-Json "Post" "$base/api/agent/channels" $bad $h } catch { $rejected = $true }
+      if (-not $rejected) { throw ("坏参数竟然被接受：" + ($bad | ConvertTo-Json -Compress)) }
+    }
+    $ok = Send-Json "Post" "$base/api/agent/channels" @{
+      action = "save"; id = "sweep-ch"; kind = "webhook"; format = "feishu"; token = "sweep-tok"; outboundUrl = "http://127.0.0.1:1/nope" } $h
+    if (@($ok.channels).Count -ne 1 -or -not $ok.channels[0].hasToken -or $ok.channels[0].format -ne "feishu") {
+      throw ("合法保存回显不对：" + ($ok.channels | ConvertTo-Json -Compress))
+    }
+  }
+  Check "I22 入站校验：未知频道 / 没设令牌 / 令牌不对 都进不来" {
+    $null = Send-Json "Post" "$base/api/agent/channels" @{ action = "save"; id = "sweep-noauth"; outboundUrl = "http://127.0.0.1:1/nope" } $h
+    foreach ($p in @(
+        "/api/channels/does-not-exist/inbound",
+        "/api/channels/sweep-noauth/inbound",
+        "/api/channels/sweep-ch/inbound?token=wrong")) {
+      $rejected = $false
+      try { $null = Send-Json "Post" "$base$p" @{ text = "hi" } $h } catch { $rejected = $true }
+      if (-not $rejected) { throw "入站竟然放行：$p" }
+    }
+  }
+  Check "I23 入站跑通：正确令牌 → 收下，且运行记录里出现这次消息" {
+    Clear-Runs
+    $null = Send-Json "Post" "$mockBase/_mock/script" @( @{ text = "好" } ) $h
+    $r = Send-Json "Post" "$base/api/channels/sweep-ch/inbound?token=sweep-tok" @{ text = "自检频道消息：看看今天有什么急事。"; sender = "sweep" } $h
+    if (-not $r.accepted) { throw "入站应被接受：$($r | ConvertTo-Json -Compress)" }
+    $hit = Wait-For { $x = Get-Json "$base/api/agent/runs?limit=10" $h; @($x.runs | Where-Object { $_.goal -match "自检频道消息" })[0] } 60
+    if (-not $hit) { throw "运行记录里没找到这次频道消息" }
+  }
+  Check "I24 测发送失败可见 + 停用后入站被拒 + 删除生效" {
+    $failed = $false
+    try { $null = Send-Json "Post" "$base/api/agent/channels" @{ action = "test"; id = "sweep-ch" } $h } catch { $failed = $true }
+    if (-not $failed) { throw "出站地址不可达，test 竟然报成功" }
+    $null = Send-Json "Post" "$base/api/agent/channels" @{ action = "toggle"; id = "sweep-ch" } $h
+    $rejected = $false
+    try { $null = Send-Json "Post" "$base/api/channels/sweep-ch/inbound?token=sweep-tok" @{ text = "hi" } $h } catch { $rejected = $true }
+    if (-not $rejected) { throw "停用后入站竟然放行" }
+    $after = Send-Json "Post" "$base/api/agent/channels" @{ action = "remove"; id = "sweep-ch" } $h
+    if (@($after.channels | Where-Object { $_.id -eq "sweep-ch" }).Count -ne 0) { throw "删除后不该还在清单里" }
+  }
+
   # ================= J. 桌面端分发 =================
   Step "J. 桌面端分发"
   Check "J1 /dl/ 能取到升级清单" {

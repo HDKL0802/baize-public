@@ -17,6 +17,7 @@ import (
 	"baize/internal/activity"
 	"baize/internal/agentrt"
 	"baize/internal/backup"
+	"baize/internal/channels"
 	"baize/internal/config"
 	"baize/internal/hooks"
 	"baize/internal/kb"
@@ -130,6 +131,7 @@ type Service struct {
 	mcp      *mcp.Manager
 	kbs      *kb.Service
 	persona  *persona.Library
+	chans    *channels.Manager
 
 	hooks     *hooks.Bus
 	approvals *ApprovalQueue
@@ -227,6 +229,7 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 	}
 	s.rebuildProviders()
 	s.rebuildEmbedder()
+	s.rebuildChannels()
 	s.mcp.Apply(cfg.MCPServers) // 启动即按配置连 MCP 服务（连不上会明确报状态，不静默）
 	s.logIssues()
 	s.sched = newScheduler(s)
@@ -320,10 +323,55 @@ func (s *Service) Reload() error {
 	s.mu.Unlock()
 	s.rebuildProviders()
 	s.rebuildEmbedder()
+	s.rebuildChannels()
 	s.mcp.SetAllowRemote(cfg.AllowRemote)
 	s.mcp.Apply(cfg.MCPServers) // MCP 服务热插拔：配置一变就重连/下线，不用重启后端
 	s.logIssues()
 	return nil
+}
+
+// rebuildChannels 按配置重建频道管理器（启动与 Reload 都走这条）。
+// Runner 直接复用 Service.Run：频道消息就是"又来了一条 goal"，跑完把结论发回去。
+// 重建时换一个新的 Manager（旧对象在后台跑完自己那次就自然回收）。
+func (s *Service) rebuildChannels() {
+	cfg := s.Config()
+	mgr := channels.NewManager(func(ctx context.Context, session, text string) (string, error) {
+		res, err := s.Run(ctx, text, "chat", "")
+		if err != nil {
+			return "", err
+		}
+		return res.Text, nil
+	}, s.lg)
+	for _, ch := range cfg.Channels {
+		switch ch.Kind {
+		case "webhook", "":
+			mgr.Register(ch, channels.NewWebhook(ch))
+		default:
+			s.lg.Warn("未知频道类型，已跳过", "id", ch.ID, "kind", ch.Kind)
+		}
+	}
+	s.mu.RLock()
+	old := s.chans
+	s.mu.RUnlock()
+	if old != nil {
+		// 尽量把"最近有消息的频道"带过去，免得改一次配置就把心跳 target=last 弄丢
+		if last := old.LastChannel(); last != "" && mgr.HasChannel(last) {
+			mgr.NoteLast(last)
+		}
+	}
+	s.mu.Lock()
+	s.chans = mgr
+	s.mu.Unlock()
+	if n := mgr.Count(); n > 0 {
+		s.lg.Info("已装配频道", "count", n)
+	}
+}
+
+// Channels 频道管理器（控制台 / 频道回调用）
+func (s *Service) Channels() *channels.Manager {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.chans
 }
 
 // rebuildProviders 按配置建通道；有问题的通道记录下来，绝不静默丢弃

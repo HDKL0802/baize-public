@@ -1,0 +1,154 @@
+package httpapi_test
+
+import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+)
+
+/* 频道接口测试（QwenPaw 频道机制的 Go 版）。
+   关注：清单广播；坏值（类型/格式/id/地址）一律门口拒绝；入站回调的令牌校验（404/409/401）；
+   正确令牌真的跑一次 Agent 并回发出站；测试发送 / 启停 / 删除；没挂 Agent 时不注册。 */
+
+type channelInfo struct {
+	ID       string `json:"id"`
+	Kind     string `json:"kind"`
+	Enabled  bool   `json:"enabled"`
+	Format   string `json:"format"`
+	HasToken bool   `json:"hasToken"`
+}
+
+type channelsResp struct {
+	Channels []channelInfo `json:"channels"`
+	Kinds    []string      `json:"kinds"`
+	Formats  []string      `json:"formats"`
+}
+
+func hasStr(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+func TestChannelsAPI(t *testing.T) {
+	e, _ := newAgentEnv(t)
+
+	var base channelsResp
+	if code := e.do("GET", "/api/agent/channels", nil, true, &base); code != 200 {
+		t.Fatalf("GET /api/agent/channels 期望 200，实际 %d", code)
+	}
+	if len(base.Channels) != 0 {
+		t.Fatalf("初始不该有频道：%+v", base.Channels)
+	}
+	if !hasStr(base.Kinds, "webhook") || !hasStr(base.Formats, "feishu") {
+		t.Fatalf("类型 / 格式清单不全：%+v %+v", base.Kinds, base.Formats)
+	}
+
+	// 坏值一律 400（别让 normalize 悄悄"纠正"成合法值）
+	bad := []map[string]any{
+		{"action": "save", "id": "c1", "kind": "nope", "outboundUrl": "http://127.0.0.1:1/x"},
+		{"action": "save", "id": "c1", "format": "nope", "outboundUrl": "http://127.0.0.1:1/x"},
+		{"action": "save", "id": "c1"}, // 缺 outboundUrl
+		{"action": "save", "id": "bad id", "outboundUrl": "http://127.0.0.1:1/x"},
+		{"action": "save", "id": "c1", "outboundUrl": "ftp://x/y"},
+		{"action": "wat", "id": "c1"},
+	}
+	for _, b := range bad {
+		if code := e.do("POST", "/api/agent/channels", b, true, nil); code != 400 {
+			t.Fatalf("坏请求应 400：%+v 实际 %d", b, code)
+		}
+	}
+
+	// 出站接收端
+	outCh := make(chan string, 4)
+	out := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		select {
+		case outCh <- string(b):
+		default:
+		}
+		w.WriteHeader(200)
+	}))
+	defer out.Close()
+
+	// 合法保存
+	var saved channelsResp
+	if code := e.do("POST", "/api/agent/channels",
+		map[string]any{"action": "save", "id": "c1", "kind": "webhook", "format": "feishu", "token": "sec", "outboundUrl": out.URL},
+		true, &saved); code != 200 {
+		t.Fatalf("保存频道期望 200，实际 %d", code)
+	}
+	if len(saved.Channels) != 1 || !saved.Channels[0].HasToken || saved.Channels[0].Format != "feishu" {
+		t.Fatalf("保存结果不对：%+v", saved.Channels)
+	}
+
+	// 入站校验：不存在 → 404；没设令牌 → 409；令牌不对 → 401
+	if code := e.do("POST", "/api/channels/nope/inbound", map[string]any{"text": "hi"}, false, nil); code != 404 {
+		t.Fatalf("不存在频道应 404，实际 %d", code)
+	}
+	if code := e.do("POST", "/api/agent/channels", map[string]any{"action": "save", "id": "c2", "outboundUrl": out.URL}, true, nil); code != 200 {
+		t.Fatalf("保存 c2 失败：%d", code)
+	}
+	if code := e.do("POST", "/api/channels/c2/inbound", map[string]any{"text": "hi"}, false, nil); code != 409 {
+		t.Fatalf("没设令牌应 409，实际 %d", code)
+	}
+	if code := e.do("POST", "/api/channels/c1/inbound?token=wrong", map[string]any{"text": "hi"}, false, nil); code != 401 {
+		t.Fatalf("令牌不对应 401，实际 %d", code)
+	}
+
+	// 正确令牌 → 202；配个假模型后真的跑一次 Agent，并回发到出站地址
+	openai := fakeOpenAI(t)
+	if code := e.do("POST", "/api/agent/providers", map[string]any{
+		"action": "upsert",
+		"config": map[string]any{"name": "local", "protocol": "openai", "baseUrl": openai.URL + "/v1", "model": "fake-openai", "apiKey": "sk-x"},
+	}, true, nil); code != 200 {
+		t.Fatalf("配模型失败：%d", code)
+	}
+	if code := e.do("POST", "/api/channels/c1/inbound?token=sec", map[string]any{"text": "帮我看看", "sender": "u1"}, false, nil); code != 202 {
+		t.Fatalf("入站应 202，实际 %d", code)
+	}
+	select {
+	case body := <-outCh:
+		if !strings.Contains(body, "能通") {
+			t.Fatalf("回发内容应为假模型回复：%s", body)
+		}
+	case <-time.After(8 * time.Second):
+		t.Fatal("没等到频道回发")
+	}
+
+	// 测试发送
+	if code := e.do("POST", "/api/agent/channels", map[string]any{"action": "test", "id": "c1", "text": "连通性"}, true, nil); code != 200 {
+		t.Fatalf("test 应 200，实际 %d", code)
+	}
+	// 停用后不再接受入站
+	if code := e.do("POST", "/api/agent/channels", map[string]any{"action": "toggle", "id": "c1"}, true, nil); code != 200 {
+		t.Fatalf("toggle 应 200，实际 %d", code)
+	}
+	if code := e.do("POST", "/api/channels/c1/inbound?token=sec", map[string]any{"text": "hi"}, false, nil); code != 409 {
+		t.Fatalf("停用后入站应 409，实际 %d", code)
+	}
+	// 删除
+	var after channelsResp
+	if code := e.do("POST", "/api/agent/channels", map[string]any{"action": "remove", "id": "c2"}, true, &after); code != 200 {
+		t.Fatalf("remove 应 200，实际 %d", code)
+	}
+	for _, c := range after.Channels {
+		if c.ID == "c2" {
+			t.Fatalf("c2 应已删除：%+v", after.Channels)
+		}
+	}
+}
+
+// 没挂 Agent 服务时频道接口不该注册
+func TestChannelsAbsentWithoutAgent(t *testing.T) {
+	e := newEnv(t, 5e9)
+	if code := e.do("GET", "/api/agent/channels", nil, true, nil); code == 200 {
+		t.Fatalf("没挂 Agent 时 /api/agent/channels 不该可用，实际 %d", code)
+	}
+}

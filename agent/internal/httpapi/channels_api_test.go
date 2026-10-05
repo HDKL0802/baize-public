@@ -200,6 +200,82 @@ func TestOneBotChannelWS(t *testing.T) {
 	}
 }
 
+// 飞书事件回调：challenge 握手 / 令牌闸门 / 消息事件真的跑一次
+func TestFeishuChannelEvent(t *testing.T) {
+	e, _ := newAgentEnv(t)
+
+	// feishu 必须带 appId/appSecret 与验证令牌
+	if code := e.do("POST", "/api/agent/channels", map[string]any{"action": "save", "id": "fs", "kind": "feishu", "token": "vtok"}, true, nil); code != 400 {
+		t.Fatalf("feishu 缺 appId/appSecret 应 400，实际 %d", code)
+	}
+	if code := e.do("POST", "/api/agent/channels", map[string]any{
+		"action": "save", "id": "fs", "kind": "feishu", "token": "vtok",
+		"appId": "cli_x", "appSecret": "sec", "domain": "http://127.0.0.1:1",
+	}, true, nil); code != 200 {
+		t.Fatalf("保存 feishu 频道失败：%d", code)
+	}
+
+	// URL 验证握手
+	var chal map[string]any
+	if code := e.do("POST", "/api/channels/fs/event", map[string]any{"type": "url_verification", "challenge": "c-1", "token": "vtok"}, false, &chal); code != 200 {
+		t.Fatalf("握手应 200，实际 %d", code)
+	}
+	if chal["challenge"] != "c-1" {
+		t.Fatalf("challenge 没回：%+v", chal)
+	}
+	// 令牌不对 → 401
+	if code := e.do("POST", "/api/channels/fs/event", map[string]any{"header": map[string]any{"event_type": "im.message.receive_v1", "token": "bad"}}, false, nil); code != 401 {
+		t.Fatalf("令牌不对应 401，实际 %d", code)
+	}
+	// webhook 频道的 /event 应 400（不是事件型频道）
+	if code := e.do("POST", "/api/agent/channels", map[string]any{"action": "save", "id": "wh", "outboundUrl": "http://127.0.0.1:1/x"}, true, nil); code != 200 {
+		t.Fatalf("保存 webhook 频道失败：%d", code)
+	}
+	if code := e.do("POST", "/api/channels/wh/event", map[string]any{"type": "url_verification", "challenge": "x", "token": "t"}, false, nil); code != 400 {
+		t.Fatalf("webhook 走 /event 应 400，实际 %d", code)
+	}
+
+	// 配假模型，推一条消息事件 → 跑一次 Agent
+	openai := fakeOpenAI(t)
+	if code := e.do("POST", "/api/agent/providers", map[string]any{
+		"action": "upsert",
+		"config": map[string]any{"name": "local", "protocol": "openai", "baseUrl": openai.URL + "/v1", "model": "fake-openai", "apiKey": "sk-x"},
+	}, true, nil); code != 200 {
+		t.Fatalf("配模型失败：%d", code)
+	}
+	ev := map[string]any{
+		"schema": "2.0",
+		"header": map[string]any{"event_type": "im.message.receive_v1", "token": "vtok"},
+		"event": map[string]any{
+			"sender":  map[string]any{"sender_id": map[string]any{"open_id": "ou_1"}},
+			"message": map[string]any{"message_id": "m1", "chat_id": "oc_1", "chat_type": "group", "message_type": "text", "content": `{"text":"飞书自检消息"}`},
+		},
+	}
+	if code := e.do("POST", "/api/channels/fs/event", ev, false, nil); code != 200 {
+		t.Fatalf("消息事件应 200，实际 %d", code)
+	}
+	hit := false
+	for i := 0; i < 40 && !hit; i++ {
+		time.Sleep(200 * time.Millisecond)
+		var runs struct {
+			Runs []struct {
+				Goal string `json:"goal"`
+			} `json:"runs"`
+		}
+		if code := e.do("GET", "/api/agent/runs?limit=10", nil, true, &runs); code == 200 {
+			for _, r := range runs.Runs {
+				if strings.Contains(r.Goal, "飞书自检消息") {
+					hit = true
+					break
+				}
+			}
+		}
+	}
+	if !hit {
+		t.Fatal("飞书消息事件没触发 Agent 运行")
+	}
+}
+
 // 没挂 Agent 服务时频道接口不该注册
 func TestChannelsAbsentWithoutAgent(t *testing.T) {
 	e := newEnv(t, 5e9)

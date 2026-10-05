@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -30,6 +31,7 @@ func (s *Server) registerChannels(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agent/channels", s.api(s.handleChannelAdmin))
 	mux.HandleFunc("POST /api/channels/{id}/inbound", s.handleChannelInbound)
 	mux.HandleFunc("GET /api/channels/{id}/ws", s.handleChannelWS)
+	mux.HandleFunc("POST /api/channels/{id}/event", s.handleChannelEvent)
 }
 
 // channelsState 频道清单 + 可选类型 / 格式（GET 与管理接口回同一个形状）
@@ -56,6 +58,10 @@ func (s *Server) handleChannelAdmin(w http.ResponseWriter, r *http.Request) {
 		OutboundURL *string `json:"outboundUrl"`
 		Format      *string `json:"format"`
 		BotPrefix   *string `json:"botPrefix"`
+		AppID       *string `json:"appId"`
+		AppSecret   *string `json:"appSecret"`
+		EncryptKey  *string `json:"encryptKey"`
+		Domain      *string `json:"domain"`
 		Text        string  `json:"text"`
 	}
 	if err := decodeBody(r, &req); err != nil {
@@ -117,6 +123,18 @@ func (s *Server) handleChannelAdmin(w http.ResponseWriter, r *http.Request) {
 		if req.BotPrefix != nil {
 			cur.BotPrefix = *req.BotPrefix
 		}
+		if req.AppID != nil {
+			cur.AppID = strings.TrimSpace(*req.AppID)
+		}
+		if req.AppSecret != nil {
+			cur.AppSecret = strings.TrimSpace(*req.AppSecret)
+		}
+		if req.EncryptKey != nil {
+			cur.EncryptKey = strings.TrimSpace(*req.EncryptKey)
+		}
+		if req.Domain != nil {
+			cur.Domain = strings.TrimSpace(*req.Domain)
+		}
 		cur.ID = id
 		// 按类型做各自的必要校验：宁可在门口拒绝，也别存一个收不到 / 发不出的频道
 		switch cur.Kind {
@@ -135,6 +153,22 @@ func (s *Server) handleChannelAdmin(w http.ResponseWriter, r *http.Request) {
 			if strings.TrimSpace(cur.Token) == "" {
 				writeErr(w, http.StatusBadRequest, "onebot 频道必须设入站令牌（实现端连接时要带上它）")
 				return
+			}
+		case "feishu":
+			// 事件回调要鉴权（验证令牌），出站要应用凭证
+			if strings.TrimSpace(cur.Token) == "" {
+				writeErr(w, http.StatusBadRequest, "feishu 频道必须设验证令牌（token，飞书后台「事件订阅」里那个）")
+				return
+			}
+			if strings.TrimSpace(cur.AppID) == "" || strings.TrimSpace(cur.AppSecret) == "" {
+				writeErr(w, http.StatusBadRequest, "feishu 频道必须配 appId / appSecret（出站发消息要用）")
+				return
+			}
+			if cur.Domain != "" {
+				if u, err := url.Parse(cur.Domain); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+					writeErr(w, http.StatusBadRequest, "domain 要是一个 http/https URL（默认 https://open.feishu.cn）")
+					return
+				}
 			}
 		}
 		if idx >= 0 {
@@ -284,6 +318,62 @@ func (s *Server) handleChannelWS(w http.ResponseWriter, r *http.Request) {
 			s.lg.Warn("频道消息被拒", "channel", id, "err", err)
 		}
 	})
+}
+
+// handleChannelEvent 平台事件回调（如飞书）：频道自己解析与鉴权，产出入站消息。
+// 按平台约定返回：URL 验证握手回 {"challenge":...}，其余回 {"code":0}。
+func (s *Server) handleChannelEvent(w http.ResponseWriter, r *http.Request) {
+	if s.agent == nil {
+		writeErr(w, http.StatusServiceUnavailable, "Agent 未就绪")
+		return
+	}
+	mgr := s.agent.Channels()
+	if mgr == nil {
+		writeErr(w, http.StatusServiceUnavailable, "频道未装配")
+		return
+	}
+	id := r.PathValue("id")
+	ch, ok := mgr.Get(id)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "没有这个频道："+id)
+		return
+	}
+	ec, ok := ch.(channels.EventChannel)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "频道 "+id+" 不支持事件回调（这个类型不走 /event）")
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "读取回调体失败："+err.Error())
+		return
+	}
+	hdrs := map[string]string{
+		"X-Lark-Signature":         r.Header.Get("X-Lark-Signature"),
+		"X-Lark-Request-Timestamp": r.Header.Get("X-Lark-Request-Timestamp"),
+		"X-Lark-Request-Nonce":     r.Header.Get("X-Lark-Request-Nonce"),
+		"Content-Type":             r.Header.Get("Content-Type"),
+	}
+	challenge, msgs, err := ec.HandleEvent(body, hdrs)
+	if err != nil {
+		var ie *channels.InboundError
+		if errors.As(err, &ie) {
+			writeErr(w, ie.Code, ie.Msg)
+			return
+		}
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if challenge != "" {
+		writeJSON(w, http.StatusOK, map[string]any{"challenge": challenge})
+		return
+	}
+	for _, m := range msgs {
+		if err := mgr.Deliver(m); err != nil {
+			s.lg.Warn("频道事件消息被拒", "channel", id, "err", err)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0})
 }
 
 // validateChannelID 频道 id 会出现在 URL 路径里，限制成安全的字符集

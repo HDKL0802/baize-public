@@ -983,9 +983,10 @@ function pageChannels() {
   const fName = { generic: "通用 JSON", feishu: "飞书群机器人", dingtalk: "钉钉群机器人", slack: "Slack" };
 
   let h = '<div class="card"><header><h2>频道</h2><span class="ep mono">/api/agent/channels</span></header>' +
-    '<p class="desc">频道 = 你和白泽在「哪里」对话。两类：<b>webhook</b>——出站把回复 POST 到地址（可直接对接飞书 / 钉钉 / Slack 群机器人），入站由外部向 <code>POST /api/channels/{id}/inbound</code> 发消息；' +
-    '<b>onebot</b>——QQ 机器人实现端（NapCat / go-cqhttp）以反向 WebSocket 连到 <code>GET /api/channels/{id}/ws?access_token=令牌</code>，消息从这条连接进出。' +
-    '两种都用频道自己的令牌校验；心跳的 <code>last</code> / <code>inbox</code> 分发也走这里。</p>' +
+    '<p class="desc">频道 = 你和白泽在「哪里」对话。三类：<b>webhook</b>——出站把回复 POST 到地址（可直接对接飞书 / 钉钉 / Slack 群机器人），入站由外部向 <code>POST /api/channels/{id}/inbound</code> 发消息；' +
+    '<b>onebot</b>——QQ 机器人实现端（NapCat / go-cqhttp）以反向 WebSocket 连到 <code>GET /api/channels/{id}/ws?access_token=令牌</code>；' +
+    '<b>feishu</b>——飞书事件回调：平台 POST 到 <code>POST /api/channels/{id}/event</code>（token = 验证令牌），出站走飞书 OpenAPI（需 appId/appSecret）。' +
+    '三者都用频道自己的令牌校验；心跳的 <code>last</code> / <code>inbox</code> 分发也走这里。</p>' +
     '<table><thead><tr><th>频道</th><th class="nowrap">类型</th><th class="nowrap">出站格式</th><th class="nowrap">入站令牌</th><th class="nowrap">状态</th><th class="nowrap">操作</th></tr></thead><tbody>';
   if (!list.length) {
     h += '<tr><td colspan="6"><div class="empty">还没有频道。在下面新建一个。</div></td></tr>';
@@ -1011,7 +1012,12 @@ function pageChannels() {
     '<div class="field"><label>类型</label><select id="ch-kind">' + kinds.map((k) => '<option value="' + esc(k) + '">' + esc(k) + "</option>").join("") + "</select></div>" +
     '<div class="field"><label>出站格式</label><select id="ch-format">' + formats.map((f) => '<option value="' + esc(f) + '">' + esc(fName[f] || f) + "</option>").join("") + "</select></div>" +
     '<div class="field"><label>出站地址（webhook 用；onebot 留空）</label><input type="text" id="ch-out" placeholder="https://..."></div>' +
-    '<div class="field"><label>入站令牌（留空 = 不收入站）</label><input type="text" id="ch-token" placeholder="随便一串，外部回调带上它"></div>' +
+    '<div class="field"><label>入站令牌（webhook/onebot）</label><input type="text" id="ch-token" placeholder="随便一串，外部回调带上它"></div>' +
+    '<div class="field"><label>飞书验证令牌（feishu 用；同时就是入站令牌）</label><input type="text" id="ch-ftoken" placeholder="飞书后台「事件订阅」里的 Verification Token"></div>' +
+    '<div class="field"><label>飞书 App ID（feishu 用）</label><input type="text" id="ch-appid" placeholder="cli_..."></div>' +
+    '<div class="field"><label>飞书 App Secret（feishu 用）</label><input type="text" id="ch-secret" placeholder="..."></div>' +
+    '<div class="field"><label>飞书 Encrypt Key（可选，配了加密才填）</label><input type="text" id="ch-enckey" placeholder="留空 = 事件未加密"></div>' +
+    '<div class="field"><label>飞书 Domain（可选）</label><input type="text" id="ch-domain" placeholder="默认 https://open.feishu.cn"></div>' +
     '<div class="field"><label>回复前缀（可选）</label><input type="text" id="ch-prefix" placeholder="如 [白泽] "></div>' +
     '</div><div class="row" style="margin-top:8px"><button class="btn primary" id="btn-chsave">保存频道</button>' +
     '<span class="cell-sub">保存即生效；改配置会即时重建，不用重启</span></div></div></div>';
@@ -1530,7 +1536,11 @@ function bind() {
         kind: $("ch-kind").value,
         format: $("ch-format").value,
         outboundUrl: $("ch-out").value.trim(),
-        token: $("ch-token").value,
+        token: $("ch-token").value || $("ch-ftoken").value,
+        appId: $("ch-appid").value.trim(),
+        appSecret: $("ch-secret").value.trim(),
+        encryptKey: $("ch-enckey").value.trim(),
+        domain: $("ch-domain").value.trim(),
         botPrefix: $("ch-prefix").value,
       }
     }).then((r) => { S.channels = r; toast("频道已保存（立即生效）"); render(); })

@@ -158,21 +158,30 @@ func (m *Manager) CheckInbound(id, token string) error {
 // Inbound 处理一条入站消息：校验频道与令牌 → 起后台任务跑 Agent → 回发。
 // 立即返回（入站回调要快速 ACK），跑与回发在后台完成。
 func (m *Manager) Inbound(msg Message, token string) error {
-	id := strings.TrimSpace(msg.Channel)
-	if err := m.CheckInbound(id, token); err != nil {
+	if err := m.CheckInbound(msg.Channel, token); err != nil {
 		return err
+	}
+	return m.Deliver(msg)
+}
+
+// Deliver 投递一条"已经过鉴权"的入站消息（频道自己在事件解析里完成鉴权后调用，
+// 如飞书的事件回调）。仍会校验频道存在 / 启用 / 有正文 / Agent 已就绪。
+func (m *Manager) Deliver(msg Message) error {
+	id := strings.TrimSpace(msg.Channel)
+	m.mu.RLock()
+	e := m.entries[id]
+	m.mu.RUnlock()
+	if e == nil {
+		return &InboundError{Code: 404, Msg: "没有这个频道：" + id}
+	}
+	if !e.cfg.Enabled {
+		return &InboundError{Code: 409, Msg: "频道已停用：" + id}
 	}
 	if strings.TrimSpace(msg.Text) == "" {
 		return &InboundError{Code: 400, Msg: "消息内容为空"}
 	}
 	if m.runner == nil {
 		return &InboundError{Code: 503, Msg: "Agent 还没接上，暂时收不了频道消息"}
-	}
-	m.mu.RLock()
-	e := m.entries[id]
-	m.mu.RUnlock()
-	if e == nil {
-		return &InboundError{Code: 404, Msg: "没有这个频道：" + id}
 	}
 	if strings.TrimSpace(msg.Session) == "" {
 		msg.Session = id + ":" + strings.TrimSpace(msg.Sender)

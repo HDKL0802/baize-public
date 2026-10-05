@@ -107,16 +107,22 @@ type HeartbeatConfig struct {
 	Runs           int    `json:"runs,omitempty"`
 }
 
-// ChannelConfig 一个频道（QwenPaw 频道机制的 Go 版）。
-// kind 目前支持 webhook：出站把回复 POST 到 outboundUrl（format 决定请求体形状，可直接对接
-// 飞书 / 钉钉 / Slack 的群机器人），入站 POST /api/channels/{id}/inbound（用 token 校验）。
+// ChannelConfig 一个频道（QwenPaw 频道机制的 Go 版）。支持的 kind：
+//   - webhook：出站把回复 POST 到 outboundUrl（format 决定请求体形状，可直接对接飞书/钉钉/Slack 群机器人），
+//     入站 POST /api/channels/{id}/inbound（用 token 校验）
+//   - onebot：QQ OneBot V11 反向 WebSocket，实现端连到 /api/channels/{id}/ws（用 token 校验）
+//   - feishu：飞书事件回调模式，平台 POST 到 /api/channels/{id}/event（token = 验证令牌），出站走飞书 OpenAPI
 type ChannelConfig struct {
-	ID          string `json:"id"`                    // 频道 id（唯一，出现在 /api/channels/{id}/inbound）
-	Kind        string `json:"kind"`                  // 频道类型：webhook
+	ID          string `json:"id"`                    // 频道 id（唯一，出现在 /api/channels/{id}/... 路径里）
+	Kind        string `json:"kind"`                  // 频道类型：webhook / onebot / feishu
 	Enabled     bool   `json:"enabled"`
-	Token       string `json:"token,omitempty"`       // 入站令牌（外部回调要带上；空 = 拒绝入站）
-	OutboundURL string `json:"outboundUrl,omitempty"` // 出站地址
-	Format      string `json:"format,omitempty"`      // 出站体格式：generic（默认）/ feishu / dingtalk / slack
+	Token       string `json:"token,omitempty"`       // webhook / onebot 的入站令牌；feishu 用作事件回调的「验证令牌」
+	OutboundURL string `json:"outboundUrl,omitempty"` // webhook：出站地址
+	Format      string `json:"format,omitempty"`      // webhook：出站体形状（generic/feishu/dingtalk/slack）
+	AppID       string `json:"appId,omitempty"`       // feishu：应用 App ID
+	AppSecret   string `json:"appSecret,omitempty"`   // feishu：应用 App Secret
+	EncryptKey  string `json:"encryptKey,omitempty"`  // feishu：可选，事件加密时用来解密
+	Domain      string `json:"domain,omitempty"`      // feishu：可选，默认 https://open.feishu.cn（自建/测试可改）
 	BotPrefix   string `json:"botPrefix,omitempty"`   // 回复前缀
 }
 
@@ -423,7 +429,7 @@ func normalizeHeartbeatTarget(v string) string {
 	return "main"
 }
 
-var channelKinds = []string{"webhook", "onebot"}
+var channelKinds = []string{"webhook", "onebot", "feishu"}
 var channelFormats = []string{"generic", "feishu", "dingtalk", "slack"}
 
 // ChannelKinds 支持的频道类型（界面下拉用）。目前只有 webhook：

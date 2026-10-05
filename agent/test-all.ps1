@@ -917,6 +917,25 @@ try {
     try { $null = Invoke-RestMethod -Method Get -Uri "$base/api/channels/sweep-ob/ws?access_token=wrong" -Headers $h -TimeoutSec 10 } catch { $blocked = $true }
     if (-not $blocked) { throw "WS 路由错令牌竟然放行" }
   }
+  Check "I26 飞书频道：必配凭证 + challenge 握手 + 推消息跑一次" {
+    $rejected = $false
+    try { $null = Send-Json "Post" "$base/api/agent/channels" @{ action = "save"; id = "sweep-fs"; kind = "feishu"; token = "vtok" } $h } catch { $rejected = $true }
+    if (-not $rejected) { throw "feishu 缺 appId/appSecret 竟然被接受" }
+    $null = Send-Json "Post" "$base/api/agent/channels" @{ action = "save"; id = "sweep-fs"; kind = "feishu"; token = "vtok"; appId = "cli_x"; appSecret = "sec"; domain = "http://127.0.0.1:1" } $h
+    $chal = Send-Json "Post" "$base/api/channels/sweep-fs/event" @{ type = "url_verification"; challenge = "c-1"; token = "vtok" } $h
+    if ($chal.challenge -ne "c-1") { throw "challenge 没回：$($chal | ConvertTo-Json -Compress)" }
+    $bad = $false
+    try { $null = Send-Json "Post" "$base/api/channels/sweep-fs/event" @{ header = @{ event_type = "im.message.receive_v1"; token = "bad" } } $h } catch { $bad = $true }
+    if (-not $bad) { throw "飞书令牌不对竟然放行" }
+    Clear-Runs
+    $null = Send-Json "Post" "$mockBase/_mock/script" @( @{ text = "好" } ) $h
+    $ev = @{ schema = "2.0"; header = @{ event_type = "im.message.receive_v1"; token = "vtok" };
+      event = @{ sender = @{ sender_id = @{ open_id = "ou_1" } };
+        message = @{ message_id = "m1"; chat_id = "oc_1"; chat_type = "group"; message_type = "text"; content = '{"text":"飞书自检消息"}' } } }
+    $null = Send-Json "Post" "$base/api/channels/sweep-fs/event" $ev $h
+    $hit = Wait-For { $x = Get-Json "$base/api/agent/runs?limit=10" $h; @($x.runs | Where-Object { $_.goal -match "飞书自检消息" })[0] } 60
+    if (-not $hit) { throw "飞书消息事件没触发运行" }
+  }
 
   # ================= J. 桌面端分发 =================
   Step "J. 桌面端分发"

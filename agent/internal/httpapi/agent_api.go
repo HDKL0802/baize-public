@@ -530,6 +530,12 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 			"sttModel": cfg.Voice.STTModel, "voice": cfg.Voice.Voice,
 			"autoSpeak": cfg.Voice.AutoSpeak, "hasApiKey": cfg.Voice.APIKey != "",
 		}
+		// 浏览器工具：路径 / 地址都不是密钥，可以直接回显
+		br := map[string]any{
+			"enabled": cfg.Browser.Enabled, "headless": cfg.Browser.Headless,
+			"chromePath": cfg.Browser.ChromePath, "cdpUrl": cfg.Browser.CDPURL,
+			"timeoutSec": cfg.Browser.TimeoutSec, "maxBytes": cfg.Browser.MaxBytes,
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"allowRemote": cfg.AllowRemote, "allowShell": cfg.AllowShell,
 			"workdir": cfg.Workdir, "skillsDir": cfg.SkillsDir,
@@ -538,6 +544,7 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 			"backupKeep": cfg.BackupKeep, "autoRunOnStart": cfg.AutoRunOnStart,
 			"providers": providers, "cron": len(cfg.Cron),
 			"embedding": emb, "memory": cfg.Memory, "voice": vc,
+			"browser": br,
 		})
 	}))
 
@@ -564,6 +571,12 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 			MemoryRecallBudget   *int     `json:"memoryRecallBudget"`
 			MemoryRecallMinScore *float64 `json:"memoryRecallMinScore"`
 			MemoryNamespace      *string  `json:"memoryNamespace"`
+			// 浏览器工具
+			BrowserEnabled    *bool   `json:"browserEnabled"`
+			BrowserHeadless   *bool   `json:"browserHeadless"`
+			BrowserChromePath *string `json:"browserChromePath"`
+			BrowserCDPURL     *string `json:"browserCdpUrl"`
+			BrowserTimeoutSec *int    `json:"browserTimeoutSec"`
 		}
 		if err := decodeBody(r, &patch); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
@@ -620,6 +633,22 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 		}
 		if patch.MemoryNamespace != nil {
 			cfg.Memory.Namespace = *patch.MemoryNamespace
+		}
+		// 浏览器工具
+		if patch.BrowserEnabled != nil {
+			cfg.Browser.Enabled = *patch.BrowserEnabled
+		}
+		if patch.BrowserHeadless != nil {
+			cfg.Browser.Headless = *patch.BrowserHeadless
+		}
+		if patch.BrowserChromePath != nil {
+			cfg.Browser.ChromePath = strings.TrimSpace(*patch.BrowserChromePath)
+		}
+		if patch.BrowserCDPURL != nil {
+			cfg.Browser.CDPURL = strings.TrimSpace(*patch.BrowserCDPURL)
+		}
+		if patch.BrowserTimeoutSec != nil && *patch.BrowserTimeoutSec > 0 {
+			cfg.Browser.TimeoutSec = *patch.BrowserTimeoutSec
 		}
 		if err := a.SaveConfig(cfg); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())

@@ -479,6 +479,42 @@ func TestSkillManageCreatesSkillForAgent(t *testing.T) {
 	}
 }
 
+// 浏览器工具：默认启用时出现在工具表里；关掉就不在（免得模型白调一个必然失败的家伙）
+func TestBrowserToolRegistered(t *testing.T) {
+	f := newFakeLLM(t, func(map[string]any) map[string]any { return sayBody("好") })
+	s := newService(t, f, nil)
+
+	if _, err := s.Run(context.Background(), "随便说点什么", "chat", ""); err != nil {
+		t.Fatalf("运行失败：%v", err)
+	}
+	f.mu.Lock()
+	if len(f.bodies) == 0 {
+		f.mu.Unlock()
+		t.Fatal("模型没被调用")
+	}
+	names := toolNamesOf(f.bodies[0])
+	f.mu.Unlock()
+	if !containsStr(names, "browser") {
+		t.Fatalf("默认应注册 browser 工具（实际：%s）", strings.Join(names, ","))
+	}
+
+	// 关掉之后不该再注册
+	cfg := s.Config()
+	cfg.Browser.Enabled = false
+	if err := s.SaveConfig(cfg); err != nil {
+		t.Fatalf("保存配置失败：%v", err)
+	}
+	if _, err := s.Run(context.Background(), "再随便说点什么", "chat", ""); err != nil {
+		t.Fatalf("运行失败：%v", err)
+	}
+	f.mu.Lock()
+	last := f.bodies[len(f.bodies)-1]
+	f.mu.Unlock()
+	if containsStr(toolNamesOf(last), "browser") {
+		t.Fatal("关掉后不该再注册 browser 工具")
+	}
+}
+
 // toolNamesOf 从请求体里抠出下发给模型的工具名
 func toolNamesOf(body map[string]any) []string {
 	raw, _ := body["tools"].([]any)

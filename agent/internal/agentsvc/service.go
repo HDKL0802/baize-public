@@ -132,7 +132,8 @@ type Service struct {
 	kbs         *kb.Service
 	persona     *persona.Library
 	chans       *channels.Manager
-	chansCancel context.CancelFunc // 轮询型频道的取消器（重建/关闭时停）
+	chansCancel context.CancelFunc    // 轮询型频道的取消器（重建/关闭时停）
+	browser     *tools.BrowserSession // 浏览器会话（browser 工具；懒连接、跨运行复用）
 
 	hooks     *hooks.Bus
 	approvals *ApprovalQueue
@@ -231,6 +232,7 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 	s.rebuildProviders()
 	s.rebuildEmbedder()
 	s.rebuildChannels()
+	s.rebuildBrowser()
 	s.mcp.Apply(cfg.MCPServers) // 启动即按配置连 MCP 服务（连不上会明确报状态，不静默）
 	s.logIssues()
 	s.sched = newScheduler(s)
@@ -248,7 +250,12 @@ func (s *Service) Close() {
 		s.chansCancel()
 		s.chansCancel = nil
 	}
+	br := s.browser
+	s.browser = nil
 	s.mu.Unlock()
+	if br != nil {
+		br.Close() // 自己拉起的浏览器会在这里被收掉
+	}
 	s.mcp.Close()
 	s.mem.Close()
 	s.runs.Close()
@@ -331,6 +338,7 @@ func (s *Service) Reload() error {
 	s.rebuildProviders()
 	s.rebuildEmbedder()
 	s.rebuildChannels()
+	s.rebuildBrowser()
 	s.mcp.SetAllowRemote(cfg.AllowRemote)
 	s.mcp.Apply(cfg.MCPServers) // MCP 服务热插拔：配置一变就重连/下线，不用重启后端
 	s.logIssues()
@@ -406,6 +414,26 @@ func (s *Service) rebuildChannels() {
 	if n := mgr.Count(); n > 0 {
 		s.lg.Info("已装配频道", "count", n)
 	}
+}
+
+// rebuildBrowser 按配置调整浏览器会话：没变就复用（不打断已连的浏览器），变了才重连
+func (s *Service) rebuildBrowser() {
+	opt := s.Config().Browser
+	opts := tools.BrowserOptions{
+		Enabled:    opt.Enabled,
+		Headless:   opt.Headless,
+		ChromePath: opt.ChromePath,
+		CDPURL:     opt.CDPURL,
+		TimeoutSec: opt.TimeoutSec,
+		MaxBytes:   opt.MaxBytes,
+	}
+	s.mu.Lock()
+	if s.browser == nil {
+		s.browser = tools.NewBrowserSession(opts, s.lg)
+	} else {
+		s.browser.SetConfig(opts)
+	}
+	s.mu.Unlock()
 }
 
 // Channels 频道管理器（控制台 / 频道回调用）
@@ -721,6 +749,7 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 	lib := s.skills
 	skillMgr := s.skillMgr
 	personaLib := s.persona
+	browser := s.browser
 	s.mu.RUnlock()
 
 	provider, err := router.Pick(recipe)
@@ -734,6 +763,10 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 	tools.RegisterFS(reg, s.ws)
 	reg.Register(tools.NewShellRun(s.ws, cfg.AllowShell))
 	reg.Register(tools.NewWebFetch())
+	// 浏览器工具：打开动态页面 / 跑 JS / 截图。没配浏览器时工具仍注册，调用会明确报"没有可用浏览器"，不静默
+	if cfg.Browser.Enabled && browser != nil {
+		reg.Register(&tools.BrowserTool{Sess: browser, WS: s.ws})
+	}
 	tools.RegisterMemory(reg, s.mem, cfg.Memory.Namespace)
 	// 知识库（待办 + 密码本的正本在后端）：增/查随便用，删与看密码明文走审批
 	kb.RegisterTools(reg, s.kbs)

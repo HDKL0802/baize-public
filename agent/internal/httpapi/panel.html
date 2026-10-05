@@ -1052,7 +1052,33 @@ function pageSettings() {
     '<div class="card"><header><h2>运行环境</h2></header><table><tbody>' +
     row("后端版本", st.version) + row("数据目录", st.dataDir) + row("工作目录", st.workdir) +
     row("技能目录", st.skillsDir) + row("备份目录", st.backupDir) +
-    '</tbody></table></div>';
+    '</tbody></table></div>' +
+    pageBrowserSettings();
+}
+
+// 浏览器工具：让 Agent 能打开动态页面 / 跑 JS / 截图
+function pageBrowserSettings() {
+  const b = (S.cfg && S.cfg.browser) || {};
+  const v = (x, d) => (x === undefined || x === null || x === "" ? d : x);
+  return '<div class="card"><header><h2>浏览器工具</h2><span class="ep mono">/api/agent/config → browser</span>' +
+    '<span class="pill" style="margin-left:auto"><i class="dot' + (b.enabled ? " ok" : "") + '"></i>' +
+    (b.enabled ? "已启用" : "已停用") + '</span></header><div class="pad">' +
+    '<div class="cell-sub" style="margin-bottom:10px">让 Agent 用真实浏览器打开网页（能跑 JS、渲染后再取内容）、截图、点按输入。<br>' +
+    "两种接法任选其一：<b>外部 CDP</b>（指向任意机器上跑着的 Chrome / Edge 调试端口，如 http://192.168.1.10:9222），" +
+    "或 <b>本机浏览器</b>（填可执行文件路径，留空则在 PATH 里自动找 chromium / chrome）。两者都没有时调用会明确报错，不会静默失败。</div>" +
+    '<div class="grid2">' +
+    '<div class="field"><label>外部 CDP 地址 cdpUrl</label><input type="text" id="b-cdp" placeholder="http://192.168.1.10:9222" value="' + esc(b.cdpUrl || "") + '"></div>' +
+    '<div class="field"><label>浏览器可执行文件 chromePath</label><input type="text" id="b-path" placeholder="留空 = 自动找 chromium / chrome" value="' + esc(b.chromePath || "") + '"></div>' +
+    '<div class="field"><label>单次超时（秒）</label><input type="number" id="b-timeout" value="' + v(b.timeoutSec, 30) + '"></div>' +
+    '<div class="field"><label>返回文本上限（字节）</label><input type="number" id="b-max" value="' + v(b.maxBytes, 262144) + '"></div>' +
+    "</div>" +
+    '<div class="field"><label>开关</label><div class="row">' +
+    '<span class="switch' + (b.enabled ? " on" : "") + '" id="b-enabled"><i></i>启用 browser 工具</span>' +
+    '<span class="switch' + (b.headless === false ? "" : " on") + '" id="b-headless"><i></i>无头运行（自己拉起浏览器时）</span>' +
+    "</div></div>" +
+    '<div class="row"><button class="btn primary" id="btn-bsave">保存浏览器设置</button>' +
+    '<span class="cell-sub">改完即时生效，不用重启</span></div>' +
+    "</div></div>";
 }
 
 // 记忆术 + 向量化通道：两块是配套的（没配向量就只能按关键词检索），所以放一起
@@ -1362,6 +1388,17 @@ function bind() {
     };
     try { await api("/api/agent/config", { method: "POST", body }); toast("已保存记忆设置"); load(true); }
     catch (e) { toast("失败：" + e.message, true); }
+  });
+  on("btn-bsave", async () => {
+    const body = {
+      browserEnabled: $("b-enabled").classList.contains("on"),
+      browserHeadless: $("b-headless").classList.contains("on"),
+      browserChromePath: $("b-path").value.trim(),
+      browserCdpUrl: $("b-cdp").value.trim(),
+      browserTimeoutSec: +$("b-timeout").value,
+    };
+    try { await api("/api/agent/config", { method: "POST", body }); toast("已保存浏览器设置"); load(true); }
+    catch (e) { toast("保存失败：" + e.message, true); }
   });
   on("btn-esave", async () => {
     const body = {

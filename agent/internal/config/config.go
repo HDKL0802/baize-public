@@ -107,6 +107,23 @@ type HeartbeatConfig struct {
 	Runs        int    `json:"runs,omitempty"`
 }
 
+// Browser 浏览器工具（QwenPaw browser 工具的 Go 版）：让 Agent 能"打开网页、跑 JS、截图"。
+//
+// 两种接法任选其一：
+//   - cdpUrl：指向一个已在跑的 Chrome/Edge 调试端口（如 http://192.168.1.10:9222）——零依赖，
+//     浏览器可以跑在 NAS 之外的机器上（"电脑是我的手脚"）；
+//   - chromePath：由白泽自己起一个（留空则在 PATH 里自动找 chromium / google-chrome / chrome）。
+//
+// 两者都没有时，browser 工具会明确报"没有可用浏览器"，绝不静默失败。
+type Browser struct {
+	Enabled    bool   `json:"enabled"`
+	Headless   bool   `json:"headless"`             // 自己拉起浏览器时是否无头（默认 true）
+	ChromePath string `json:"chromePath,omitempty"` // 浏览器可执行文件；留空 = 自动在 PATH 里找
+	CDPURL     string `json:"cdpUrl,omitempty"`     // 外部 CDP 地址，如 http://192.168.1.10:9222
+	TimeoutSec int    `json:"timeoutSec"`           // 单次操作超时秒（默认 30）
+	MaxBytes   int    `json:"maxBytes"`             // 返回文本上限（默认 262144）
+}
+
 // ChannelConfig 一个频道（QwenPaw 频道机制的 Go 版）。支持的 kind：
 //   - webhook：出站把回复 POST 到 outboundUrl（format 决定请求体形状，可直接对接飞书/钉钉/Slack 群机器人），
 //     入站 POST /api/channels/{id}/inbound（用 token 校验）
@@ -152,6 +169,7 @@ type Config struct {
 	Persona        Persona            `json:"persona"`        // 人设文件（Markdown 进系统提示）
 	Heartbeat      HeartbeatConfig    `json:"heartbeat"`      // 心跳任务（定期运行 agent）
 	Channels       []ChannelConfig    `json:"channels"`       // 频道（IM / webhook 接入）
+	Browser        Browser            `json:"browser"`        // 浏览器工具（打开网页 / 跑 JS / 截图）
 }
 
 // 记忆检索的权重档位（非法值一律回落到 balanced）
@@ -184,6 +202,12 @@ func Default() Config {
 			Target:      "main",
 			TimeoutSec:  600,
 			ActiveHours: "08:00-22:00",
+		},
+		Browser: Browser{
+			Enabled:    true,
+			Headless:   true,
+			TimeoutSec: 30,
+			MaxBytes:   256 * 1024,
 		},
 	}
 }
@@ -262,6 +286,15 @@ func (c *Config) normalize() {
 		if c.Providers[i].Protocol == "" {
 			c.Providers[i].Protocol = "openai"
 		}
+	}
+	// 浏览器工具：只做清理与兜底，不在这里强开（开关看 Enabled）
+	c.Browser.ChromePath = strings.TrimSpace(c.Browser.ChromePath)
+	c.Browser.CDPURL = strings.TrimRight(strings.TrimSpace(c.Browser.CDPURL), "/")
+	if c.Browser.TimeoutSec <= 0 {
+		c.Browser.TimeoutSec = 30
+	}
+	if c.Browser.MaxBytes <= 0 {
+		c.Browser.MaxBytes = 256 * 1024
 	}
 	// 记忆术设置：缺项补齐，档位写错就直接回落，别让手改 JSON 的人踩空
 	if strings.TrimSpace(c.Memory.Namespace) == "" {

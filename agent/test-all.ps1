@@ -947,6 +947,20 @@ try {
     if ($fp.pollSec -ne 5) { throw "pollSec 默认应为 5：$($fp.pollSec)" }
     $null = Send-Json "Post" "$base/api/agent/channels" @{ action = "remove"; id = "sweep-fp" } $h
   }
+  Check "I28 浏览器工具：配置读写 + 默认值回显" {
+    $c = Get-Json "$base/api/agent/config" $h
+    if (-not $c.browser) { throw "config 里没有 browser 段" }
+    if ($c.browser.timeoutSec -ne 30) { throw "timeoutSec 默认应为 30：$($c.browser.timeoutSec)" }
+    if ($c.browser.maxBytes -ne 262144) { throw "maxBytes 默认应为 262144：$($c.browser.maxBytes)" }
+    $null = Send-Json "Post" "$base/api/agent/config" @{ browserEnabled = $true; browserHeadless = $true; browserCdpUrl = "http://127.0.0.1:9333"; browserTimeoutSec = 45 } $h
+    $c2 = Get-Json "$base/api/agent/config" $h
+    if ($c2.browser.cdpUrl -ne "http://127.0.0.1:9333") { throw "cdpUrl 没存上：$($c2.browser.cdpUrl)" }
+    if ($c2.browser.timeoutSec -ne 45) { throw "timeoutSec 没存上：$($c2.browser.timeoutSec)" }
+    if (-not $c2.browser.enabled) { throw "enabled 没存上" }
+    $null = Send-Json "Post" "$base/api/agent/config" @{ browserCdpUrl = ""; browserTimeoutSec = 30 } $h
+    $c3 = Get-Json "$base/api/agent/config" $h
+    if ($c3.browser.cdpUrl -ne "") { throw "cdpUrl 清空没生效：$($c3.browser.cdpUrl)" }
+  }
 
   # ================= J. 桌面端分发 =================
   Step "J. 桌面端分发"

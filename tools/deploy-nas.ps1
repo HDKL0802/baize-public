@@ -16,6 +16,7 @@
      powershell -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -SkipBuild -NoRestart
      powershell -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -Tag v0.8.1
      powershell -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -Push      # after docker login ghcr.io
+     powershell -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -Push -Registry ghcr.io/<user> -ImageName baize-backend
 
   Safety: the old systemd unit is only "stop"ped first; it is "disable"d only after the
   container passes the health check. If the container is unhealthy we roll back to systemd,
@@ -28,7 +29,9 @@ param(
     [switch]$SkipBuild,
     [switch]$NoRestart,
     [switch]$Push,
-    [string]$Tag = "local"
+    [string]$Tag = "local",
+    [string]$Registry = "ghcr.io/hdkl0802",
+    [string]$ImageName = "baize-backend"
 )
 
 $ErrorActionPreference = "Stop"
@@ -126,7 +129,9 @@ Ssh-Cmd "cd $RemoteDir && echo $NasPass | sudo -S -p '' docker build --build-arg
 if ($Push) {
     Write-Host "=== 3b. push to registry (-Push) ===" -ForegroundColor Cyan
     # one-time on the NAS: docker login ghcr.io -u <github-user> -p <PAT with write:packages>
-    Ssh-Cmd "echo $NasPass | sudo -S -p '' docker push $Image"
+    # NOTE: ${ImageName} braces are required, otherwise PowerShell parses "$ImageName:$Tag" as a scoped variable.
+    $RegistryImage = "$Registry/${ImageName}:$Tag"
+    Ssh-Cmd "cd $RemoteDir && echo $NasPass | sudo -S -p '' docker tag $Image $RegistryImage && echo $NasPass | sudo -S -p '' docker push $RegistryImage"
 }
 
 if ($NoRestart) {

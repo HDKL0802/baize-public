@@ -1,0 +1,73 @@
+# 白泽后端镜像 CI —— 用多阶段 Dockerfile 构建，并推送到 GitHub Container Registry。
+#
+# 目标镜像：ghcr.io/<owner>/baize-backend（owner 取仓库属主，私有仓/公开镜像仓同名同包）
+#   - push 到默认分支（main）：打 latest + 分支名 + sha-<短>（可追溯到具体提交）
+#   - push 形如 backend-v0.9.12 的 tag：打 0.9.12（发布版本，不动 latest）
+#   - workflow_dispatch：手动触发，可传一个自定义 tag
+#
+# 为什么单独一个工作流：开发机没有 Docker（见交接文档 §13），本机部署走
+# tools/deploy-nas.ps1 在 NAS 侧构建；ghcr 镜像由这个工作流产出，NAS 也能直接 pull。
+#
+# 注意：镜像只用得上 core / shared / agent（见 .dockerignore）；平台固定 linux/amd64，
+# 与 NAS 上的运行环境一致。
+name: docker
+
+on:
+  push:
+    branches: [main]
+    tags: ["backend-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "自定义镜像 tag（留空则用默认 latest + sha）"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/baize-backend
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=sha,prefix=sha-,format=short
+            type=match,pattern=backend-v(.*),group=1
+            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event.inputs.tag != '' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

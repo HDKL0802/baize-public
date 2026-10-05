@@ -36,12 +36,14 @@
 
 ## 2. 借鉴 / 参考的开源项目（`third_party/`，**不进版本库**）
 
-| 项目 | 许可证 | 我们怎么用 |
+| 项目（版本） | 许可证 | 我们怎么用 |
 |---|---|---|
-| **QwenPaw**（agentscope-ai） | **Apache-2.0** | 参考其「Web 控制台 + 桌面端外壳」的交互与功能划分；桌面端外壳为本项目自写（Go + 原生 HTML/CSS/JS）。<br>**功能移植**（2026-10-05 起）：persona（人设）/ heartbeat（心跳）/ 魔法命令 / channels（IM 渠道）等能力参照其设计与文档，**用 Go 重写**；Apache-2.0 允许此类衍用，本文件保留其署名与许可。 |
-| **Hermes-Agent**（Nous Research） | **MIT** | 「创造技能」能力参考其设计，已**用 Go 重写**为 `agent/internal/skills` |
-| **PicoClaw** | **MIT** | 渠道/工具设计参考 |
-| **OpenHuman** | **GPL-3.0** ⚠️ | 记忆术 / 语音路由参考其设计，并**用 Go 重写**为 `agent/internal/memory`、`agent/internal/voice` —— **见 §3** |
+| **QwenPaw** `2.2.2b4`（agentscope-ai） | **Apache-2.0** | 参考其「Web 控制台 + 桌面端外壳」的交互与功能划分；桌面端外壳为本项目自写（Go + 原生 HTML/CSS/JS）。<br>**功能移植**（2026-10-05 起）：persona（人设）/ heartbeat（心跳）/ 魔法命令 / channels（IM 渠道）等能力参照其设计与文档，**用 Go 重写**；Apache-2.0 允许此类衍用，本文件保留其署名与许可。 |
+| **Hermes-Agent** `0.0.0`（pyproject 占位版本；Nous Research） | **MIT** | 「创造技能」能力参考其设计，已**用 Go 重写**为 `agent/internal/skills` |
+| **PicoClaw** `dev`（构建期由 ldflags 注入，源码里无固定版本号） | **MIT** | 渠道/工具设计参考 |
+| **OpenHuman** `0.63.33` ⚠️ | **GPL-3.0** | 记忆术 / 语音路由参考其设计，并**用 Go 重写**为 `agent/internal/memory`、`agent/internal/voice` —— **见 §3** |
+
+> ⚠️ **版本对齐说明（2026-10-05 核对）**：`third_party/openhuman` 已到 `0.63.33`，其记忆引擎已抽成独立 crate `tinymemory-core`（含 conversations / goals / sources / guard / 6 种检索原语等）。本项目 `agent/internal/memory` 对齐的是**抽取之前的旧代实现**（混合检索 + 记忆树），并未跟进 `tinymemory-core` 的新形态；两者「对不上」属预期，后续按需再补。
 
 ---
 

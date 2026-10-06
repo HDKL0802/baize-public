@@ -16,7 +16,7 @@ window.Shell = (function () {
     { title: '知识', ids: ['kb', 'memory', 'activity'] },
     { title: '协作', ids: ['accounts', 'conflicts'] },
     { title: '能力', ids: ['providers', 'mcp', 'channels', 'external', 'skills', 'plugins', 'persona', 'cron'] },
-    { title: '系统', ids: ['observe', 'backup', 'settings'] },
+    { title: '系统', ids: ['shot', 'observe', 'backup', 'settings'] },
   ];
 
   /* 线性图标（24×24，stroke=currentColor）。emoji 在深色界面里又跳又廉价，换成这套。 */
@@ -28,6 +28,7 @@ window.Shell = (function () {
     memory: '<rect x="7" y="7" width="10" height="10" rx="1.6"/><path d="M10 3.5v3.5M14 3.5v3.5M10 17v3.5M14 17v3.5M3.5 10h3.5M3.5 14h3.5M17 10h3.5M17 14h3.5"/>',
     activity: '<path d="M3 12h4l2.5-6 4 12L16 12h5"/>',
     observe: '<path d="M4.5 19.5v-6M9.5 19.5v-13M14.5 19.5v-9M19.5 19.5v-4"/><path d="M2.5 21.5h19"/>',
+    shot: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8.6 7l1.2-2.2h4.4L15.4 7"/><circle cx="12" cy="13.4" r="3.3"/>',
     providers: '<path d="M13.5 3 5.5 13.5H11l-1 7.5 8.5-10.5H13z"/>',
     mcp: '<path d="M9 3.5v4M15 3.5v4"/><path d="M6.5 7.5h11v3.5a5.5 5.5 0 0 1-11 0z"/><path d="M12 16.5v4"/>',
     external: '<circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="6" r="2.6"/><circle cx="18" cy="18" r="2.6"/><path d="M8.3 10.9 15.7 7.2M8.3 13.1l7.4 3.7"/>',

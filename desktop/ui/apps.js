@@ -4,7 +4,8 @@
    已做实 13 个：对话 / 设备 / 设置 / 任务与审批 / 知识库 / 记忆 / 模型通道 / MCP 服务 /
    技能 / 人设 / 定时任务 / 备份与恢复 / 活动追踪。
    后 10 个的 render 在 apps2.js 末尾回填（直接写 render: renderXxx 会是前向引用，见那边的说明）；
-   协作 2 个在 apps3.js、插件市场在 apps4.js，同样在文件末尾回填。 */
+   协作 2 个在 apps3.js、插件市场在 apps4.js、可观测性在 apps5.js、外部 Agent 在 apps6.js、
+   频道在 apps7.js、截图提问在 apps8.js，同样在文件末尾回填。 */
 'use strict';
 
 /* 登录会话（多用户）：后端按它决定"以谁的身份访问数据"。
@@ -144,6 +145,7 @@ window.APPS = [
   { id: 'backup', name: '备份与恢复', icon: '🗄️', w: 820, h: 520 },
   { id: 'activity', name: '活动追踪', icon: '📈', w: 760, h: 520 },
   { id: 'observe', name: '可观测性', icon: '📡', w: 1040, h: 700 },
+  { id: 'shot', name: '截图提问', icon: '📷', w: 920, h: 700 },
 
   { id: 'accounts', name: '账号与共享', icon: '👥', w: 1000, h: 660 },
   { id: 'conflicts', name: '冲突协商', icon: '⚖️', w: 1080, h: 680 },

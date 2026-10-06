@@ -33,7 +33,13 @@ type updateManifest struct {
 	ReleasedAt string `json:"releasedAt"`
 }
 
-func init() { registerPlatformRoutes = registerUpdateRoutes }
+func init() {
+	// 平台专属路由：自动更新 + 截图提问（截图那组见 shot_windows.go）
+	registerPlatformRoutes = func(mux *http.ServeMux) {
+		registerUpdateRoutes(mux)
+		registerShotRoutes(mux)
+	}
+}
 
 func newBackendRequest(method, path string) (*http.Request, error) {
 	server, token := getConfig()

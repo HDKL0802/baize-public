@@ -153,3 +153,25 @@ textarea{resize:vertical;min-height:64px}
 .shelf-head{display:flex;align-items:center;gap:8px;margin:13px 0 1px;padding-top:10px;
   border-top:1px solid var(--border);font-size:12px;font-weight:600;color:var(--text-2)}
 .shelf-head:first-child{margin-top:0;padding-top:0;border-top:0}
+
+/* 可观测性：KPI 小卡 / 运行量柱子 / 明细表 / 日志行 */
+.ob-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(122px,1fr));gap:9px;margin:10px 0 2px}
+.ob-kpi{border:1px solid var(--border);background:var(--surface-2);padding:8px 10px}
+.ob-kpi b{display:block;font-size:17px;font-weight:600;line-height:1.35}
+.ob-kpi span{display:block;color:var(--text-3);font-size:11px}
+.ob-bars{display:flex;align-items:flex-end;gap:2px;height:66px;margin-top:8px;
+  border-bottom:1px solid var(--border);padding-bottom:1px}
+.ob-bar{flex:1;min-width:2px;background:var(--accent);opacity:.8;display:block}
+.ob-bar.bad{background:var(--warn);opacity:.95}
+.legend i.bad{border-top-color:var(--warn)}
+.ob-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+.ob-table th{text-align:left;color:var(--text-3);font-weight:500;font-size:11px;
+  padding:5px 8px;border-bottom:1px solid var(--border-strong)}
+.ob-table td{padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-2)}
+.ob-table tr:hover td{background:var(--surface-2)}
+.ob-log{display:flex;gap:8px;align-items:baseline;padding:4px 0;border-bottom:1px dashed var(--border);font-size:12px}
+.ob-log .mono{color:var(--text-3);flex:none}
+.ob-log .lv{flex:none;font-size:10px;padding:0 5px;border:1px solid var(--border)}
+.ob-log .lv.err{color:var(--danger);border-color:var(--danger)}
+.ob-log .lv.warn{color:var(--warn);border-color:var(--warn)}
+.ob-log span:last-child{min-width:0;word-break:break-word;color:var(--text-2)}

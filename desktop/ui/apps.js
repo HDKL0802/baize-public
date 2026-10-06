@@ -141,6 +141,7 @@ window.APPS = [
   { id: 'cron', name: '定时任务', icon: '⏰', w: 820, h: 520 },
   { id: 'backup', name: '备份与恢复', icon: '🗄️', w: 820, h: 520 },
   { id: 'activity', name: '活动追踪', icon: '📈', w: 760, h: 520 },
+  { id: 'observe', name: '可观测性', icon: '📡', w: 1040, h: 700 },
 
   { id: 'accounts', name: '账号与共享', icon: '👥', w: 1000, h: 660 },
   { id: 'conflicts', name: '冲突协商', icon: '⚖️', w: 1080, h: 680 },

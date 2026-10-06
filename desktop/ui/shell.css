@@ -148,3 +148,8 @@ textarea{resize:vertical;min-height:64px}
 .chat-line{padding:4px 0;border-bottom:1px dashed var(--border)}
 .chat-line:last-child{border-bottom:0}
 .chat-text{white-space:pre-wrap;word-break:break-word;font-size:13px;margin-top:2px}
+
+/* 插件市场 · 货架分组标题（板块 · 阶段 · 分类） */
+.shelf-head{display:flex;align-items:center;gap:8px;margin:13px 0 1px;padding-top:10px;
+  border-top:1px solid var(--border);font-size:12px;font-weight:600;color:var(--text-2)}
+.shelf-head:first-child{margin-top:0;padding-top:0;border-top:0}

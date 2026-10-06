@@ -164,16 +164,24 @@ type Search struct {
 
 // Config 后端 Agent 配置
 type Config struct {
-	AllowRemote        bool       `json:"allowRemote"` // 是否允许非本机模型地址 / 远端 MCP 服务
-	Providers          []Provider `json:"providers"`
-	Workdir            string     `json:"workdir"` // 空 = <data>/workspace
-	SkillsDir          string     `json:"skillsDir"`
-	AllowShell         bool       `json:"allowShell"`
-	MaxSteps           int        `json:"maxSteps"`
-	MaxRetries         int        `json:"maxRetries"`
-	TokenBudget        int        `json:"tokenBudget"`
-	ApprovalTimeoutSec int        `json:"approvalTimeoutSec"` // 危险操作等人工审批的超时（超时按拒绝处理）
-	Cron               []CronJob  `json:"cron"`
+	AllowRemote bool       `json:"allowRemote"` // 是否允许非本机模型地址 / 远端 MCP 服务
+	Providers   []Provider `json:"providers"`
+	Workdir     string     `json:"workdir"` // 空 = <data>/workspace
+	SkillsDir   string     `json:"skillsDir"`
+	AllowShell  bool       `json:"allowShell"`
+	// ShellAllowCmds shell_run 的命令白名单（只比对"命令名"）。
+	// 空 = 不限制（沿用旧行为，任何命令都能跑，仅靠人工审批兜底）；
+	// 非空 = 只允许这些命令，且**拒绝管道/重定向/串联**——否则 `ls; rm -rf /` 这类
+	// 写法能轻松绕过白名单，那种白名单还不如没有。
+	ShellAllowCmds []string `json:"shellAllowCmds,omitempty"`
+	// ApprovalAllow 永久放行的工具名（人工审批时选「永久」才会写进来）。
+	// 只影响**危险工具的审批闸门**；「严」档（每次都批）不会被它绕过。
+	ApprovalAllow      []string  `json:"approvalAllow,omitempty"`
+	MaxSteps           int       `json:"maxSteps"`
+	MaxRetries         int       `json:"maxRetries"`
+	TokenBudget        int       `json:"tokenBudget"`
+	ApprovalTimeoutSec int       `json:"approvalTimeoutSec"` // 危险操作等人工审批的超时（超时按拒绝处理）
+	Cron               []CronJob `json:"cron"`
 	// DeviceRemarks 设备备注（key = 设备 id）。这是用户的标注而不是设备上报的状态，
 	// 所以放在配置里：设备重装、换网络都不会把备注弄丢。
 	DeviceRemarks  map[string]string  `json:"deviceRemarks,omitempty"`
@@ -325,6 +333,10 @@ func (c *Config) normalize() {
 	if c.Search.MaxResults <= 0 {
 		c.Search.MaxResults = 8
 	}
+	// shell 命令白名单与永久放行清单：去空、去重、小写归一。**不在这里补默认值**——
+	// 空就是"不限制/没有"，语义清楚（补一个默认白名单会悄悄改变用户的行为）。
+	c.ShellAllowCmds = normalizeNameList(c.ShellAllowCmds)
+	c.ApprovalAllow = normalizeNameList(c.ApprovalAllow)
 	// 记忆术设置：缺项补齐，档位写错就直接回落，别让手改 JSON 的人踩空
 	if strings.TrimSpace(c.Memory.Namespace) == "" {
 		c.Memory.Namespace = "default"
@@ -467,6 +479,24 @@ func defaultVoice(protocol string) string {
 		return "Cherry"
 	}
 	return "nova"
+}
+
+// normalizeNameList 名称清单归一：去首尾空白、压小写、去重、丢空项（保持出现顺序）
+func normalizeNameList(in []string) []string {
+	if in == nil {
+		return nil
+	}
+	out := make([]string, 0, len(in))
+	seen := map[string]bool{}
+	for _, s := range in {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
 }
 
 // normalizeRecallProfile 把档位名收敛到合法值（大小写/空格容忍，非法回落 balanced）

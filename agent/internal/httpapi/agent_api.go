@@ -266,13 +266,66 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]any{"approvals": a.Approvals()})
 	}))
 
-	mux.HandleFunc("POST /api/agent/approvals/{id}/approve", s.api(func(w http.ResponseWriter, r *http.Request) {
-		by := operatorFrom(r)
-		if err := a.Approve(r.PathValue("id"), by); err != nil {
+	// 放行清单：agent 侧工具审批里选过「记住」的工具（永久 = 配置里，会话 = 本进程）
+	mux.HandleFunc("GET /api/agent/approvals/allow", s.api(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, a.ApprovalAllow())
+	}))
+
+	// 撤销放行：action=clear（清空）| remove（只撤一个）；scope=always|session|all；tool 可选
+	mux.HandleFunc("POST /api/agent/approvals/allow", s.api(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Action string `json:"action"`
+			Scope  string `json:"scope"`
+			Tool   string `json:"tool"`
+		}
+		if err := decodeBody(r, &req); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"approved": r.PathValue("id"), "by": by})
+		action := strings.ToLower(strings.TrimSpace(req.Action))
+		if action == "" {
+			action = "clear"
+		}
+		if action != "clear" && action != "remove" {
+			writeErr(w, http.StatusBadRequest, "不支持的 action："+action+"（可用 clear | remove）")
+			return
+		}
+		tool := strings.TrimSpace(req.Tool)
+		if action == "remove" && tool == "" {
+			writeErr(w, http.StatusBadRequest, "remove 需要 tool")
+			return
+		}
+		if action == "clear" {
+			tool = "" // clear = 清空该 scope 下的全部
+		}
+		if err := a.ClearApprovalAllow(req.Scope, tool); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, a.ApprovalAllow())
+	}))
+
+	mux.HandleFunc("POST /api/agent/approvals/{id}/approve", s.api(func(w http.ResponseWriter, r *http.Request) {
+		// remember 可选：session = 本进程内不再问该工具；always = 永久放行（写进配置）；
+		// 留空 = 只批这一次（默认，最保守）
+		var body struct {
+			By       string `json:"by"`
+			Remember string `json:"remember"`
+		}
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&body)
+		}
+		by := body.By
+		if by == "" {
+			by = operatorFrom(r)
+		}
+		if err := a.ApproveWith(r.PathValue("id"), by, body.Remember); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"approved": r.PathValue("id"), "by": by, "remember": body.Remember,
+		})
 	}))
 
 	mux.HandleFunc("POST /api/agent/approvals/{id}/reject", s.api(func(w http.ResponseWriter, r *http.Request) {
@@ -546,7 +599,12 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 			"backupKeep": cfg.BackupKeep, "autoRunOnStart": cfg.AutoRunOnStart,
 			"providers": providers, "cron": len(cfg.Cron),
 			"embedding": emb, "memory": cfg.Memory, "voice": vc,
-			"browser": br,
+			"browser":        br,
+			"shellAllowCmds": cfg.ShellAllowCmds, "approvalAllow": cfg.ApprovalAllow,
+			"search": map[string]any{
+				"provider": cfg.Search.Provider, "baseUrl": cfg.Search.BaseURL,
+				"hasApiKey": cfg.Search.APIKey != "", "maxResults": cfg.Search.MaxResults,
+			},
 		})
 	}))
 
@@ -579,6 +637,13 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 			BrowserChromePath *string `json:"browserChromePath"`
 			BrowserCDPURL     *string `json:"browserCdpUrl"`
 			BrowserTimeoutSec *int    `json:"browserTimeoutSec"`
+			// shell 命令白名单（空数组 = 不限制命令）
+			ShellAllowCmds *[]string `json:"shellAllowCmds"`
+			// 搜索通道（web_search 用）：provider = searxng | duckduckgo；留空 = 没配
+			SearchProvider   *string `json:"searchProvider"`
+			SearchBaseURL    *string `json:"searchBaseUrl"`
+			SearchAPIKey     *string `json:"searchApiKey"`
+			SearchMaxResults *int    `json:"searchMaxResults"`
 		}
 		if err := decodeBody(r, &patch); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
@@ -651,6 +716,23 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 		}
 		if patch.BrowserTimeoutSec != nil && *patch.BrowserTimeoutSec > 0 {
 			cfg.Browser.TimeoutSec = *patch.BrowserTimeoutSec
+		}
+		// shell 命令白名单（传空数组 = 显式取消白名单，回到"不限制"）
+		if patch.ShellAllowCmds != nil {
+			cfg.ShellAllowCmds = append([]string{}, (*patch.ShellAllowCmds)...)
+		}
+		// 搜索通道：provider 传空字符串 = 取消配置（web_search 会明确报"没配"）
+		if patch.SearchProvider != nil {
+			cfg.Search.Provider = strings.TrimSpace(*patch.SearchProvider)
+		}
+		if patch.SearchBaseURL != nil {
+			cfg.Search.BaseURL = strings.TrimSpace(*patch.SearchBaseURL)
+		}
+		if patch.SearchAPIKey != nil {
+			cfg.Search.APIKey = strings.TrimSpace(*patch.SearchAPIKey)
+		}
+		if patch.SearchMaxResults != nil && *patch.SearchMaxResults > 0 {
+			cfg.Search.MaxResults = *patch.SearchMaxResults
 		}
 		if err := a.SaveConfig(cfg); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())

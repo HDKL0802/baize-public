@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -148,8 +149,11 @@ type Service struct {
 
 	hooks     *hooks.Bus
 	approvals *ApprovalQueue
-	devices   tools.DeviceExecutor // 可选：跨端调度层
-	activity  *activity.Tracker    // 智能体活动追踪（始终开启，AlwaysOn）
+	// approvedTools 会话级"记住放行"（进程内，重启即忘）。永久放行的清单在
+	// config.ApprovalAllow 里，两者由 toolRemembered 合并判断。
+	approvedTools map[string]bool
+	devices       tools.DeviceExecutor // 可选：跨端调度层
+	activity      *activity.Tracker    // 智能体活动追踪（始终开启，AlwaysOn）
 
 	runMu     sync.Mutex // 顶层运行串行，避免同一工作目录并发写
 	running   bool
@@ -239,8 +243,9 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 		persona: personaLib,
 		mcp:     mcp.NewManager(lg, cfg.AllowRemote),
 		hooks:   hooks.NewBus(), approvals: NewApprovalQueue(200),
-		activity:  activity.New(50),
-		schedStop: make(chan struct{}),
+		approvedTools: map[string]bool{},
+		activity:      activity.New(50),
+		schedStop:     make(chan struct{}),
 	}
 	// 活动追踪始终开启：挂到同一根事件总线上，运行时的每一步都会实时反映出来
 	s.activity.Attach(s.hooks)
@@ -909,7 +914,7 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 	tools.RegisterFS(reg, s.ws)
 	// 在工作目录内按文件名/内容搜索（纯 Go，不依赖平台有没有 grep/find）
 	tools.RegisterFileSearch(reg, s.ws)
-	reg.Register(tools.NewShellRun(s.ws, cfg.AllowShell))
+	reg.Register(tools.NewShellRun(s.ws, cfg.AllowShell).WithAllowCmds(cfg.ShellAllowCmds))
 	reg.Register(tools.NewWebFetch())
 	// 联网搜索：只认显式配置的通道（searxng / duckduckgo）；没配就明确报错，不伪造结果
 	tools.RegisterWebSearch(reg, tools.WebSearchConfig{
@@ -959,6 +964,12 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 	approver := func(tool string, args map[string]any) bool {
 		if autoApprove {
 			s.lg.Warn("审批闸门：按请求自动放行危险操作", "tool", tool)
+			return true
+		}
+		// 「记住放行」只在「中」档生效：用户选了「严」档就是要每次都过目，
+		// 不能被之前记住的规则绕过去（否则"严"形同虚设）。
+		if !allTools && s.toolRemembered(tool) {
+			s.lg.Info("审批闸门：该工具已被记住放行，本次直接执行", "tool", tool)
 			return true
 		}
 		timeout := time.Duration(cfg.ApprovalTimeoutSec) * time.Second
@@ -1196,6 +1207,132 @@ func (s *Service) Approvals() []Approval { return s.approvals.List() }
 
 // Approve 批准
 func (s *Service) Approve(id, by string) error { return s.approvals.Approve(id, by) }
+
+// 审批「记住放行」的口径
+const (
+	RememberNone    = ""        // 只批这一次
+	RememberSession = "session" // 本次进程内不再问（重启即忘）
+	RememberAlways  = "always"  // 永久放行（写进配置，重启仍在）
+)
+
+// ApproveWith 批准一条审批，并可选地"记住这个工具下次别再问"。
+//
+// 为什么单独加一个方法而不是改 Approve 的签名：Approve 已被接口层与测试用着，
+// 改签名会把无关的地方一起牵动；这里只加能力，不动旧调用。
+func (s *Service) ApproveWith(id, by, remember string) error {
+	tool := ""
+	for _, a := range s.approvals.List() {
+		if a.ID == id {
+			tool = a.Tool
+			break
+		}
+	}
+	if err := s.approvals.Approve(id, by); err != nil {
+		return err
+	}
+	remember = strings.ToLower(strings.TrimSpace(remember))
+	if tool == "" || remember == RememberNone {
+		return nil
+	}
+	switch remember {
+	case RememberSession:
+		s.mu.Lock()
+		s.approvedTools[tool] = true
+		s.mu.Unlock()
+		s.lg.Warn("审批：已记住本次放行（仅本进程有效）", "tool", tool, "by", by)
+	case RememberAlways:
+		// 只写配置，**不**再往会话集合里塞：两个 scope 各自独立，
+		// 否则撤销 always 之后会话里的那条还在，"撤销"就撤不干净（踩过）。
+		if err := s.persistApprovalAllow(tool); err != nil {
+			return err
+		}
+		s.lg.Warn("审批：已永久放行该工具（写进配置）", "tool", tool, "by", by)
+	default:
+		return fmt.Errorf("不认识的 remember 取值：%q（可用 %s / %s）", remember, RememberSession, RememberAlways)
+	}
+	return nil
+}
+
+// toolRemembered 该工具是否已被"记住放行"（会话级或永久）
+func (s *Service) toolRemembered(tool string) bool {
+	s.mu.RLock()
+	ok := s.approvedTools[tool]
+	s.mu.RUnlock()
+	if ok {
+		return true
+	}
+	for _, t := range s.Config().ApprovalAllow {
+		if t == tool {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) persistApprovalAllow(tool string) error {
+	cfg := s.Config()
+	for _, t := range cfg.ApprovalAllow {
+		if t == tool {
+			return nil
+		}
+	}
+	cfg.ApprovalAllow = append(cfg.ApprovalAllow, tool)
+	if err := s.SaveConfig(cfg); err != nil {
+		return fmt.Errorf("写入永久放行清单失败：%w", err)
+	}
+	return nil
+}
+
+// ApprovalAllow 当前放行清单：always（永久，配置里）+ session（本进程内记住的）
+func (s *Service) ApprovalAllow() map[string]any {
+	s.mu.RLock()
+	session := make([]string, 0, len(s.approvedTools))
+	for t := range s.approvedTools {
+		session = append(session, t)
+	}
+	s.mu.RUnlock()
+	sort.Strings(session)
+	always := s.Config().ApprovalAllow
+	if always == nil {
+		always = []string{}
+	}
+	return map[string]any{"always": always, "session": session}
+}
+
+// ClearApprovalAllow 撤销放行。scope：always / session / all（空 = all）。
+// tool 为空表示清空该 scope 下全部，否则只撤这一个工具。
+//
+// 必须能撤：只给"永久放行"不给撤销的口子，等于让一次误点永久生效。
+func (s *Service) ClearApprovalAllow(scope, tool string) error {
+	scope = strings.ToLower(strings.TrimSpace(scope))
+	if scope == "" {
+		scope = "all"
+	}
+	tool = strings.TrimSpace(tool)
+	if scope == "session" || scope == "all" {
+		s.mu.Lock()
+		if tool == "" {
+			s.approvedTools = map[string]bool{}
+		} else {
+			delete(s.approvedTools, tool)
+		}
+		s.mu.Unlock()
+	}
+	if scope == "always" || scope == "all" {
+		cfg := s.Config()
+		kept := make([]string, 0, len(cfg.ApprovalAllow))
+		for _, t := range cfg.ApprovalAllow {
+			if tool == "" || t != tool {
+				kept = append(kept, t)
+			}
+		}
+		cfg.ApprovalAllow = kept
+		if err := s.SaveConfig(cfg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // Reject 拒绝
 func (s *Service) Reject(id, by, reason string) error { return s.approvals.Reject(id, by, reason) }

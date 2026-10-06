@@ -196,6 +196,12 @@ func proxyBackend(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); ct != "" {
 		req.Header.Set("Content-Type", ct)
 	}
+	// 登录会话（多用户）：界面把会话令牌放在这个头上，由本层透传给后端。
+	// 后端按它决定"以谁的身份访问数据"（记忆库/知识库按用户分区）。
+	// ⚠️ 配对令牌始终由本层自己加（页面接触不到）；会话令牌相反，是页面给的、我们不持存。
+	if sess := strings.TrimSpace(r.Header.Get("X-Baize-Session")); sess != "" {
+		req.Header.Set("X-Baize-Session", sess)
+	}
 
 	resp, err := beClient.Do(req)
 	if err != nil {

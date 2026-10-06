@@ -24,6 +24,9 @@ cli/*.exe
 tools/sshrun/bin/
 tools/.release/
 desktop/bin/
+desktop/*.exe
+desktop/*.exe.old
+desktop/ui/_viz.html
 android-app/*.apk
 android-app/*.apk.idsig
 android-app/debug.keystore

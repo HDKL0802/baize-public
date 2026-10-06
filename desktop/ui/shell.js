@@ -14,6 +14,7 @@ window.Shell = (function () {
   const NAV = [
     { title: '核心', ids: ['chat', 'devices', 'tasks'] },
     { title: '知识', ids: ['kb', 'memory', 'activity'] },
+    { title: '协作', ids: ['accounts', 'conflicts'] },
     { title: '能力', ids: ['providers', 'mcp', 'skills', 'persona', 'cron'] },
     { title: '系统', ids: ['backup', 'settings'] },
   ];
@@ -32,6 +33,8 @@ window.Shell = (function () {
     persona: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10.6" r="2.1"/><path d="M5.7 16.4c.6-1.6 1.8-2.4 3.3-2.4s2.7.8 3.3 2.4"/><path d="M15 10.2h3.6M15 13.4h3.6"/>',
     cron: '<circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3.2 2"/>',
     backup: '<rect x="3.5" y="4.5" width="17" height="4.6" rx="1.4"/><path d="M5.5 9.1V19a1.4 1.4 0 0 0 1.4 1.4h10.2A1.4 1.4 0 0 0 18.5 19V9.1"/><path d="M10 13h4"/>',
+    accounts: '<circle cx="9" cy="8.4" r="3.1"/><path d="M3.6 19.2c.5-3 2.8-4.7 5.4-4.7s4.9 1.7 5.4 4.7"/><path d="M16.2 5.5a3 3 0 0 1 0 5.9"/><path d="M17.6 19.2c-.3-1.9-1-3.3-2.1-4.2"/>',
+    conflicts: '<path d="M12 3.8v16.4"/><path d="M5.5 7.5h13"/><path d="M5.5 7.5 3.4 13.4h4.2z"/><path d="M18.5 7.5l-2.1 5.9h4.2z"/><path d="M8.6 20.2h6.8"/>',
     settings: '<circle cx="12" cy="12" r="3.2"/><path d="M12 3.4v2.3M12 18.3v2.3M3.4 12h2.3M18.3 12h2.3M5.9 5.9l1.6 1.6M16.5 16.5l1.6 1.6M18.1 5.9l-1.6 1.6M7.5 16.5l-1.6 1.6"/>',
   };
 

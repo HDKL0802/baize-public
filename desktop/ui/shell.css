@@ -134,3 +134,17 @@ textarea{resize:vertical;min-height:64px}
 .legend{display:flex;gap:14px;align-items:center;color:var(--text-3);font-size:11px;margin-top:6px}
 .legend i{display:inline-block;width:16px;height:0;border-top:2px solid var(--accent);vertical-align:middle;margin-right:5px}
 .legend i.auto{border-top-style:dashed}
+
+/* ---------- 多用户与协作（账号与共享 / 冲突协商） ---------- */
+/* 左右对照：两版并排，都只读 —— 没有任何"改对方那版"的入口 */
+.vs2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.vsCol{border:1px solid var(--border);background:var(--surface-2);display:flex;flex-direction:column;min-width:0}
+.vsHead{display:flex;align-items:center;gap:8px;padding:7px 9px;border-bottom:1px solid var(--border);font-size:12px}
+.vsText{margin:0;padding:10px;white-space:pre-wrap;word-break:break-word;
+  font-family:var(--mono);font-size:12px;color:var(--text);max-height:320px;overflow:auto}
+.vs2 video{width:100%;height:170px;background:#000;border:1px solid var(--border);object-fit:cover}
+/* 协商聊天：像个小聊天窗，新消息在下面 */
+.chat-box{max-height:220px;overflow:auto;border:1px solid var(--border);background:var(--surface-2);padding:8px}
+.chat-line{padding:4px 0;border-bottom:1px dashed var(--border)}
+.chat-line:last-child{border-bottom:0}
+.chat-text{white-space:pre-wrap;word-break:break-word;font-size:13px;margin-top:2px}

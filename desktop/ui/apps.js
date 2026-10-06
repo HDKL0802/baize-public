@@ -6,13 +6,53 @@
    后 10 个的 render 在 apps2.js 末尾回填（直接写 render: renderXxx 会是前向引用，见那边的说明）。 */
 'use strict';
 
+/* 登录会话（多用户）：后端按它决定"以谁的身份访问数据"。
+   存 localStorage，只在 /api/be 的请求头上带（配对令牌永远不进网页）。 */
+const SESSION_KEY = 'bz_session';
+function sessionToken() { try { return localStorage.getItem(SESSION_KEY) || ''; } catch (e) { return ''; } }
+function setSessionToken(t) {
+  try { t ? localStorage.setItem(SESSION_KEY, t) : localStorage.removeItem(SESSION_KEY); } catch (e) { /* 隐私模式等忽略 */ }
+}
+window.BZ = { sessionToken: sessionToken, setSessionToken: setSessionToken };
+
+/* 文件 → base64（不含 data: 前缀），共享文档上传用 */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = () => reject(new Error('读文件失败'));
+    fr.onload = () => {
+      const s = String(fr.result || '');
+      const i = s.indexOf(',');
+      resolve(i >= 0 ? s.slice(i + 1) : s);
+    };
+    fr.readAsDataURL(file);
+  });
+}
+/* base64 → 触发浏览器下载 */
+function downloadBase64(name, b64) {
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([buf]));
+  const a = document.createElement('a');
+  a.href = url; a.download = name || 'download';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
 window.API = {
   async call(path, method, body) {
+    const headers = {};
+    if (body) headers['Content-Type'] = 'application/json';
+    // 登录会话（多用户）：后端按它决定"以谁的身份访问数据"。
+    // 只带在 /api/be 的请求上；本机侧接口（/api/local/*）不需要也不该带。
+    const s = sessionToken();
+    if (s) headers['X-Baize-Session'] = s;
     let r;
     try {
       r = await fetch('/api/be' + path, {
         method: method || 'GET',
-        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        headers: headers,
         body: body ? JSON.stringify(body) : undefined,
       });
     } catch (e) {
@@ -26,6 +66,18 @@ window.API = {
   },
   get(p) { return this.call(p, 'GET'); },
   post(p, b) { return this.call(p, 'POST', b); },
+
+  /* ---- 多用户：登录 / 登出 / 当前身份 ---- */
+  async login(name, password) {
+    const r = await this.post('/api/agent/auth/login', { name: name, password: password });
+    if (r.ok && r.data && r.data.token) setSessionToken(r.data.token);
+    return r;
+  },
+  async logout() {
+    try { await this.post('/api/agent/auth/logout', {}); } catch (e) { /* 登出失败也要清本地 */ }
+    setSessionToken('');
+  },
+  whoami() { return this.get('/api/agent/auth/whoami'); },
   async localConfig() {
     try {
       const r = await (await fetch('/api/local/config')).json();
@@ -87,10 +139,13 @@ window.APPS = [
   { id: 'cron', name: '定时任务', icon: '⏰', w: 820, h: 520 },
   { id: 'backup', name: '备份与恢复', icon: '🗄️', w: 820, h: 520 },
   { id: 'activity', name: '活动追踪', icon: '📈', w: 760, h: 520 },
+
+  { id: 'accounts', name: '账号与共享', icon: '👥', w: 1000, h: 660 },
+  { id: 'conflicts', name: '冲突协商', icon: '⚖️', w: 1080, h: 680 },
 ];
-/* 注意：这 10 个的 render 由 apps2.js 回填（见那个文件末尾）。
-   写成 render: renderXxx 会是前向引用 —— apps2.js 后加载，这里求值时就 ReferenceError，
-   整个 window.APPS 都建不起来（导航空白、内容区不渲染）。 */
+/* 注意：除前 3 个外，render 由 apps2.js / apps3.js 回填（见那些文件末尾）。
+   写成 render: renderXxx 会是前向引用 —— 后加载的文件此刻还没定义，
+   对象字面量求值会直接 ReferenceError，整个 window.APPS 都建不起来（导航空白、内容区不渲染）。 */
 
 window.APP_BY_ID = {};
 window.APPS.forEach(a => { window.APP_BY_ID[a.id] = a; });
@@ -193,8 +248,8 @@ async function renderSettings(root) {
       <div class="sect">
         <h3>关于</h3>
         <div class="sub">白泽桌面端（Go + WebView2，纯 Go 无 cgo）· 冷色暗色直角<br>
-          控制台 12 个应用已全部接入；本机作为设备的能力已接（只读）。<br>
-          已接：开机自启、关窗隐藏到托盘、自动更新、NSIS 安装包。</div>
+          控制台 12 个应用 + 协作 2 个（账号与共享 / 冲突协商）已全部接入；本机作为设备的能力已接（只读）。<br>
+          已接：开机自启、关窗隐藏到托盘、自动更新、NSIS 安装包、多用户与组共享。</div>
       </div>
     </div>`;
 

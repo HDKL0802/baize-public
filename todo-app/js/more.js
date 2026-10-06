@@ -74,6 +74,7 @@ window.More = (function () {
       name: '配置', items: [
         { id: 'approve', icon: 'approve', name: '模型审批', desc: '危险动作人工放行 + 审批超时', go: () => UI.switchTab('view-approval') },
         { id: 'apikeys', icon: 'apikeys', name: 'API 服务', desc: '各模型站的 API Key 与 baseURL', go: () => UI.switchTab('view-keys') },
+        { id: 'channels', icon: 'channels', name: '频道', desc: '白泽在「哪里」跟你对话（IM / webhook 接入）' },
         { id: 'voice', icon: 'voice', name: '语音', desc: '说得出话（朗读）+ 听得懂话（按住说话）' },
         { id: 'mcp', icon: 'mcp', name: 'MCP 服务', desc: '热插拔，加删重载都不用重启' },
         { id: 'backups', icon: 'backups', name: '备份与恢复', desc: 'zip + sha256 清单，恢复前自动打安全点' },
@@ -453,6 +454,78 @@ window.More = (function () {
       body.appendChild(test);
     },
 
+    /* ---- 配置 · 频道（你和白泽在「哪里」对话） ---- */
+    channels: async (body) => {
+      const r = call('/api/agent/channels', 'GET');
+      const why = errOf(r);
+      if (why) { fail(body, why); return; }
+      body.innerHTML = '';
+      const list = Array.isArray(r.channels) ? r.channels : [];
+
+      const intro = document.createElement('div');
+      intro.className = 'desc';
+      intro.textContent = '频道 = 你和白泽在「哪里」对话：接钉钉就在钉钉里回，接 QQ 就在 QQ 里回。'
+        + '列表只显示非敏感信息；密钥 / 令牌一律「留空 = 不改」、不回显。';
+      body.appendChild(intro);
+
+      const add = document.createElement('button');
+      add.className = 'btn primary';
+      add.style.cssText = 'width:100%;margin:10px 0 4px';
+      add.textContent = '＋ 加一个频道';
+      add.addEventListener('click', () => openChannelForm(r.kinds || []));
+      body.appendChild(add);
+
+      if (!list.length) {
+        empty(body, '还没有频道。白泽现在只能在 App 里跟你说话，不在任何 IM 里。');
+        return;
+      }
+
+      list.forEach((c) => {
+        const bits = [];
+        if (c.outboundUrl) bits.push('出站 ' + esc(c.outboundUrl));
+        if (c.appId) bits.push('appId ' + esc(c.appId));
+        if (c.agentId) bits.push('agentId ' + esc(c.agentId));
+        if (c.domain) bits.push('domain ' + esc(c.domain));
+        if (c.chatIds && c.chatIds.length) bits.push('轮询 ' + c.chatIds.length + ' 个会话');
+        const el = card(`
+          <div class="kb-head-row">
+            <div class="vc-title">${esc(c.id)}</div>
+            <span class="kb-chip ${c.enabled ? 'ok' : ''}">${c.enabled ? '启用' : '停用'}</span>
+          </div>
+          <div class="vc-sub" style="margin-top:4px">类型 ${esc(c.kind)} · ${c.hasToken ? '有令牌' : '无令牌'}</div>
+          <div class="vc-line">${bits.length ? esc(bits.join(' · ')) : '（还没填连接信息）'}</div>
+          <div class="vc-actions">
+            <button class="btn ghost sm" data-test style="flex:1">测试发送</button>
+            <button class="btn ghost sm" data-toggle style="flex:1">${c.enabled ? '停用' : '启用'}</button>
+            <button class="btn danger-ghost sm" data-rm style="flex:1">删除</button>
+          </div>`);
+        el.querySelector('[data-test]').addEventListener('click', (e) => {
+          const b = e.currentTarget;
+          b.disabled = true; b.textContent = '发送中…';
+          const rr = call('/api/agent/channels', 'POST', JSON.stringify({ action: 'test', id: c.id, text: '白泽频道连通性测试。' }));
+          b.disabled = false; b.textContent = '测试发送';
+          const w = errOf(rr);
+          if (w) { toast('发送失败：' + w, 4000); return; }
+          toast('已发送到「' + c.id + '」');
+        });
+        el.querySelector('[data-toggle]').addEventListener('click', () => {
+          const rr = call('/api/agent/channels', 'POST', JSON.stringify({ action: 'toggle', id: c.id }));
+          const w = errOf(rr);
+          if (w) { toast('操作失败：' + w, 4000); return; }
+          open('channels', '频道');
+        });
+        el.querySelector('[data-rm]').addEventListener('click', () => {
+          if (!window.confirm('删除频道「' + c.id + '」？')) return;
+          const rr = call('/api/agent/channels', 'POST', JSON.stringify({ action: 'remove', id: c.id }));
+          const w = errOf(rr);
+          if (w) { toast('删除失败：' + w, 4000); return; }
+          toast('已删除');
+          open('channels', '频道');
+        });
+        body.appendChild(el);
+      });
+    },
+
     /* ---- 配置 · 日志 ---- */
     logs: async (body) => {
       const r = call('/api/be/api/logs', 'GET');
@@ -496,6 +569,105 @@ window.More = (function () {
       };
       document.getElementById('mc-save').addEventListener('click', save);
       UI.setToolAction('添加', save);
+    });
+  }
+
+  /* ================= 频道：新增表单（按类型只显示该填的字段） ================= */
+
+  const CH_FIELDS = {
+    appId:       { label: 'App ID（小艺 = AK）', ph: '按平台填' },
+    appSecret:   { label: 'App Secret（小艺 = SK）', ph: '留空 = 不改', secret: true },
+    agentId:     { label: 'Agent ID', ph: '小艺开放平台的 Agent ID' },
+    token:       { label: '入站令牌 / 验证令牌', ph: '留空 = 不改', secret: true },
+    outboundUrl: { label: '出站地址 URL', ph: 'http(s)://… 或 ws(s)://…' },
+    format:      { label: '出站格式', ph: 'generic / feishu / dingtalk / slack' },
+    domain:      { label: '域名（可选，默认官方）', ph: '留空 = 用官方地址' },
+    chatIds:     { label: '轮询会话 chatIds（逗号分隔）', ph: 'oc_xxx,oc_yyy' },
+    pollSec:     { label: '轮询间隔（秒）', ph: '5' },
+  };
+  const CH_META = {
+    webhook:  { hint: '出站 POST 到一个 URL（飞书/钉钉/Slack 群机器人）；入站由外部 POST /api/channels/{id}/inbound。', fields: ['outboundUrl', 'format', 'token'] },
+    onebot:   { hint: 'QQ OneBot V11 反向 WS：让 NapCat / go-cqhttp 连 /api/channels/{id}/ws?access_token=令牌。必须设令牌。', fields: ['token'] },
+    feishu:   { hint: '飞书：出站 OpenAPI（要 appId/appSecret）；入站填验证令牌或配轮询会话（免公网）。', fields: ['appId', 'appSecret', 'token', 'domain', 'chatIds', 'pollSec'] },
+    dingtalk: { hint: '钉钉：后台建应用→加「机器人」→消息接收选 Stream 模式，取 Client ID / Client Secret。白泽主动连出去，免公网。', fields: ['appId', 'appSecret', 'domain'] },
+    qq:       { hint: 'QQ 官方机器人（入驻要实名）：取 AppID / ClientSecret。', fields: ['appId', 'appSecret', 'domain'] },
+    xiaoyi:   { hint: '华为小艺：取 AK / SK / Agent ID（AK→appId，SK→appSecret）。', fields: ['appId', 'appSecret', 'agentId', 'domain'] },
+    yuanbao:  { hint: '腾讯元宝：填 app_id（appId）/ app_secret（appSecret）；接入点一般不用改。', fields: ['appId', 'appSecret', 'domain', 'outboundUrl'] },
+    wechat:   { hint: '个人微信：首次需在后端日志里扫码登录（登录后凭证落盘）。一般不用填令牌。', fields: ['token', 'domain'] },
+  };
+
+  function openChannelForm(kinds) {
+    const ks = (kinds && kinds.length) ? kinds
+      : ['webhook', 'onebot', 'feishu', 'dingtalk', 'qq', 'xiaoyi', 'yuanbao', 'wechat'];
+    const html = `
+      <div class="f-block">
+        <label class="f-label">频道 id<span class="req">*</span></label>
+        <input class="f-input" id="ch-id" placeholder="如 dingtalk-ops">
+        <div class="f-note">只能字母 / 数字 / 连字符 / 下划线。</div>
+      </div>
+      <div class="f-block">
+        <label class="f-label">类型<span class="req">*</span></label>
+        <select class="f-input" id="ch-kind">${ks.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('')}</select>
+        <div class="f-note" id="ch-hint"></div>
+      </div>
+      <div id="ch-fields"></div>
+      <div class="f-block">
+        <label class="f-label">回复前缀（可选）</label>
+        <input class="f-input" id="ch-prefix" placeholder="如 [白泽] ">
+      </div>
+      <div class="f-block">
+        <div class="switch-row">
+          <div class="sr-main"><div class="sr-name">启用</div><div class="sr-desc">停用后不接受入站消息</div></div>
+          <button class="toggle on" id="ch-enabled"><span></span></button>
+        </div>
+      </div>
+      <button class="btn-block" id="ch-save">保存</button>`;
+    UI.openTool('新增频道', html, () => {
+      let enabled = true;
+      const kindEl = document.getElementById('ch-kind');
+      const fieldsEl = document.getElementById('ch-fields');
+      const hintEl = document.getElementById('ch-hint');
+      const build = () => {
+        const meta = CH_META[kindEl.value] || { hint: '', fields: ['token'] };
+        hintEl.textContent = meta.hint || '';
+        fieldsEl.innerHTML = meta.fields.map((f) => {
+          const d = CH_FIELDS[f];
+          if (!d) return '';
+          return `<div class="f-block"><label class="f-label">${d.label}</label>`
+            + `<input class="f-input" id="ch-${f}" type="${d.secret ? 'password' : 'text'}" placeholder="${esc(d.ph || '')}"></div>`;
+        }).join('');
+      };
+      kindEl.addEventListener('change', build);
+      build();
+      const tog = document.getElementById('ch-enabled');
+      tog.addEventListener('click', () => { enabled = !enabled; tog.classList.toggle('on', enabled); });
+      const val = (f) => { const e = document.getElementById('ch-' + f); return e ? e.value.trim() : ''; };
+      const save = () => {
+        const id = document.getElementById('ch-id').value.trim();
+        if (!id) { toast('频道 id 不能为空'); return; }
+        const kind = kindEl.value;
+        const meta = CH_META[kind] || { fields: [] };
+        const payload = { action: 'save', id, kind, enabled, botPrefix: document.getElementById('ch-prefix').value };
+        if (meta.fields.includes('outboundUrl')) payload.outboundUrl = val('outboundUrl');
+        if (meta.fields.includes('format') && val('format')) payload.format = val('format');
+        if (meta.fields.includes('domain') && val('domain')) payload.domain = val('domain');
+        if (meta.fields.includes('appId') && val('appId')) payload.appId = val('appId');
+        if (meta.fields.includes('agentId') && val('agentId')) payload.agentId = val('agentId');
+        if (meta.fields.includes('appSecret') && val('appSecret')) payload.appSecret = val('appSecret');
+        if (meta.fields.includes('token') && val('token')) payload.token = val('token');
+        if (meta.fields.includes('chatIds') && val('chatIds')) {
+          payload.chatIds = val('chatIds').split(',').map(s => s.trim()).filter(Boolean);
+        }
+        if (meta.fields.includes('pollSec') && val('pollSec')) payload.pollSec = Number(val('pollSec'));
+        const rr = call('/api/agent/channels', 'POST', JSON.stringify(payload));
+        const w = errOf(rr);
+        if (w) { toast('没保存成：' + w, 4200); return; }
+        UI.closePage('toolPage');
+        toast('已保存');
+        open('channels', '频道');
+      };
+      document.getElementById('ch-save').addEventListener('click', save);
+      UI.setToolAction('保存', save);
     });
   }
 

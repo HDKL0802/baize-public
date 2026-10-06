@@ -1,0 +1,23 @@
+{
+    "schema":  1,
+    "name":  "我的白泽插件源",
+    "updated":  "2026-10-06",
+    "plugins":  [
+                    {
+                        "id":  "example-hello",
+                        "name":  "示例插件",
+                        "version":  "1.0.0",
+                        "description":  "模板仓自带的示例：教你一个白泽插件长什么样。发布前把它删掉或改成你自己的。",
+                        "author":  "你的名字",
+                        "homepage":  "https://github.com/你的账号/你的插件仓",
+                        "license":  "MIT",
+                        "minBaize":  "0.9.21",
+                        "tags":  [
+                                     "示例"
+                                 ],
+                        "url":  "packages/example-hello-1.0.0.zip",
+                        "sha256":  "0d1b4ddeffd7347e447cdfd662a39b06433e088590e92db4127355886dcdaa32",
+                        "size":  3351
+                    }
+                ]
+}

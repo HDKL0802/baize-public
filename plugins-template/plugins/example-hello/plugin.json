@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "example-hello",
+  "name": "示例插件",
+  "version": "1.0.0",
+  "description": "模板仓自带的示例：教你一个白泽插件长什么样。发布前把它删掉或改成你自己的。",
+  "author": "你的名字",
+  "homepage": "https://github.com/你的账号/你的插件仓",
+  "license": "MIT",
+  "tags": ["示例"],
+  "minBaize": "0.9.21"
+}

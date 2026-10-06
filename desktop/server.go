@@ -172,6 +172,28 @@ func buildHandler() http.Handler {
 		appQuit()
 	})
 
+	// 实时字幕设置（目标语言 / 是否显示原文 / 字号）：字幕浮窗与设置页共用一份，
+	// 存在本机配置里 —— 浮窗是独立进程，靠它才能跟设置页保持一致。
+	mux.HandleFunc("/api/local/subtitle", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req struct {
+				To         string `json:"to"`
+				ShowSource *bool  `json:"showSource"`
+				Font       string `json:"font"`
+			}
+			if r.Body != nil {
+				_ = json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&req)
+			}
+			out := setSubtitle(req.To, req.ShowSource, req.Font)
+			out["ok"] = true
+			writeJSON(w, http.StatusOK, out)
+			return
+		}
+		out := subtitleNow()
+		out["ok"] = true
+		writeJSON(w, http.StatusOK, out)
+	})
+
 	// 从本机文件夹导入 Markdown 笔记（Obsidian 库）
 	mux.HandleFunc("/api/local/notes/import", handleLocalNotesImport)
 

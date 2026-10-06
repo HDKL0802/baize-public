@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"baize/internal/agentsvc"
 	"baize/internal/config"
 	"baize/internal/voice"
 )
@@ -138,6 +139,38 @@ func (s *Server) registerVoice(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok": true, "text": tr.Text, "model": tr.Model, "millis": tr.Millis,
+		})
+	}))
+
+	// 翻译：把听写出来的一句中文/英文翻成另一种语言（桌面端「实时双语字幕」的第二半）。
+	// 跟 stt 同一口径：成功 200 {ok:true,...}，翻译失败也回 200 {ok:false,error}。
+	mux.HandleFunc("POST /api/agent/voice/translate", s.api(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Text string `json:"text"`
+			To   string `json:"to"`
+		}
+		if err := decodeBody(r, &req); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		text := strings.TrimSpace(req.Text)
+		if text == "" {
+			writeErr(w, http.StatusBadRequest, "text 不能为空")
+			return
+		}
+		if n := len([]rune(text)); n > agentsvc.TranslateMaxChars {
+			writeErr(w, http.StatusBadRequest, fmt.Sprintf("text 太长（%d 字，上限 %d 字）：字幕是逐句翻译，请分段送来", n, agentsvc.TranslateMaxChars))
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		tr, err := a.TranslateText(ctx, text, req.To)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true, "text": tr.Text, "model": tr.Model, "millis": tr.LatencyMs,
 		})
 	}))
 

@@ -42,6 +42,11 @@ func init() {
 		registerShotRoutes(mux)
 		registerBallRoutes(mux)
 		registerFloatRoutes(mux)
+		// 全局快捷键清单（含"没抢到"的真实状态）：只有 Windows 有系统级快捷键，
+		// 所以挂在平台专属这一组里，别让跨平台的 server.go 去引用 windows-only 的函数。
+		mux.HandleFunc("/api/local/hotkeys", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "hotkeys": ballHotkeyStatus()})
+		})
 	}
 }
 

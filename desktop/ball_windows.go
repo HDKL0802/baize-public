@@ -40,6 +40,7 @@ const (
 	wsExTopmost     = 0x00000008
 	wsExToolWindow  = 0x00000080
 	wsExLayered     = 0x00080000
+	wsExNoActivate  = 0x08000000 // 点了也不激活（字幕条这种覆盖层用）
 	lwaAlpha        = 0x00000002
 	swpNoSize       = 0x0001
 	swpNoZOrder     = 0x0004
@@ -71,14 +72,51 @@ type blendFunction struct {
 const menuTasks = 1003
 const menuShot = 1004
 const menuFloat = 1005
+const menuDictate = 1006
+const menuSubtitle = 1007
 
-// 全局快捷键：截图提问 = Alt+Shift+S（豆包那套；先写死，之后进「快捷键可配」）
+// 全局快捷键：都走 Alt+Shift+<字母>（豆包那套习惯）。
+// ⚠️ 这些是**系统级**注册（RegisterHotKey），占用的是全局组合键 —— 被别的程序占了就只记日志、
+// 不致命；界面上（设置 → 快捷键）会如实列出哪几个没抢到。
 const (
-	wmHotkey   = 0x0312
-	modAlt     = 0x0001
-	modShift   = 0x0004
-	vkS        = 0x53
-	hotkeyShot = 1
+	wmHotkey       = 0x0312
+	modAlt         = 0x0001
+	modShift       = 0x0004
+	vkS            = 0x53
+	vkD            = 0x44
+	vkC            = 0x43
+	vkQ            = 0x51
+	hotkeyShot     = 1
+	hotkeyDictate  = 2
+	hotkeySubtitle = 3
+	hotkeyFloat    = 4
+)
+
+// ballHotkeyDef 一条全局快捷键的定义
+type ballHotkeyDef struct {
+	id   int // RegisterHotKey 的 id（WM_HOTKEY 靠它区分）
+	mod  uintptr
+	vk   uintptr
+	key  string // 日志/界面里显示的键名，如 "S"
+	what string // 干什么
+}
+
+// ballHotkeys 桌面端全部全局快捷键（顺序 = 设置页展示顺序）
+var ballHotkeys = []ballHotkeyDef{
+	{hotkeyShot, modAlt | modShift, vkS, "S", "截图提问"},
+	{hotkeyDictate, modAlt | modShift, vkD, "D", "语音转写"},
+	{hotkeySubtitle, modAlt | modShift, vkC, "C", "实时字幕（开/关）"},
+	{hotkeyFloat, modAlt | modShift, vkQ, "Q", "对话浮窗"},
+}
+
+// ballHotkeyLive 真正注册成功的快捷键 id。
+//
+// ⚠️ 不能用「失败表」反推状态：悬浮球隐藏时会**主动注销**全部快捷键，那时失败表是空的，
+// 界面就会看到四项全 "ok" 而实际一个都没注册 —— 典型的"看着能用其实不能用"。
+// 所以这里正面记录"谁真注册上了"。
+var (
+	ballHotkeyMu   sync.Mutex
+	ballHotkeyLive = map[int]bool{}
 )
 
 // SetWindowPos 的插入位序（HWND_TOPMOST = -1 / HWND_NOTOPMOST = -2，用补码表示）
@@ -239,20 +277,91 @@ func ballCreate() error {
 	return nil
 }
 
-// ballHotkey 注册/注销全局快捷键 Alt+Shift+S = 截图提问（豆包同款）。失败只记日志、不致命。
+// ballHotkey 注册/注销全部全局快捷键（Alt+Shift+<字母>）。逐个注册，失败只记日志、不致命
+// ——被别的程序占用是常事，用户还有右键菜单这条路可以走。
 func ballHotkey(on bool) {
 	if ballHWND == 0 {
 		return
 	}
 	if !on {
-		pUnregisterHotKey.Call(ballHWND, hotkeyShot)
+		for _, h := range ballHotkeys {
+			pUnregisterHotKey.Call(ballHWND, uintptr(h.id))
+		}
+		ballHotkeyMu.Lock()
+		ballHotkeyLive = map[int]bool{} // 注销后不再有任何"活着"的快捷键
+		ballHotkeyMu.Unlock()
 		return
 	}
-	if r, _, _ := pRegisterHotKey.Call(ballHWND, hotkeyShot, modAlt|modShift, vkS); r == 0 {
-		log.Printf("[悬浮球] Alt+Shift+S 注册失败（可能被别的程序占用）：截图提问请走右键菜单")
-	} else {
-		log.Printf("[悬浮球] 快捷键已就绪：Alt+Shift+S = 截图提问")
+	var ok, bad []string
+	live := map[int]bool{}
+	for _, h := range ballHotkeys {
+		r, _, _ := pRegisterHotKey.Call(ballHWND, uintptr(h.id), h.mod, h.vk)
+		live[h.id] = r != 0
+		if r == 0 {
+			bad = append(bad, "Alt+Shift+"+h.key)
+			log.Printf("[悬浮球] 全局快捷键 Alt+Shift+%s（%s）注册失败：可能被别的程序占用，请走右键菜单", h.key, h.what)
+			continue
+		}
+		ok = append(ok, "Alt+Shift+"+h.key+"="+h.what)
 	}
+	ballHotkeyMu.Lock()
+	ballHotkeyLive = live
+	ballHotkeyMu.Unlock()
+	if len(ok) > 0 {
+		log.Printf("[悬浮球] 全局快捷键已就绪：%s", strings.Join(ok, " / "))
+	}
+	if len(bad) > 0 {
+		log.Printf("[悬浮球] 没抢到的快捷键：%s", strings.Join(bad, " / "))
+	}
+}
+
+// ballHotkeyStatus 给设置页看的快捷键清单（含"到底注册上没有"的真实状态与原因）
+func ballHotkeyStatus() []map[string]any {
+	ballHotkeyMu.Lock()
+	live := make(map[int]bool, len(ballHotkeyLive))
+	for k, v := range ballHotkeyLive {
+		live[k] = v
+	}
+	ballHotkeyMu.Unlock()
+	out := make([]map[string]any, 0, len(ballHotkeys))
+	for _, h := range ballHotkeys {
+		ok := live[h.id]
+		why := ""
+		if !ok {
+			switch {
+			case ballHWND == 0:
+				why = "这个窗口进程里没有悬浮球（全局快捷键只在主窗口注册）"
+			case !ballVisible():
+				why = "悬浮球被隐藏了，快捷键跟着注销了（在「常驻与自启」里重新显示悬浮球即可）"
+			default:
+				why = "没抢到：组合键被别的程序占用了，请走悬浮球右键菜单"
+			}
+		}
+		out = append(out, map[string]any{
+			"keys": "Alt+Shift+" + h.key,
+			"what": h.what,
+			"ok":   ok,
+			"why":  why,
+		})
+	}
+	return out
+}
+
+// ballOpenFloat 唤起（或复用）某个模式的浮窗；失败只记日志。
+func ballOpenFloat(mode string) {
+	if err := spawnFloatWindow(mode); err != nil {
+		log.Printf("[悬浮球] 起浮窗(%s)失败：%v", mode, err)
+	}
+}
+
+// ballToggleFloat 开着就关掉、没开就打开 —— 实时字幕这种「按一下开/按一下关」的用这个。
+func ballToggleFloat(mode string) {
+	if hwnd := floatFind(mode); hwnd != 0 {
+		// 跨进程关窗：PostMessage(WM_CLOSE) 交给它自己的窗口线程去销毁（别在本线程 DestroyWindow）
+		pPostMessageWF.Call(hwnd, wmClose, 0, 0)
+		return
+	}
+	ballOpenFloat(mode)
 }
 
 // ballSetVisibleNow 立刻显示/隐藏悬浮球（隐藏时顺手把全局快捷键让出去）
@@ -417,8 +526,15 @@ func ballWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		ballShowMenu(hwnd)
 		return 0
 	case wmHotkey:
-		if uint32(wparam) == hotkeyShot {
+		switch uint32(wparam) {
+		case hotkeyShot:
 			startShotCapture()
+		case hotkeyDictate:
+			ballOpenFloat(floatModeDictate)
+		case hotkeySubtitle:
+			ballToggleFloat(floatModeSubtitle)
+		case hotkeyFloat:
+			ballOpenFloat(floatModeChat)
 		}
 		return 0
 	case wmDestroy:
@@ -638,10 +754,12 @@ func ballShowMenu(hwnd uintptr) {
 		return
 	}
 	defer pDestroyMenu.Call(hmenu)
-	// 照豆包的排布：窗口 / 对话浮窗 / 截图提问 / --- / 待审批 / --- / 退出
+	// 照豆包的排布：窗口 / 对话浮窗 / 截图提问 / 语音转写 / 实时字幕 / --- / 待审批 / --- / 退出
 	appendMenu(hmenu, mfString, menuOpen, "打开白泽窗口")
 	appendMenu(hmenu, mfString, menuFloat, "打开对话浮窗")
-	appendMenu(hmenu, mfString, menuShot, "截图提问")
+	appendMenu(hmenu, mfString, menuShot, "截图提问\tAlt+Shift+S")
+	appendMenu(hmenu, mfString, menuDictate, "语音转写\tAlt+Shift+D")
+	appendMenu(hmenu, mfString, menuSubtitle, "实时字幕\tAlt+Shift+C")
 	appendMenu(hmenu, mfSeparator, 0, "")
 	label := "待审批"
 	if ballPending > 0 {
@@ -660,11 +778,13 @@ func ballShowMenu(hwnd uintptr) {
 	case menuOpen:
 		ballOpenMain(false)
 	case menuFloat:
-		if err := spawnFloatWindow(floatModeChat); err != nil {
-			log.Printf("[悬浮球] 起对话浮窗失败：%v", err)
-		}
+		ballOpenFloat(floatModeChat)
 	case menuShot:
 		startShotCapture()
+	case menuDictate:
+		ballOpenFloat(floatModeDictate)
+	case menuSubtitle:
+		ballToggleFloat(floatModeSubtitle)
 	case menuTasks:
 		ballOpenMain(true)
 	case menuQuit:

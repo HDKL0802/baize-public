@@ -41,6 +41,9 @@ const (
 	floatModeChat      = "chat"
 	floatModeExtract   = "extract"
 	floatModeTranslate = "translate"
+	// 语音线（B1）：语音转写（录音→文字→存笔记）与实时双语字幕（贴屏幕底部的置顶横条）
+	floatModeDictate  = "dictate"
+	floatModeSubtitle = "subtitle"
 
 	floatEdgeGap = 12       // 浮窗靠边时离屏幕边缘留的缝
 	floatImgMax  = 64 << 20 // 推图上限（一张截图远到不了）
@@ -153,6 +156,10 @@ func floatCbtProc(nCode int32, wparam, lparam uintptr) uintptr {
 					cs.X, cs.Y = x, y
 					cs.Style = wsPopup | wsClipChildren
 					cs.DwExStyle |= wsExToolWindow | wsExTopmost
+					// 字幕条：连点它都不该把当前窗口的焦点抢走（纯覆盖层）
+					if floatModeNow == floatModeSubtitle {
+						cs.DwExStyle |= wsExNoActivate
+					}
 					pRtlMoveMemory.Call(cc.Lpcs, uintptr(unsafe.Pointer(&cs)), unsafe.Sizeof(cs))
 					floatCbtMu.Lock()
 					floatCbtOn = false // 一次性，命中即失效
@@ -165,10 +172,23 @@ func floatCbtProc(nCode int32, wparam, lparam uintptr) uintptr {
 	return r
 }
 
-// floatInitialPos 浮窗的初始位置：贴屏幕右边、垂直居中。
-func floatInitialPos(w, h int) (int32, int32) {
+// floatInitialPos 浮窗的初始位置。
+//
+//	默认贴屏幕右边、垂直居中；subtitle（实时字幕）例外 —— 它要的是「屏幕底部一条横杠」。
+func floatInitialPos(mode string, w, h int) (int32, int32) {
 	sw, _, _ := pGetSystemMetrics.Call(smCxScreen)
 	sh, _, _ := pGetSystemMetrics.Call(smCyScreen)
+	if mode == floatModeSubtitle {
+		x := int32(sw)/2 - int32(w)/2
+		y := int32(sh) - int32(h) - floatEdgeGap
+		if x < floatEdgeGap {
+			x = floatEdgeGap
+		}
+		if y < floatEdgeGap {
+			y = floatEdgeGap
+		}
+		return x, y
+	}
 	x := int32(sw) - int32(w) - floatEdgeGap
 	y := int32(sh)/2 - int32(h)/2
 	if x < floatEdgeGap {
@@ -187,15 +207,32 @@ func floatWindowTitle(mode string) string {
 		return "白泽 · 提取文字"
 	case floatModeTranslate:
 		return "白泽 · 翻译"
+	case floatModeDictate:
+		return "白泽 · 语音转写"
+	case floatModeSubtitle:
+		return "白泽 · 实时字幕"
 	default:
 		return "白泽 · 对话浮窗"
 	}
 }
 
+// floatSize 各模式浮窗的尺寸。
+//
+//	subtitle（实时字幕）要的是「屏幕底部一整条」：宽度铺满工作区，高度只留两三行字幕，
+//	所以这里直接按屏幕宽度算（屏幕变小/换显示器后重开会重新算）。
 func floatSize(mode string) (int, int) {
 	switch mode {
 	case floatModeChat:
 		return 380, 560
+	case floatModeDictate:
+		return 420, 540
+	case floatModeSubtitle:
+		sw, _, _ := pGetSystemMetrics.Call(smCxScreen)
+		w := int(sw) - 2*floatEdgeGap
+		if w < 480 {
+			w = 480
+		}
+		return w, 172
 	default:
 		return 400, 470
 	}
@@ -361,10 +398,11 @@ func runFloatMode(mode, imgPath string) {
 	go func() { _ = http.Serve(ln, buildHandler()) }()
 
 	w, h := floatSize(mode)
-	ix, iy := floatInitialPos(w, h)
+	ix, iy := floatInitialPos(mode, w, h)
 	hk := floatCbtInstall(w, h, int(ix), int(iy))
 	wv := webview2.NewWithOptions(webview2.WebViewOptions{
-		AutoFocus: true,
+		// 字幕条不该抢焦点（用户多半正看着电影/别的窗口），其余浮窗照旧自动聚焦。
+		AutoFocus: mode != floatModeSubtitle,
 		// 一模式一个固定 profile：复用开得快，也不攒磁盘
 		DataPath: floatProfileDir(mode),
 		WindowOptions: webview2.WindowOptions{
@@ -392,10 +430,14 @@ func runFloatMode(mode, imgPath string) {
 }
 
 // floatPlace 兜底摆位 + 显示：正常情况下 CBT 钩子在窗口创建时就定好了位置与样式，
-// 这里再确认一次（也顺带保证置顶）。
+// 这里再确认一次（也顺带保证置顶）。字幕条额外带 SWP_NOACTIVATE，别把焦点抢走。
 func floatPlace(hwnd uintptr, w, h int, x, y int32) {
+	flags := uintptr(swpShowWindow)
+	if floatModeNow == floatModeSubtitle {
+		flags |= swpNoActivate
+	}
 	pSetWindowPos.Call(hwnd, hwndTopmost, uintptr(x), uintptr(y),
-		uintptr(w), uintptr(h), swpShowWindow)
+		uintptr(w), uintptr(h), flags)
 }
 
 // floatSnapToEdge 把浮窗吸到离它最近的那条屏幕边（用户要求：必须挨着某一条边）。
@@ -461,7 +503,40 @@ func floatSnapToEdge(hwnd uintptr) {
 
 /* ---------------- 浮窗自己的本机接口（页面调自己这个进程） ---------------- */
 
+// floatModeKnown 只放行我们认识的浮窗模式。
+// ⚠️ 必须白名单：模式名会被拼进 floatProfileDir(mode) / floatPortFile(mode) 这类**路径**，
+// 放行任意字符串等于给本机接口开了一条路径穿越（`../` 就能写到目录外）。
+func floatModeKnown(mode string) bool {
+	switch mode {
+	case floatModeChat, floatModeExtract, floatModeTranslate, floatModeDictate, floatModeSubtitle:
+		return true
+	}
+	return false
+}
+
 func registerFloatRoutes(mux *http.ServeMux) {
+	// 从主界面（设置页）唤起浮窗：字幕模式是「开/关」切换，其余是打开/置前
+	mux.HandleFunc("/api/local/float/open", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Mode string `json:"mode"`
+		}
+		if r.Body != nil {
+			_ = json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&req)
+		}
+		mode := strings.TrimSpace(req.Mode)
+		if !floatModeKnown(mode) {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok": false, "error": "不认识的浮窗模式：" + mode + "（可用 chat / extract / translate / dictate / subtitle）"})
+			return
+		}
+		if mode == floatModeSubtitle {
+			ballToggleFloat(mode)
+		} else {
+			ballOpenFloat(mode)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	})
+
 	// 当前浮窗模式 + 有没有带图 + 图片版本号
 	mux.HandleFunc("/api/local/float/mode", func(w http.ResponseWriter, r *http.Request) {
 		floatImgMu.Lock()

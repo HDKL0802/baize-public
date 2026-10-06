@@ -35,6 +35,13 @@ type Config struct {
 
 	// Theme 界面主题：light / dark / system（默认 system = 跟随系统）
 	Theme string `json:"theme,omitempty"`
+
+	// SubtitleLang 实时字幕的**译文**目标语言：zh / en（默认 zh）
+	SubtitleLang string `json:"subtitleLang,omitempty"`
+	// SubtitleHideSource 实时字幕是否**不显示**原文（默认 false = 原文+译文都显示）
+	SubtitleHideSource bool `json:"subtitleHideSource,omitempty"`
+	// SubtitleFont 实时字幕字号：s / m / l（默认 m）
+	SubtitleFont string `json:"subtitleFont,omitempty"`
 }
 
 var (
@@ -139,6 +146,38 @@ func setTheme(t string) string {
 	saveConfigLocked()
 	cfgMu.Unlock()
 	return t
+}
+
+// subtitleNow 实时字幕的当前设置（缺省/非法值一律归一到默认：中文字幕、显示原文、中号字）
+func subtitleNow() map[string]any {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	to := cfg.SubtitleLang
+	if to != "en" {
+		to = "zh"
+	}
+	font := cfg.SubtitleFont
+	if font != "s" && font != "l" {
+		font = "m"
+	}
+	return map[string]any{"to": to, "showSource": !cfg.SubtitleHideSource, "font": font}
+}
+
+// setSubtitle 改实时字幕设置；nil/空 = 该项不改。返回落定后的完整设置（界面直接拿去重画）。
+func setSubtitle(to string, showSource *bool, font string) map[string]any {
+	cfgMu.Lock()
+	if to == "zh" || to == "en" {
+		cfg.SubtitleLang = to
+	}
+	if showSource != nil {
+		cfg.SubtitleHideSource = !*showSource
+	}
+	if font == "s" || font == "m" || font == "l" {
+		cfg.SubtitleFont = font
+	}
+	saveConfigLocked()
+	cfgMu.Unlock()
+	return subtitleNow()
 }
 
 // ballVisible 悬浮球是否显示（默认显示）

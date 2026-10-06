@@ -22,6 +22,9 @@
     --ok:#16a34a; --warn:#d97706; --err:#dc2626;
   }
   *{box-sizing:border-box}
+  /* ⚠️ 必须兜底：下面 .fhead / .body 都是作者样式的 display:flex，会盖掉 UA 的 [hidden]{display:none}，
+     没有这条的话四种模式的区块会**同时显示**（历史遗留坑，实测 chat/text 一直并存）。 */
+  [hidden]{display:none!important}
   html,body{height:100%}
   body{
     margin:0; background:var(--bg); color:var(--text);
@@ -90,6 +93,55 @@
   .dot.ok{background:var(--ok)}
   .dot.err{background:var(--err)}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+  /* ---------- 语音转写（dictate） ---------- */
+  .recbar{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:12px 12px 8px}
+  .recstat{color:var(--text-2);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .recstat.err{color:var(--err)}
+  button.btn.stop{background:var(--err);border-color:var(--err);color:var(--accent-ink);font-weight:600}
+  .dlist{
+    flex:1;min-height:0;overflow:auto;margin:0 12px;padding:10px 12px;background:var(--surface);
+    border:1px solid var(--border);border-radius:6px;font-size:13px;line-height:1.75;user-select:text;
+  }
+  .dlist:empty::before{content:'按上面的按钮开始录音，每 5 秒转一段，自动攒成一整篇。';color:var(--text-3)}
+  .dline{word-break:break-word}
+  .dts{color:var(--text-3);font-variant-numeric:tabular-nums}
+  .dtx{color:var(--text)}
+  .dbar{flex:0 0 auto;display:flex;gap:8px;padding:10px 12px 6px}
+  .dtip{flex:0 0 auto;padding:0 12px 10px;color:var(--text-3);font-size:11px;line-height:1.5}
+
+  /* ---------- 实时字幕（subtitle）：贴屏幕底部的置顶横条 ---------- */
+  /* 迷你操作条：默认半透明（不挡字幕），鼠标移上去才明显 */
+  .subbar{
+    flex:0 0 auto;display:flex;align-items:center;gap:4px;padding:2px 6px;
+    background:var(--surface);border-bottom:1px solid var(--border);
+    opacity:.32;transition:opacity .15s;user-select:none;
+  }
+  .subbar:hover{opacity:1}
+  .sbtn{
+    border:1px solid var(--border-strong);background:transparent;color:var(--text-2);
+    border-radius:4px;padding:1px 7px;font:inherit;font-size:11px;line-height:1.6;cursor:pointer;white-space:nowrap;
+  }
+  .sbtn:hover{background:var(--surface-2);color:var(--text)}
+  .sbtn.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+  .sfz{display:inline-flex;gap:2px}
+  .sstat{flex:1;min-width:0;margin-left:6px;color:var(--text-3);font-size:10.5px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+  .sstat.err{color:var(--err)}
+  /* 主体：贴底排版，越新越靠下越亮 */
+  .sublist{
+    flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;
+    gap:10px;padding:10px 18px 16px;overflow:hidden;text-align:center;--sub-size:22px;
+  }
+  .sublist.f-s{--sub-size:16px}
+  .sublist.f-m{--sub-size:22px}
+  .sublist.f-l{--sub-size:30px}
+  .sub-item{transition:opacity .2s}
+  .sub-item .src{color:var(--text-2);font-size:var(--sub-size);line-height:1.4;word-break:break-word}
+  .sub-item .dst{color:var(--accent);font-size:calc(var(--sub-size) * .92);font-weight:600;
+    line-height:1.45;margin-top:2px;word-break:break-word}
+  .sub-item .dst.bad{color:var(--warn);font-weight:400}
+  .sublist.hide-src .sub-item .src{display:none}
 </style>
 </head>
 <body>
@@ -125,6 +177,38 @@
   <!-- 提取文字 / 翻译 -->
   <div class="body" id="vText" hidden>
     <div class="pane"><div class="result" id="result" data-ph="正在处理…"></div></div>
+  </div>
+
+  <!-- 语音转写 -->
+  <div class="body" id="vDictate" hidden>
+    <div class="recbar">
+      <button class="btn primary" id="recBtn">开始录音</button>
+      <span class="recstat" id="recStat">就绪</span>
+    </div>
+    <div class="dlist" id="dList"></div>
+    <div class="dbar">
+      <button class="btn" id="dSave">保存为笔记</button>
+      <button class="btn" id="dCopy">复制全部</button>
+      <button class="btn" id="dClear">清空</button>
+    </div>
+    <div class="dtip">不做说话人分离：当前语音通道（dashscope paraformer-realtime / openai whisper）都不提供说话人分离，所以转写结果里不会有「说话人 A/B」。</div>
+  </div>
+
+  <!-- 实时字幕：贴屏幕底部的置顶横条（收掉顶部拖动条与钉住按钮） -->
+  <div class="body" id="vSub" hidden>
+    <div class="subbar">
+      <button class="sbtn" id="subToggle">开始</button>
+      <button class="sbtn" id="subLang">中</button>
+      <button class="sbtn on" id="subSrc">显示原文</button>
+      <span class="sfz" id="subFont">
+        <button class="sbtn" data-f="s">小</button>
+        <button class="sbtn on" data-f="m">中</button>
+        <button class="sbtn" data-f="l">大</button>
+      </span>
+      <span class="sstat" id="subStat">译文：中文 · 已暂停</span>
+      <button class="sbtn" id="subClose">关闭</button>
+    </div>
+    <div class="sublist f-m" id="subList"></div>
   </div>
 </div>
 
@@ -337,6 +421,288 @@ async function askPrefill() {
   ta.focus();
 }
 
+/* ================= 语音：转 WAV / 分段录音 =================
+   MediaRecorder 出来的是 webm/opus，而听写只认 16k 单声道 WAV，
+   所以先解码、再用 OfflineAudioContext 离线重采样到 16k。
+   三个函数抄自 todo-app/js/voice.js，保持一致。 */
+const TARGET_RATE = 16000;
+
+async function toWav16k(blob) {
+  const ab = await blob.arrayBuffer();
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) throw new Error('这个壳没有 AudioContext，解不了录音');
+  const tmp = new AC();
+  let decoded;
+  try { decoded = await tmp.decodeAudioData(ab.slice(0)); }
+  finally { try { tmp.close(); } catch (e) { /* 忽略 */ } }
+  const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!Offline) throw new Error('这个壳没有 OfflineAudioContext，降不了采样率');
+  const frames = Math.max(1, Math.ceil(decoded.duration * TARGET_RATE));
+  const off = new Offline(1, frames, TARGET_RATE);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start(0);
+  const rendered = await off.startRendering();
+  return encodeWav16(rendered.getChannelData(0), TARGET_RATE);
+}
+
+function encodeWav16(f32, rate) {
+  const n = f32.length;
+  const buf = new ArrayBuffer(44 + n * 2);
+  const dv = new DataView(buf);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); str(8, 'WAVE');
+  str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true);
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  str(36, 'data'); dv.setUint32(40, n * 2, true);
+  let off = 44;
+  for (let i = 0; i < n; i++) {
+    let s = f32[i];
+    if (s > 1) s = 1; else if (s < -1) s = -1;
+    dv.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    off += 2;
+  }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const s = String(fr.result || '');
+      const i = s.indexOf(',');
+      if (i < 0) { reject(new Error('读出来的不是 dataURL')); return; }
+      resolve(s.slice(i + 1));
+    };
+    fr.onerror = () => reject(new Error('FileReader 读取失败'));
+    fr.readAsDataURL(blob);
+  });
+}
+
+/* ---------- 分段录音：走完整周期，绝不用 timeslice ----------
+   为什么不用 timeslice：它切出来的 webm 碎片是一条流被拦腰截断的块，
+   单块缺容器头，单独解不开，decodeAudioData 会直接报错。
+   所以每一段都跑一个完整周期：new MediaRecorder → start → 到点 stop →
+   在 onstop 里拿到「自成一体」的完整 blob；onstop 里立刻再起一轮，避免换挡漏音。 */
+let micStream = null, recRunning = false, segTimer = 0, segStartAt = 0, curRec = null, curChunks = [], micMime = '';
+
+function pickMicMime() {
+  const cands = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+  for (const c of cands) { try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c; } catch (e) { /* 试下一个 */ } }
+  return '';
+}
+function releaseMic() {
+  if (micStream) { try { micStream.getTracks().forEach(t => t.stop()); } catch (e) { /* 忽略 */ } micStream = null; }
+}
+function recSegment(segMs, onBlob) {
+  if (!recRunning) return;
+  segStartAt = Date.now();
+  curChunks = [];
+  let rec;
+  try { rec = micMime ? new MediaRecorder(micStream, { mimeType: micMime }) : new MediaRecorder(micStream); }
+  catch (e) { recRunning = false; if (segTimer) { clearTimeout(segTimer); segTimer = 0; } releaseMic(); onBlob(null, 0, e); return; }
+  curRec = rec;
+  rec.addEventListener('dataavailable', e => { if (e.data && e.data.size) curChunks.push(e.data); });
+  rec.addEventListener('stop', async () => {
+    const startAt = segStartAt;
+    const blob = new Blob(curChunks, { type: (curChunks[0] && curChunks[0].type) || 'audio/webm' });
+    curChunks = [];
+    if (recRunning) recSegment(segMs, onBlob); // 立刻接下一轮，无缝
+    else releaseMic();                          // 不再录了，主动把麦克风放掉
+    if (blob.size) await onBlob(blob, startAt, null);
+  }, { once: true });
+  rec.start();
+  segTimer = setTimeout(() => { try { rec.stop(); } catch (e) { /* 已经停了 */ } }, segMs);
+}
+async function startRec(segMs, onBlob) {
+  if (recRunning) return { ok: true };
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return { ok: false, why: '这个壳不支持网页录音（没有 getUserMedia）' };
+  if (!window.MediaRecorder) return { ok: false, why: '这个壳没有 MediaRecorder，录不了音' };
+  if (!(window.AudioContext || window.webkitAudioContext)) return { ok: false, why: '这个壳没有 AudioContext，解不了录音' };
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  } catch (e) {
+    const n = (e && e.name) || ''; let why;
+    if (n === 'NotAllowedError') why = '麦克风权限被拒了（系统设置 → 隐私 → 麦克风）';
+    else if (n === 'NotFoundError') why = '这台设备没有可用的麦克风';
+    else why = (e && e.message) || '打不开麦克风';
+    return { ok: false, why: why };
+  }
+  micMime = pickMicMime();
+  recRunning = true;
+  recSegment(segMs, onBlob);
+  return { ok: true };
+}
+function stopRec() {
+  if (!recRunning) return;
+  recRunning = false;
+  if (segTimer) { clearTimeout(segTimer); segTimer = 0; }
+  const rec = curRec;
+  // 让 onstop 收掉最后一段（并把麦克风放掉）；否则直接放麦
+  if (rec && rec.state !== 'inactive') { try { rec.stop(); } catch (e) { /* 已经停了 */ } }
+  else releaseMic();
+}
+
+function hhmmss(d) { const p = n => String(n).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+
+/* ---------- 语音转写（dictate） ---------- */
+const DICTATE_SEG_MS = 5000; // 5 秒一段：延迟和完整性的折中
+let dictateOn = false, dictateCount = 0, dictateT0 = 0, dictateTick = 0, dictateBusy = 0, dictateErr = '';
+
+function paintRecStat(text, cls) { const el = $('recStat'); el.textContent = text; el.className = 'recstat' + (cls ? ' ' + cls : ''); }
+function paintDictateStat() {
+  if (dictateErr) { paintRecStat(dictateErr, 'err'); return; }
+  if (dictateBusy > 0) { paintRecStat('正在转写…', ''); return; }
+  const sec = dictateOn ? Math.floor((Date.now() - dictateT0) / 1000) : 0;
+  const mmss = String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
+  paintRecStat(dictateOn ? ('录音中 ' + mmss + ' · 已转写 ' + dictateCount + ' 段') : ('已停止 · 已转写 ' + dictateCount + ' 段'), '');
+}
+function setRecBtn(on) { const b = $('recBtn'); b.textContent = on ? '停止录音' : '开始录音'; b.classList.toggle('primary', !on); b.classList.toggle('stop', on); }
+function addDictateLine(at, text) {
+  const row = document.createElement('div'); row.className = 'dline';
+  const ts = document.createElement('span'); ts.className = 'dts'; ts.textContent = '[' + hhmmss(at) + '] ';
+  const tx = document.createElement('span'); tx.className = 'dtx'; tx.textContent = text;
+  row.appendChild(ts); row.appendChild(tx);
+  const list = $('dList'); list.appendChild(row); list.scrollTop = list.scrollHeight;
+}
+function dictateText() { return Array.from($('dList').querySelectorAll('.dtx')).map(n => n.textContent).join('\n'); }
+async function onDictateSegment(blob, startAt, err) {
+  if (err) { dictateOn = false; setRecBtn(false); dictateErr = '录音器起不来：' + ((err && err.message) || err); paintDictateStat(); return; }
+  dictateBusy++;
+  try {
+    let b64;
+    try { b64 = await blobToBase64(await toWav16k(blob)); }
+    catch (e) { dictateErr = '录音转换失败：' + ((e && e.message) || e); return; }
+    const r = await api('/api/agent/voice/stt', 'POST', { audio: b64, filename: 'seg.wav' });
+    const d = (r && r.data) || {};
+    if (!r.ok || d.ok === false) { dictateErr = '转写失败：' + ((d && d.error) || (r && r.error) || '后端没回结果'); return; }
+    const text = String(d.text || '').trim();
+    if (text) { addDictateLine(new Date(startAt || Date.now()), text); dictateCount++; } // 空结果直接丢弃
+    dictateErr = '';
+  } finally { dictateBusy--; paintDictateStat(); }
+}
+async function toggleDictate() {
+  if (dictateOn) {
+    stopRec(); dictateOn = false;
+    if (dictateTick) { clearInterval(dictateTick); dictateTick = 0; }
+    setRecBtn(false); paintDictateStat(); return;
+  }
+  dictateErr = '';
+  const r = await startRec(DICTATE_SEG_MS, onDictateSegment);
+  if (!r.ok) { paintRecStat(r.why, 'err'); return; }
+  dictateOn = true; dictateT0 = Date.now(); setRecBtn(true); paintDictateStat();
+  dictateTick = setInterval(paintDictateStat, 1000);
+}
+async function saveDictate() {
+  const content = dictateText().trim();
+  if (!content) { paintRecStat('还没有转写内容，先录一段', 'err'); return; }
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  const title = '语音转写 ' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  paintRecStat('正在保存…', '');
+  const r = await api('/api/agent/notes', 'POST', { title: title, content: content, tags: ['语音转写'] });
+  const dd = (r && r.data) || {};
+  if (!r.ok || dd.ok === false) { paintRecStat('保存失败：' + ((dd && dd.error) || (r && r.error) || '未知'), 'err'); return; }
+  paintRecStat('已保存为笔记：' + title, '');
+}
+async function copyDictate() {
+  const content = dictateText();
+  if (!content.trim()) { paintRecStat('还没有可复制的内容', 'err'); return; }
+  try { await navigator.clipboard.writeText(content); paintRecStat('已复制到剪贴板', ''); }
+  catch (e) { paintRecStat('复制失败：' + ((e && e.message) || e), 'err'); }
+}
+function clearDictate() { $('dList').innerHTML = ''; dictateCount = 0; paintDictateStat(); }
+function initDictate() {
+  $('recBtn').onclick = toggleDictate;
+  $('dSave').onclick = saveDictate;
+  $('dCopy').onclick = copyDictate;
+  $('dClear').onclick = clearDictate;
+  paintRecStat('就绪 · 按「开始录音」', '');
+}
+
+/* ---------- 实时字幕（subtitle） ---------- */
+const SUB_SEG_MS = 3800; // 3.8 秒一段，延迟更低
+let subOn = false, subBusy = 0, subErr = '';
+let subCfg = { to: 'zh', showSource: true, font: 'm' }; // 读不到设置就用这套默认值
+
+function setSubStat(text, cls) { const el = $('subStat'); el.textContent = text; el.className = 'sstat' + (cls ? ' ' + cls : ''); }
+function paintSubStat() {
+  if (subErr) { setSubStat(subErr, 'err'); return; }
+  const lang = '译文：' + (subCfg.to === 'zh' ? '中文' : 'English');
+  setSubStat(lang + (subOn ? (subBusy > 0 ? ' · 转写中…' : ' · 监听中') : ' · 已暂停'), '');
+}
+function paintSubCfg() {
+  $('subLang').textContent = subCfg.to === 'zh' ? '中' : 'EN';
+  $('subSrc').classList.toggle('on', subCfg.showSource);
+  Array.from(document.querySelectorAll('#subFont .sbtn')).forEach(b => b.classList.toggle('on', b.dataset.f === subCfg.font));
+  const list = $('subList');
+  list.classList.remove('f-s', 'f-m', 'f-l');
+  list.classList.add('f-' + subCfg.font);
+  list.classList.toggle('hide-src', !subCfg.showSource);
+}
+function saveSubCfg() { local('/subtitle', { to: subCfg.to, showSource: subCfg.showSource, font: subCfg.font }); }
+function addSubLine(src, dst, dstErr) {
+  const list = $('subList');
+  const item = document.createElement('div'); item.className = 'sub-item';
+  const s = document.createElement('div'); s.className = 'src'; s.textContent = src;
+  const d = document.createElement('div'); d.className = 'dst';
+  if (dstErr) { d.classList.add('bad'); d.textContent = '翻译失败：' + dstErr; } // 翻译挂了也要留住原文
+  else d.textContent = dst;
+  item.appendChild(s); item.appendChild(d);
+  list.appendChild(item);
+  while (list.children.length > 3) list.removeChild(list.firstChild); // 只留最近 3 条
+  const n = list.children.length;
+  Array.from(list.children).forEach((el, i) => { el.style.opacity = i === n - 1 ? '1' : (i === n - 2 ? '.66' : '.4'); });
+}
+async function onSubSegment(blob, startAt, err) {
+  if (err) { subOn = false; setSubToggle(false); subErr = '录音器起不来：' + ((err && err.message) || err); paintSubStat(); return; }
+  subBusy++;
+  try {
+    let b64;
+    try { b64 = await blobToBase64(await toWav16k(blob)); }
+    catch (e) { subErr = '录音转换失败：' + ((e && e.message) || e); return; }
+    const r = await api('/api/agent/voice/stt', 'POST', { audio: b64, filename: 'seg.wav' });
+    const d = (r && r.data) || {};
+    if (!r.ok || d.ok === false) { subErr = '转写失败：' + ((d && d.error) || (r && r.error) || '后端没回结果'); return; }
+    const src = String(d.text || '').trim();
+    if (!src) { subErr = ''; return; } // 空结果丢弃
+    let dst = '', dstErr = '';
+    const tr = await api('/api/agent/voice/translate', 'POST', { text: src, to: subCfg.to });
+    const td = (tr && tr.data) || {};
+    if (tr.ok && td.ok !== false) dst = String(td.text || '').trim();
+    else dstErr = (td && td.error) || (tr && tr.error) || '未知原因';
+    addSubLine(src, dst, dstErr);
+    subErr = '';
+  } finally { subBusy--; paintSubStat(); }
+}
+function setSubToggle(on) { $('subToggle').textContent = on ? '暂停' : '开始'; }
+async function toggleSub() {
+  if (subOn) { stopRec(); subOn = false; setSubToggle(false); paintSubStat(); return; }
+  subErr = '';
+  const r = await startRec(SUB_SEG_MS, onSubSegment);
+  if (!r.ok) { subErr = r.why; paintSubStat(); return; }
+  subOn = true; setSubToggle(true); paintSubStat();
+}
+async function initSubtitle() {
+  // 读设置：读不到就用默认值，别卡住（原生没实现也能跑）
+  try {
+    const c = await local('/subtitle');
+    if (c && c.ok) {
+      if (c.to === 'zh' || c.to === 'en') subCfg.to = c.to;
+      if (typeof c.showSource === 'boolean') subCfg.showSource = c.showSource;
+      if (c.font === 's' || c.font === 'm' || c.font === 'l') subCfg.font = c.font;
+    }
+  } catch (e) { /* 用默认值 */ }
+  paintSubCfg();
+  $('subToggle').onclick = toggleSub;
+  $('subLang').onclick = () => { subCfg.to = subCfg.to === 'zh' ? 'en' : 'zh'; paintSubCfg(); paintSubStat(); saveSubCfg(); };
+  $('subSrc').onclick = () => { subCfg.showSource = !subCfg.showSource; paintSubCfg(); saveSubCfg(); };
+  Array.from(document.querySelectorAll('#subFont .sbtn')).forEach(b => { b.onclick = () => { subCfg.font = b.dataset.f; paintSubCfg(); saveSubCfg(); }; });
+  $('subClose').onclick = () => local('/float/close', {});
+  paintSubStat();
+}
+
 /* ---------- 启动 ---------- */
 (async function boot() {
   const st = await local('/float/state');
@@ -348,7 +714,17 @@ async function askPrefill() {
   document.title = (m && m.title) || '白泽浮窗';
   REV = (m && m.rev) | 0;
 
-  if (MODE === 'extract' || MODE === 'translate') {
+  if (MODE === 'dictate') {
+    $('vDictate').hidden = false;
+    $('title').textContent = '白泽 · 语音转写';
+    initDictate();
+  } else if (MODE === 'subtitle') {
+    // 字幕是贴屏幕底部的置顶横条：收掉顶部拖动条与钉住按钮，只留迷你操作条
+    $('head').hidden = true;
+    $('vSub').hidden = false;
+    $('title').textContent = '白泽 · 实时字幕';
+    await initSubtitle();
+  } else if (MODE === 'extract' || MODE === 'translate') {
     $('vText').hidden = false;
     $('title').textContent = MODE === 'translate' ? '白泽 · 翻译' : '白泽 · 提取文字';
     if (MODE === 'translate') { $('lang').hidden = false; $('lang').textContent = lang === 'zh' ? '中' : 'EN'; }
@@ -366,7 +742,7 @@ async function askPrefill() {
     if (!s || !s.ok || s.rev === REV) return;
     REV = s.rev | 0;
     if (MODE === 'extract' || MODE === 'translate') await runVision();
-    else await askPrefill();
+    else if (MODE === 'chat') await askPrefill();
   }, 1500);
 })();
 </script>

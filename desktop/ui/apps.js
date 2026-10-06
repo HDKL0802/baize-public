@@ -245,6 +245,35 @@ async function renderSettings(root) {
       </div>
 
       <div class="sect">
+        <h3>语音转写与实时字幕</h3>
+        <div class="sub">悬浮球右键（或下面的全局快捷键）能唤起两个语音浮窗：<b>语音转写</b>（麦克风录音 → 文字 → 存成笔记）、
+          <b>实时字幕</b>（贴屏幕底部的置顶横条，说一句显示一句）。前提是「模型通道 / 语音」里配好了语音通道（听写 + 模型通道）。</div>
+        <div class="bar tight" style="flex-wrap:wrap">
+          <span class="sub" style="margin:0">字幕译文</span>
+          <button class="btn ghost sm" data-sub-to="zh">中文</button>
+          <button class="btn ghost sm" data-sub-to="en">English</button>
+          <span class="sub" style="margin:0 0 0 12px">字号</span>
+          <button class="btn ghost sm" data-sub-font="s">小</button>
+          <button class="btn ghost sm" data-sub-font="m">中</button>
+          <button class="btn ghost sm" data-sub-font="l">大</button>
+          <label class="sub" style="margin:0 0 0 12px"><input type="checkbox" id="subSrc" style="margin-right:6px">显示原文</label>
+          <span class="sub" id="subMsg" style="margin:0"></span>
+        </div>
+        <div class="bar tight">
+          <button class="btn ghost sm" data-open-float="dictate">打开语音转写浮窗</button>
+          <button class="btn ghost sm" data-open-float="subtitle">实时字幕（开 / 关）</button>
+          <span class="sub" id="floatMsg" style="margin:0"></span>
+        </div>
+      </div>
+
+      <div class="sect">
+        <h3>快捷键</h3>
+        <div class="sub">这些是<b>系统级</b>全局快捷键（Alt+Shift+字母，任何窗口下都生效）；
+          被别的程序占用会如实标成「没抢到」——那几项请走悬浮球右键菜单。</div>
+        <div id="hotkeyList" class="pre">读取中…</div>
+      </div>
+
+      <div class="sect">
         <h3>常驻与自启</h3>
         <div class="sub">点窗口的 ✕ <b>不会退出</b> —— 只是隐藏到托盘，设备连接不掉；
           要真正退出用下面的按钮（或托盘图标右键菜单）。</div>
@@ -491,6 +520,49 @@ async function renderSettings(root) {
     };
   });
   paintTheme();
+
+  /* ---------- 语音转写与实时字幕（设置页与浮窗共用一份本机配置） ---------- */
+  let subState = { to: 'zh', showSource: true, font: 'm' };
+  const paintSub = () => {
+    root.querySelectorAll('[data-sub-to]').forEach(b => b.classList.toggle('ghost', b.dataset.subTo !== subState.to));
+    root.querySelectorAll('[data-sub-font]').forEach(b => b.classList.toggle('ghost', b.dataset.subFont !== subState.font));
+    $i('subSrc').checked = subState.showSource !== false;
+  };
+  const saveSub = async patch => {
+    const r = await API.localPost('/subtitle', patch);
+    if (r && r.ok) {
+      subState = { to: r.to || 'zh', showSource: r.showSource !== false, font: r.font || 'm' };
+      paintSub();
+      $i('subMsg').innerHTML = '<span class="ok">已保存</span>';
+    } else {
+      $i('subMsg').innerHTML = `<span class="err">${esc((r && r.error) || '存不上')}</span>`;
+    }
+  };
+  (async () => {
+    const r = await API.localGet('/subtitle');
+    if (r && r.ok !== false) subState = { to: r.to || 'zh', showSource: r.showSource !== false, font: r.font || 'm' };
+    paintSub();
+  })();
+  root.querySelectorAll('[data-sub-to]').forEach(b => { b.onclick = () => saveSub({ to: b.dataset.subTo }); });
+  root.querySelectorAll('[data-sub-font]').forEach(b => { b.onclick = () => saveSub({ font: b.dataset.subFont }); });
+  $i('subSrc').onchange = () => saveSub({ showSource: $i('subSrc').checked });
+  root.querySelectorAll('[data-open-float]').forEach(b => {
+    b.onclick = async () => {
+      const r = await API.localPost('/float/open', { mode: b.dataset.openFloat });
+      $i('floatMsg').innerHTML = (r && r.ok) ? '<span class="ok">已打开（字幕再点一次即关掉）</span>'
+        : `<span class="err">${esc((r && r.error) || '起不来')}</span>`;
+    };
+  });
+
+  /* ---------- 快捷键（系统级：真实状态由原生侧回报，抢不到就如实显示） ---------- */
+  (async () => {
+    const r = await API.localGet('/hotkeys');
+    const list = (r && r.hotkeys) || [];
+    if (!list.length) { $i('hotkeyList').textContent = '（没有可显示的快捷键）'; return; }
+    $i('hotkeyList').innerHTML = list.map(h =>
+      `${esc(h.keys)}  →  ${esc(h.what)}${h.ok === false ? '  <span class="err">（' + esc(h.why || '没抢到') + '）</span>' : ''}`
+    ).join('\n');
+  })();
 
   $i('setBall').onchange = async () => {
     const want = $i('setBall').checked;

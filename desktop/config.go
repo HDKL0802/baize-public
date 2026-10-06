@@ -29,6 +29,9 @@ type Config struct {
 	AutoUpdate bool `json:"autoUpdate,omitempty"`
 	// AutoUpdateMin 自动更新的检查间隔（分钟）；<=0 时按默认 360
 	AutoUpdateMin int `json:"autoUpdateMin,omitempty"`
+
+	// BallHidden 是否隐藏悬浮球（默认 false = 显示）。关掉后能随时在设置里再打开。
+	BallHidden bool `json:"ballHidden,omitempty"`
 }
 
 var (
@@ -106,7 +109,23 @@ func localConfigSnapshot() map[string]any {
 		"dataDir":       dataDir(), "dataDirDefault": defaultDataDir(),
 		"configPath": cfgPath,
 		"autoUpdate": cfg.AutoUpdate, "autoUpdateMin": autoUpdateMinLocked(),
+		"ballVisible": !cfg.BallHidden,
 	}
+}
+
+// ballVisible 悬浮球是否显示（默认显示）
+func ballVisible() bool {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	return !cfg.BallHidden
+}
+
+// setBallVisible 改悬浮球显示开关
+func setBallVisible(v bool) {
+	cfgMu.Lock()
+	cfg.BallHidden = !v
+	saveConfigLocked()
+	cfgMu.Unlock()
 }
 
 // autoUpdateMinLocked 取检查间隔（调用方须已持锁）；<=0 按默认 360

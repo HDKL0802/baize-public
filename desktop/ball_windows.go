@@ -14,8 +14,12 @@ package main
 
 import (
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -94,12 +98,16 @@ var (
 	pGetCursorPosBall  = ballUser32.NewProc("GetCursorPos")
 	pGetWindowRectBall = ballUser32.NewProc("GetWindowRect")
 	pRegisterHotKey    = ballUser32.NewProc("RegisterHotKey")
+	pUnregisterHotKey  = ballUser32.NewProc("UnregisterHotKey")
+	pSetWindowRgn      = ballUser32.NewProc("SetWindowRgn")
 
-	pCreateSolidBrush = ballGdi32.NewProc("CreateSolidBrush")
-	pCreatePen        = ballGdi32.NewProc("CreatePen")
-	pSelectObject     = ballGdi32.NewProc("SelectObject")
-	pEllipse          = ballGdi32.NewProc("Ellipse")
-	pDeleteObject     = ballGdi32.NewProc("DeleteObject")
+	pCreateSolidBrush  = ballGdi32.NewProc("CreateSolidBrush")
+	pCreatePen         = ballGdi32.NewProc("CreatePen")
+	pSelectObject      = ballGdi32.NewProc("SelectObject")
+	pEllipse           = ballGdi32.NewProc("Ellipse")
+	pDeleteObject      = ballGdi32.NewProc("DeleteObject")
+	pCreateEllipticRgn = ballGdi32.NewProc("CreateEllipticRgn")
+	pSetDIBitsToDevice = ballGdi32.NewProc("SetDIBitsToDevice")
 )
 
 type ballWndClassEx struct {
@@ -204,30 +212,109 @@ func ballCreate() error {
 		return callErr
 	}
 	ballHWND = hwnd
-	// 半透明（220/255），看起来更像"浮"在桌面上
-	pSetLayeredWinAttr.Call(hwnd, 0, 220, lwaAlpha)
-	pShowWindow.Call(hwnd, 4) // SW_SHOWNOACTIVATE：别抢焦点
-	// 全局快捷键 Alt+Shift+S = 截图提问（豆包同款）。被别的程序占了就只记日志、不致命。
-	if r, _, _ := pRegisterHotKey.Call(hwnd, hotkeyShot, modAlt|modShift, vkS); r == 0 {
+	// 圆形：把 60×60 的方窗口裁成一个圆（不裁的话四个角会露出来，看着就是个方块）
+	if hrgn, _, _ := pCreateEllipticRgn.Call(0, 0, ballSize, ballSize); hrgn != 0 {
+		pSetWindowRgn.Call(hwnd, hrgn, 1)
+	}
+	// WS_EX_LAYERED 的窗口不显式设 alpha 就完全不显示 —— 这里设成不透明（球本身自带底色）
+	pSetLayeredWinAttr.Call(hwnd, 0, 255, lwaAlpha)
+	ballLoadIcon() // 预解码界面图标，画到球里
+	// 按配置决定显不显示（隐藏状态也要把窗口建出来，设置页才能一键叫回来）
+	if ballVisible() {
+		pShowWindow.Call(hwnd, 4) // SW_SHOWNOACTIVATE：别抢焦点
+		ballHotkey(true)
+		log.Printf("[悬浮球] 已就绪（拖动移动 / 单击小窗 / 双击打开 / 右键菜单）")
+	} else {
+		log.Printf("[悬浮球] 按设置隐藏（可在「设置 → 常驻与自启」里打开）")
+	}
+	return nil
+}
+
+// ballHotkey 注册/注销全局快捷键 Alt+Shift+S = 截图提问（豆包同款）。失败只记日志、不致命。
+func ballHotkey(on bool) {
+	if ballHWND == 0 {
+		return
+	}
+	if !on {
+		pUnregisterHotKey.Call(ballHWND, hotkeyShot)
+		return
+	}
+	if r, _, _ := pRegisterHotKey.Call(ballHWND, hotkeyShot, modAlt|modShift, vkS); r == 0 {
 		log.Printf("[悬浮球] Alt+Shift+S 注册失败（可能被别的程序占用）：截图提问请走右键菜单")
 	} else {
 		log.Printf("[悬浮球] 快捷键已就绪：Alt+Shift+S = 截图提问")
 	}
-	log.Printf("[悬浮球] 已就绪（拖动移动 / 单击小窗 / 双击打开 / 右键菜单）")
-	return nil
 }
 
-// ballDefaultPos 默认贴屏幕右下角；有记住的位置就用记住的。
+// ballSetVisibleNow 立刻显示/隐藏悬浮球（隐藏时顺手把全局快捷键让出去）
+func ballSetVisibleNow(v bool) {
+	if ballHWND == 0 {
+		return
+	}
+	if v {
+		pShowWindow.Call(ballHWND, 5) // SW_SHOW
+		ballHotkey(true)
+	} else {
+		ballHotkey(false)
+		pShowWindow.Call(ballHWND, 0) // SW_HIDE
+	}
+}
+
+// ballDefaultPos 默认贴屏幕右下角；有记住的位置就用记住的（并吸到最近的那条边）。
 func ballDefaultPos() (int32, int32) {
 	w, _, _ := pGetSystemMetrics.Call(smCxScreen)
 	h, _, _ := pGetSystemMetrics.Call(smCyScreen)
 	if p, ok := ballLoadPos(); ok {
 		// 保险：屏幕变小了也别把球甩到看不见的地方
-		if p.X > int32(w)-ballSize/2 && p.Y > int32(h)-ballSize/2 {
-			return p.X, p.Y
+		if p.X > 0 && p.Y > 0 && p.X < int32(w)-ballSize/4 && p.Y < int32(h)-ballSize/4 {
+			return ballSnapToEdge(p.X, p.Y)
 		}
 	}
 	return int32(w) - ballSize - ballMargin, int32(h) - ballSize - ballMargin
+}
+
+// ballSnapToEdge 把球吸到离它最近的那条屏幕边 —— 悬浮球就该靠着某条边待着，
+// 而不是随便停在屏幕中间（豆包那类悬浮球都是靠边的）。
+func ballSnapToEdge(x, y int32) (int32, int32) {
+	sw, _, _ := pGetSystemMetrics.Call(smCxScreen)
+	sh, _, _ := pGetSystemMetrics.Call(smCyScreen)
+	w, h := int32(sw), int32(sh)
+	dl, dr := x, w-(x+ballSize)
+	dt, db := y, h-(y+ballSize)
+	m := dl
+	if dr < m {
+		m = dr
+	}
+	if dt < m {
+		m = dt
+	}
+	if db < m {
+		m = db
+	}
+	switch m {
+	case dl:
+		x = ballMargin
+	case dr:
+		x = w - ballSize - ballMargin
+	case dt:
+		y = ballMargin
+	default:
+		y = h - ballSize - ballMargin
+	}
+	// 兜底：无论如何别跑出屏幕
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	if x > w-ballSize {
+		x = w - ballSize
+	}
+	if y > h-ballSize {
+		y = h - ballSize
+	}
+	return x, y
 }
 
 func ballPosFile() string { return filepath.Join(dataDir(), "ball.pos") }
@@ -299,7 +386,12 @@ func ballWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			if ballDragMoved {
 				var rc struct{ Left, Top, Right, Bottom int32 }
 				pGetWindowRectBall.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
-				ballSavePos(rc.Left, rc.Top)
+				nx, ny := ballSnapToEdge(rc.Left, rc.Top) // 松手就吸到最近的那条屏幕边
+				if nx != rc.Left || ny != rc.Top {
+					pSetWindowPos.Call(hwnd, 0, uintptr(nx), uintptr(ny), 0, 0,
+						swpNoSize|swpNoZOrder|swpNoActivate)
+				}
+				ballSavePos(nx, ny)
 			} else {
 				// 没拖动 = 点了一下
 				ballClick(hwnd)
@@ -322,41 +414,177 @@ func ballWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 	return r
 }
 
-// ballPaintNow 画球：深色圆底 + 细描边 + 中心一个状态点。
+// ballPaintNow 画球：圆形窗口（已被 SetWindowRgn 裁成圆）里画界面图标，右下角叠一个状态点。
+// 取不到图标就退回画一个渐变圆 —— 总之必须是个「圆」，不能是个方块。
 func ballPaintNow(hwnd uintptr) {
 	var ps ballPaint
 	pBeginPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 	defer pEndPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 	hdc := ps.Hdc
 
-	body, _, _ := pCreateSolidBrush.Call(ballRGB(18, 22, 29))
-	pen, _, _ := pCreatePen.Call(0, 1, ballRGB(58, 70, 86))
-	ob, _, _ := pSelectObject.Call(hdc, body)
-	op, _, _ := pSelectObject.Call(hdc, pen)
-	pEllipse.Call(hdc, 1, 1, ballSize-1, ballSize-1)
-	pSelectObject.Call(hdc, ob)
-	pSelectObject.Call(hdc, op)
-	pDeleteObject.Call(body)
-	pDeleteObject.Call(pen)
+	if !ballDrawIcon(hdc) {
+		ballPaintGradient(hdc)
+	}
+	ballPaintStatusDot(hdc)
+}
 
+// ballPaintGradient 兜底：一圈圈同心圆近似「径向渐变」
+func ballPaintGradient(hdc uintptr) {
+	cx, cy := int32(ballSize/2), int32(ballSize/2)
+	rad := int32(ballSize/2 - 1)
+	for r := rad; r >= 0; r-- {
+		t := float64(rad-r) / float64(rad)
+		br, _, _ := pCreateSolidBrush.Call(ballRGB(int(30-16*t), int(37-19*t), int(48-24*t)))
+		ob, _, _ := pSelectObject.Call(hdc, br)
+		pEllipse.Call(hdc, uintptr(cx-r), uintptr(cy-r), uintptr(cx+r), uintptr(cy+r))
+		pSelectObject.Call(hdc, ob)
+		pDeleteObject.Call(br)
+	}
+}
+
+// ballPaintStatusDot 右下角的状态点（先描一圈深色再画点，压在图标上也看得清）。
+// 位置贴着圆的内侧对角：既在圆内，又不挡中间的图标。
+func ballPaintStatusDot(hdc uintptr) {
 	dot := ballRGB(56, 189, 248) // 空闲：天青
+	r := int32(7)
 	switch ballCursor {
 	case 1:
 		dot = ballRGB(245, 158, 11) // 有待审批：黄
+		r = 8
 	case 2:
-		dot = ballRGB(100, 116, 139) // 连不上：灰
+		dot = ballRGB(130, 144, 162) // 连不上：灰
 	}
-	// 有待审批时，中心点画大一点（一眼看出"要你去放行"）
-	r := 9
-	if ballCursor == 1 {
-		r = 12
-	}
+	cx, cy := int32(ballSize/2+13), int32(ballSize/2+13)
+	ring, _, _ := pCreateSolidBrush.Call(ballRGB(10, 13, 18))
+	orng, _, _ := pSelectObject.Call(hdc, ring)
+	pEllipse.Call(hdc, uintptr(cx-r-2), uintptr(cy-r-2), uintptr(cx+r+2), uintptr(cy+r+2))
+	pSelectObject.Call(hdc, orng)
+	pDeleteObject.Call(ring)
+
 	db, _, _ := pCreateSolidBrush.Call(dot)
 	odb, _, _ := pSelectObject.Call(hdc, db)
-	cx, cy := ballSize/2, ballSize/2
 	pEllipse.Call(hdc, uintptr(cx-r), uintptr(cy-r), uintptr(cx+r), uintptr(cy+r))
 	pSelectObject.Call(hdc, odb)
 	pDeleteObject.Call(db)
+}
+
+/* ---------------- 球里的图标（界面那张 icon.png，缩到球尺寸） ---------------- */
+
+var (
+	ballIconMu  sync.Mutex
+	ballIconPix []byte // ballSize×ballSize，BGRA（top-down）
+)
+
+// ballLoadIcon 预解码 ui/icon.png 到 ballSize×ballSize 的 BGRA；失败就留空（画的时候退回渐变）。
+func ballLoadIcon() {
+	dir, err := findUIDir()
+	if err != nil {
+		return
+	}
+	f, err := os.Open(filepath.Join(dir, "icon.png"))
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	src, err := png.Decode(f)
+	if err != nil {
+		return
+	}
+	pix := scaleToBGRA(src, ballSize)
+	if len(pix) == 0 {
+		return
+	}
+	ballIconMu.Lock()
+	ballIconPix = pix
+	ballIconMu.Unlock()
+	log.Printf("[悬浮球] 已载入球面图标 icon.png")
+}
+
+func ballDrawIcon(hdc uintptr) bool {
+	ballIconMu.Lock()
+	pix := ballIconPix
+	ballIconMu.Unlock()
+	if len(pix) == 0 {
+		return false
+	}
+	var bih struct {
+		Size          uint32
+		Width         int32
+		Height        int32
+		Planes        uint16
+		BitCount      uint16
+		Compression   uint32
+		SizeImage     uint32
+		XPelsPerMeter int32
+		YPelsPerMeter int32
+		ClrUsed       uint32
+		ClrImportant  uint32
+	}
+	bih.Size = 40
+	bih.Width = int32(ballSize)
+	bih.Height = -int32(ballSize) // 负 = top-down
+	bih.Planes = 1
+	bih.BitCount = 32
+	bih.SizeImage = uint32(ballSize * ballSize * 4)
+	r, _, _ := pSetDIBitsToDevice.Call(hdc, 0, 0, ballSize, ballSize, 0, 0, 0, ballSize,
+		uintptr(unsafe.Pointer(&pix[0])), uintptr(unsafe.Pointer(&bih)), 0)
+	return r != 0
+}
+
+// scaleToBGRA 双线性缩放到 size×size，输出 BGRA（top-down，GDI 直接吃）。
+// 用非预乘的 NRGBA 取值：GDI 的 32bpp BI_RGB 不吃 alpha 字节，非预乘才不会在透明边缘发暗。
+func scaleToBGRA(src image.Image, size int) []byte {
+	sb := src.Bounds()
+	sw, sh := sb.Dx(), sb.Dy()
+	if sw <= 0 || sh <= 0 {
+		return nil
+	}
+	out := make([]byte, size*size*4)
+	for y := 0; y < size; y++ {
+		sy := (float64(y)+0.5)*float64(sh)/float64(size) - 0.5
+		y0 := int(math.Floor(sy))
+		fy := sy - float64(y0)
+		if y0 < 0 {
+			y0, fy = 0, 0
+		}
+		y1 := y0 + 1
+		if y1 > sh-1 {
+			y1 = sh - 1
+		}
+		for x := 0; x < size; x++ {
+			sx := (float64(x)+0.5)*float64(sw)/float64(size) - 0.5
+			x0 := int(math.Floor(sx))
+			fx := sx - float64(x0)
+			if x0 < 0 {
+				x0, fx = 0, 0
+			}
+			x1 := x0 + 1
+			if x1 > sw-1 {
+				x1 = sw - 1
+			}
+			c00 := nrgbaAt(src, sb.Min.X+x0, sb.Min.Y+y0)
+			c10 := nrgbaAt(src, sb.Min.X+x1, sb.Min.Y+y0)
+			c01 := nrgbaAt(src, sb.Min.X+x0, sb.Min.Y+y1)
+			c11 := nrgbaAt(src, sb.Min.X+x1, sb.Min.Y+y1)
+			o := (y*size + x) * 4
+			out[o] = byte(bilerp(c00[2], c10[2], c01[2], c11[2], fx, fy) + 0.5) // B
+			out[o+1] = byte(bilerp(c00[1], c10[1], c01[1], c11[1], fx, fy) + 0.5)
+			out[o+2] = byte(bilerp(c00[0], c10[0], c01[0], c11[0], fx, fy) + 0.5) // R
+			out[o+3] = byte(bilerp(c00[3], c10[3], c01[3], c11[3], fx, fy) + 0.5)
+		}
+	}
+	return out
+}
+
+func bilerp(v00, v10, v01, v11, fx, fy float64) float64 {
+	top := v00*(1-fx) + v10*fx
+	bot := v01*(1-fx) + v11*fx
+	return top*(1-fy) + bot*fy
+}
+
+func nrgbaAt(src image.Image, x, y int) [4]float64 {
+	c := color.NRGBAModel.Convert(src.At(x, y)).(color.NRGBA)
+	return [4]float64{float64(c.R), float64(c.G), float64(c.B), float64(c.A)}
 }
 
 func ballRGB(r, g, b int) uintptr {
@@ -524,6 +752,25 @@ func registerBallRoutes(mux *http.ServeMux) {
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mini": miniNow()})
+	})
+
+	// 悬浮球显示 / 隐藏。用户把球弄丢了（或主动关掉）之后，在这里能一键找回来。
+	mux.HandleFunc("/api/local/ball/visible", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req struct {
+				Visible *bool `json:"visible"`
+			}
+			if r.Body != nil {
+				_ = json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&req)
+			}
+			v := ballVisible()
+			if req.Visible != nil {
+				v = *req.Visible
+				setBallVisible(v)
+			}
+			ballSetVisibleNow(v)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "visible": ballVisible()})
 	})
 }
 

@@ -506,7 +506,7 @@ func (s *shotWindow) act(hwnd uintptr, id int) {
 		log.Printf("[截图] 已取消（图直接丢掉，不留存）")
 		pDestroyWindow.Call(hwnd)
 	case shotActCopy:
-		if err := s.finish("", false); err != nil {
+		if err := s.finish(""); err != nil {
 			log.Printf("[截图] 取样失败：%v", err)
 		} else if w, h, err := copyShotToClipboard(); err != nil {
 			log.Printf("[截图] 复制失败：%v", err)
@@ -515,7 +515,7 @@ func (s *shotWindow) act(hwnd uintptr, id int) {
 		}
 		pDestroyWindow.Call(hwnd)
 	case shotActSave:
-		if err := s.finish("", false); err != nil {
+		if err := s.finish(""); err != nil {
 			log.Printf("[截图] 取样失败：%v", err)
 		} else if path, err := saveShotWithDialog(hwnd); err != nil {
 			log.Printf("[截图] 保存失败：%v", err)
@@ -524,21 +524,25 @@ func (s *shotWindow) act(hwnd uintptr, id int) {
 		}
 		pDestroyWindow.Call(hwnd)
 	case shotActExtract:
-		if err := s.finish("", false); err != nil {
+		if err := s.finish(""); err != nil {
 			log.Printf("[截图] 取样失败：%v", err)
-		} else if err := spawnFloatWindow(floatModeExtract); err != nil {
+		} else if err := spawnFloatWithShot(floatModeExtract); err != nil {
 			log.Printf("[截图] 起「提取文字」浮窗失败：%v", err)
 		}
 		pDestroyWindow.Call(hwnd)
 	case shotActTranslate:
-		if err := s.finish("", false); err != nil {
+		if err := s.finish(""); err != nil {
 			log.Printf("[截图] 取样失败：%v", err)
-		} else if err := spawnFloatWindow(floatModeTranslate); err != nil {
+		} else if err := spawnFloatWithShot(floatModeTranslate); err != nil {
 			log.Printf("[截图] 起「翻译」浮窗失败：%v", err)
 		}
 		pDestroyWindow.Call(hwnd)
 	case shotActAsk:
-		_ = s.finish("ask", true)
+		if err := s.finish(""); err != nil {
+			log.Printf("[截图] 取样失败：%v", err)
+		} else if err := spawnFloatWithShot(floatModeChat); err != nil {
+			log.Printf("[截图] 起「问问白泽」浮窗失败：%v", err)
+		}
 		pDestroyWindow.Call(hwnd)
 	}
 }
@@ -680,8 +684,9 @@ func (s *shotWindow) paintToolbar(hdc uintptr) {
 	pDeleteObject.Call(font)
 }
 
-// finish 裁剪选区 → 编码 PNG → 落盘；openUI=true 时打开主窗口的 #shot，action 随图带给界面
-func (s *shotWindow) finish(action string, openUI bool) error {
+// finish 裁剪选区 → 编码 PNG（只在内存）→ 记到 shotLast，供浮窗 / 保存 / 复制取用。
+// ★不落盘；「取消」时什么都不留。
+func (s *shotWindow) finish(action string) error {
 	sel := s.selRect()
 	x0, y0, x1, y1 := sel.L, sel.T, sel.R, sel.B
 	cw, ch := int(x1-x0), int(y1-y0)
@@ -710,20 +715,6 @@ func (s *shotWindow) finish(action string, openUI bool) error {
 	shotLast = &shotResult{PNG: buf.Bytes(), W: cw, H: ch, BGRA: crop, At: time.Now().UnixMilli(), Action: action}
 	shotMu.Unlock()
 	log.Printf("[截图] 已取样 %dx%d（action=%q，只在内存、未落盘）", cw, ch, action)
-
-	if !openUI {
-		return nil
-	}
-	// 打开主窗口并跳到「截图提问」
-	if mainHWND != 0 {
-		pShowWindow.Call(mainHWND, swRestore)
-		pSetForegroundWindow.Call(mainHWND)
-	}
-	if mainWebView != nil {
-		mainWebView.Dispatch(func() {
-			mainWebView.Eval(`location.hash = '#shot'`)
-		})
-	}
 	return nil
 }
 

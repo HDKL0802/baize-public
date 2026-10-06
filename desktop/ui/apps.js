@@ -5,7 +5,8 @@
    技能 / 人设 / 定时任务 / 备份与恢复 / 活动追踪。
    后 10 个的 render 在 apps2.js 末尾回填（直接写 render: renderXxx 会是前向引用，见那边的说明）；
    协作 2 个在 apps3.js、插件市场在 apps4.js、可观测性在 apps5.js、外部 Agent 在 apps6.js、
-   频道在 apps7.js、截图提问在 apps8.js，同样在文件末尾回填。 */
+   频道在 apps7.js，同样在文件末尾回填。截图提问不再是主界面里的一个「页」——
+   它是独立进程的临时浮窗（`-float=extract|translate|chat`，见 float_windows.go / float.html）。 */
 'use strict';
 
 /* 登录会话（多用户）：后端按它决定"以谁的身份访问数据"。
@@ -145,7 +146,6 @@ window.APPS = [
   { id: 'backup', name: '备份与恢复', icon: '🗄️', w: 820, h: 520 },
   { id: 'activity', name: '活动追踪', icon: '📈', w: 760, h: 520 },
   { id: 'observe', name: '可观测性', icon: '📡', w: 1040, h: 700 },
-  { id: 'shot', name: '截图提问', icon: '📷', w: 920, h: 700 },
 
   { id: 'accounts', name: '账号与共享', icon: '👥', w: 1000, h: 660 },
   { id: 'conflicts', name: '冲突协商', icon: '⚖️', w: 1080, h: 680 },
@@ -239,6 +239,12 @@ async function renderSettings(root) {
           <label class="sub" style="margin:0"><input type="checkbox" id="setAuto"> 开机自启（写当前用户的 Run 键，不需要管理员）</label>
           <span class="sub" id="setAutoMsg" style="margin:0"></span>
         </div>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
+          <label class="sub" style="margin:0"><input type="checkbox" id="setBall"> 显示桌面悬浮球</label>
+          <span class="sub" id="setBallMsg" style="margin:0"></span>
+        </div>
+        <div class="sub" style="margin:-2px 0 10px">悬浮球丢了 / 被关掉了，在这里勾回来即可。球会<b>贴着屏幕最近的边</b>待着（拖动松手自动吸附），
+          单击唤起「对话浮窗」、右键出菜单、双击开完整窗口。</div>
         <button class="btn ghost" id="setQuit">退出白泽桌面端</button>
       </div>
 
@@ -276,6 +282,8 @@ async function renderSettings(root) {
       '能力：' + ((dv.caps || []).join(' / ') || '—') + ' · 版本 ' + (dv.version || '—');
     const auto = await (await fetch('/api/local/autostart')).json().catch(() => ({}));
     $i('setAuto').checked = !!auto.enabled;
+    const bv = await (await fetch('/api/local/ball/visible')).json().catch(() => ({}));
+    $i('setBall').checked = bv.visible !== false;
     $i('upCur').textContent = dv.version || '—';
     const au = await (await fetch('/api/local/update/auto')).json().catch(() => ({}));
     $i('upAuto').checked = !!au.enabled;
@@ -445,6 +453,20 @@ async function renderSettings(root) {
     } else {
       $i('setAuto').checked = !want;
       $i('setAutoMsg').innerHTML = `<span class="err">${esc((r && r.error) || '改不了')}</span>`;
+    }
+  };
+  $i('setBall').onchange = async () => {
+    const want = $i('setBall').checked;
+    const r = await (await fetch('/api/local/ball/visible', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visible: want }),
+    })).json().catch(() => ({}));
+    if (r && r.ok) {
+      $i('setBall').checked = r.visible !== false;
+      $i('setBallMsg').innerHTML = `<span class="ok">${r.visible ? '已显示' : '已隐藏'}</span>`;
+    } else {
+      $i('setBall').checked = !want;
+      $i('setBallMsg').innerHTML = `<span class="err">${esc((r && r.error) || '改不了')}</span>`;
     }
   };
   $i('setQuit').onclick = async () => {

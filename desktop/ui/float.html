@@ -24,13 +24,13 @@
   .fhead{
     height:40px;flex:0 0 40px;display:flex;align-items:center;gap:8px;
     padding:0 8px 0 12px;background:var(--surface);border-bottom:1px solid var(--border);
-    user-select:none;cursor:default;
+    user-select:none;
   }
   .ftitle{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:var(--muted);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.2px}
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .fbtns{flex:0 0 132px;display:flex;justify-content:flex-end;align-items:center;gap:4px}
   .ibtn{
-    width:30px;height:30px;display:grid;place-items:center;border:0;border-radius:7px;
+    width:30px;height:30px;display:grid;place-items:center;border:0;border-radius:4px;
     background:transparent;color:var(--muted);cursor:pointer;font-size:13px;line-height:1;
     transition:background .12s,color .12s;
   }
@@ -38,29 +38,30 @@
   .ibtn.on{background:rgba(56,189,248,.14);color:var(--accent)}
 
   .body{flex:1;min-height:0;display:flex;flex-direction:column}
-  .pane{padding:12px 12px 6px;overflow:auto;flex:1;min-height:0}
 
-  .hint{color:var(--faint);font-size:12px;line-height:1.6}
-  .hint.err{color:var(--err)}
-
-  /* 提取 / 翻译 */
-  .pic{border:1px solid var(--border);border-radius:8px;max-width:100%;display:block;margin-bottom:10px}
+  /* 提取 / 翻译：正文占满，操作固定在底部一条 */
+  .pane{padding:12px;overflow:auto;flex:1;min-height:0}
   .result{
     white-space:pre-wrap;word-break:break-word;background:var(--surface);
-    border:1px solid var(--border);border-radius:8px;padding:10px 11px;min-height:120px;
-    font-size:13px;line-height:1.7;
+    border:1px solid var(--border);border-radius:5px;padding:11px 12px;
+    font-size:13.5px;line-height:1.75;min-height:100%;
   }
   .result:empty::before{content:attr(data-ph);color:var(--faint)}
-  .row{display:flex;gap:6px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  .bar{
+    flex:0 0 auto;display:flex;align-items:center;gap:6px;
+    padding:9px 10px;border-top:1px solid var(--border);background:var(--surface);
+  }
+  .sp{flex:1}
+  .hint{color:var(--faint);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   select{
-    background:var(--surface);color:var(--text);border:1px solid var(--border-strong);
-    border-radius:7px;padding:5px 8px;font:inherit;font-size:12px;outline:none;
+    background:var(--bg);color:var(--text);border:1px solid var(--border-strong);
+    border-radius:4px;padding:3px 6px;font:inherit;font-size:12px;outline:none;
   }
 
   button.btn{
     border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text);
-    border-radius:7px;padding:6px 12px;font:inherit;font-size:12.5px;cursor:pointer;
-    transition:background .12s,border-color .12s,opacity .12s;
+    border-radius:4px;padding:5px 11px;font:inherit;font-size:12.5px;cursor:pointer;
+    white-space:nowrap;transition:background .12s,border-color .12s,opacity .12s;
   }
   button.btn:hover{background:#22303e}
   button.btn:disabled{opacity:.45;cursor:not-allowed}
@@ -68,15 +69,15 @@
   button.btn.primary:hover{background:#4cc6fa}
 
   /* 对话 */
-  .msgs{flex:1;min-height:0;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
-  .msg{max-width:88%;border-radius:10px;padding:8px 11px;font-size:13px;line-height:1.6;word-break:break-word}
+  .msgs{flex:1;min-height:0;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:9px}
+  .msg{max-width:88%;border-radius:6px;padding:8px 11px;font-size:13px;line-height:1.6;word-break:break-word}
   .msg.me{align-self:flex-end;background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.28)}
   .msg.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--border)}
   .msg.ai .meta{display:block;margin-top:5px;color:var(--faint);font-size:11px}
   .composer{flex:0 0 auto;padding:10px 12px 12px;border-top:1px solid var(--border);background:var(--surface)}
   .composer textarea{
-    width:100%;resize:none;height:56px;background:var(--bg);color:var(--text);
-    border:1px solid var(--border-strong);border-radius:9px;padding:9px 10px;font:inherit;
+    width:100%;resize:none;height:58px;background:var(--bg);color:var(--text);
+    border:1px solid var(--border-strong);border-radius:5px;padding:9px 10px;font:inherit;
     font-size:13px;outline:none;line-height:1.55;
   }
   .composer textarea:focus{border-color:var(--accent)}
@@ -98,10 +99,10 @@
     </div>
   </div>
 
-  <!-- 对话 -->
+  <!-- 对话（临时对话 / 问问白泽） -->
   <div class="body" id="vChat" hidden>
     <div class="msgs" id="msgs">
-      <div class="msg ai">你好，我是白泽。说一句话就行，跑完结果我给你放这儿。<span class="meta"><span class="dot" id="chatDot"></span><span id="chatStat">就绪</span></span></div>
+      <div class="msg ai">你好，我是白泽。说一句话就行。<span class="meta"><span class="dot" id="chatDot"></span><span id="chatStat">就绪</span></span></div>
     </div>
     <div class="composer">
       <textarea id="goal" placeholder="说一句要做什么…（Ctrl+Enter 发送）"></textarea>
@@ -111,17 +112,15 @@
 
   <!-- 提取文字 / 翻译 -->
   <div class="body" id="vText" hidden>
-    <div class="pane">
-      <img class="pic" id="pic" alt="截图" hidden>
-      <div class="result" id="result" data-ph="正在处理…"></div>
-      <div class="row">
-        <label class="hint">目标语言
-          <select id="lang"><option value="zh">中文</option><option value="en">英文</option></select>
-        </label>
-        <button class="btn" id="again">重来</button>
-        <button class="btn primary" id="copy">复制文字</button>
-        <span class="hint" id="stat"></span>
-      </div>
+    <div class="pane"><div class="result" id="result" data-ph="正在处理…"></div></div>
+    <div class="bar">
+      <span class="hint" id="stat"></span>
+      <label class="hint" id="langWrap" hidden>译文
+        <select id="lang"><option value="zh">中文</option><option value="en">英文</option></select>
+      </label>
+      <span class="sp"></span>
+      <button class="btn" id="again">重试</button>
+      <button class="btn primary" id="copy">复制</button>
     </div>
   </div>
 </div>
@@ -156,19 +155,19 @@ const local = async (p, body) => {
   } catch (e) { return { ok: false, error: String(e) }; }
 };
 
-/* ---------- 顶部按钮 ---------- */
+let MODE = 'chat';
+let REV = 0;
 let pinned = false;
-function paintPin() { $('pin').classList.toggle('on', pinned); $('pin').title = pinned ? '取消钉住' : '钉住（锁死位置并置顶）'; }
+
+/* ---------- 顶部按钮 ---------- */
+function paintPin() { $('pin').classList.toggle('on', pinned); }
 $('pin').onclick = async () => {
   const r = await local('/float/pin', { on: !pinned });
   pinned = !!(r && r.pinned); paintPin();
 };
 $('close').onclick = () => local('/float/close', {});
 
-/* ---------- 提取 / 翻译 ---------- */
-let MODE = 'chat';
-let TEXT_REV = 0;
-
+/* ---------- 读图 + 走多模态 ---------- */
 async function imageBase64() {
   const r = await fetch('/api/local/float/image', { cache: 'no-store' });
   if (!r.ok) return '';
@@ -178,28 +177,36 @@ async function imageBase64() {
   return btoa(s);
 }
 
-async function runVision(action) {
+// visionText 把当前图交给多模态模型，返回文字（失败返回 null）
+async function visionText(action, lang) {
+  const b64 = await imageBase64();
+  if (!b64) return null;
+  const body = { action: action, imageBase64: b64 };
+  if (action === 'translate') body.lang = lang || $('lang').value;
+  const r = await api('/api/agent/vision', 'POST', body);
+  if (!r.ok) return { error: r.error || '未知错误' };
+  const d = r.data || {};
+  const inner = d.data || d;
+  return { text: inner.text || '', model: inner.model || '', ms: inner.latencyMs || 0 };
+}
+
+/* ---------- 提取文字 / 翻译 ---------- */
+async function runVision() {
   const res = $('result'), stat = $('stat');
   $('again').disabled = true; $('copy').disabled = true;
-  res.textContent = ''; res.dataset.ph = action === 'translate' ? '翻译中…（可能几秒）' : '识别中…（可能几秒）';
-  stat.textContent = '';
-  const b64 = await imageBase64();
-  if (!b64) { res.dataset.ph = ''; res.textContent = ''; stat.textContent = '没拿到截图'; return; }
-  const body = { action, imageBase64: b64 };
-  if (action === 'translate') body.lang = $('lang').value;
-  const r = await api('/api/agent/vision', 'POST', body);
+  res.dataset.ph = MODE === 'translate' ? '翻译中…（可能几秒）' : '识别中…（可能几秒）';
+  res.textContent = ''; stat.textContent = '';
+  const v = await visionText(MODE === 'translate' ? 'translate' : 'extract');
   $('again').disabled = false;
-  if (!r.ok) { res.dataset.ph = ''; res.textContent = ''; stat.textContent = '失败：' + (r.error || '未知'); res.classList.remove('hint'); return; }
-  const d = r.data || {};
-  const text = (d.data && d.data.text) || d.text || '';
+  if (v == null) { res.dataset.ph = '没拿到截图'; return; }
+  if (v.error) { res.dataset.ph = '失败：' + v.error; return; }
   res.dataset.ph = '（没有识别到内容）';
-  res.textContent = text;
-  $('copy').disabled = !text;
-  const m = (d.data && d.data.model) || d.model;
-  stat.textContent = m ? (m + ' · ' + (((d.data && d.data.latencyMs) || d.latencyMs) || 0) + ' ms') : '';
+  res.textContent = v.text;
+  $('copy').disabled = !v.text;
+  stat.textContent = v.model ? (v.model + ' · ' + v.ms + ' ms') : '';
 }
-$('again').onclick = () => runVision(MODE === 'translate' ? 'translate' : 'extract');
-$('lang').onchange = () => runVision('translate');
+$('again').onclick = () => runVision();
+$('lang').onchange = () => runVision();
 $('copy').onclick = async () => {
   const t = $('result').textContent || '';
   if (!t) return;
@@ -263,56 +270,51 @@ $('goal').addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
 });
 
-/* ---------- 启动：按模式显示对应界面 ---------- */
+// askPrefill 「问问白泽」：把截图里的文字读出来填进输入框，用户接着问
+async function askPrefill() {
+  const ta = $('goal');
+  if (!ta) return;
+  ta.placeholder = '正在读出截图里的文字…';
+  const v = await visionText('extract');
+  ta.placeholder = '说一句要做什么…（Ctrl+Enter 发送）';
+  if (v && v.text) {
+    ta.value = v.text;
+    addMsg('ai', '已把截图里的文字带进来了，接着问就行。');
+  }
+  ta.focus();
+}
+
+/* ---------- 启动 ---------- */
 (async function boot() {
   const st = await local('/float/state');
   pinned = !!(st && st.pinned); paintPin();
 
   const m = await local('/float/mode');
-  const mode = (m && m.mode) || (location.hash.replace(/^#mode=/, '') || 'chat');
-  MODE = mode;
-  // 同步窗口标题：主进程靠它做「同模式已有窗口就叫到前台」的去重（见 float_windows.go）
+  MODE = (m && m.mode) || 'chat';
+  // 同步窗口标题：主进程靠它做「同模式已有窗口就叫到前台」的去重
   document.title = (m && m.title) || '白泽浮窗';
-  if (mode === 'extract' || mode === 'translate') {
+  REV = (m && m.rev) | 0;
+
+  if (MODE === 'extract' || MODE === 'translate') {
     $('vText').hidden = false;
-    $('title').textContent = mode === 'translate' ? '白泽 · 翻译' : '白泽 · 提取文字';
-    TEXT_REV = (m && m.rev) | 0;
-
-    const showPic = () => {
-      const pic = $('pic');
-      pic.hidden = false;
-      pic.src = '/api/local/float/image?t=' + Date.now();
-    };
-    const runNow = async () => {
-      if (!(m && m.hasImage) && TEXT_REV === 0) {
-        // 还没图：等一下（主进程可能随后推过来）
-        $('result').dataset.ph = '正在等截图…';
-        $('result').textContent = '';
-        return;
-      }
-      showPic();
-      await runVision(mode);
-    };
-
-    if (m && m.hasImage) {
-      showPic();
-      await runVision(mode);
-    } else {
-      $('result').dataset.ph = '正在等截图…';
-      $('result').textContent = '';
-    }
-    // 主进程推来新图 → rev 变化 → 刷新图片并重跑（见 float_windows.go 的 /float/img）
-    setInterval(async () => {
-      const s = await local('/float/mode');
-      if (!s || !s.ok || s.rev === TEXT_REV) return;
-      TEXT_REV = s.rev | 0;
-      await runNow();
-    }, 1500);
+    $('title').textContent = MODE === 'translate' ? '白泽 · 翻译' : '白泽 · 提取文字';
+    if (MODE === 'translate') $('langWrap').hidden = false;
+    if (m && m.hasImage) await runVision();
+    else $('result').dataset.ph = '正在等截图…';
   } else {
     $('vChat').hidden = false;
     $('title').textContent = '白泽 · 对话';
-    $('goal').focus();
+    if (m && m.hasImage) await askPrefill(); else $('goal').focus();
   }
+
+  // 主进程推来新图 → rev 变 → 重跑（提取/翻译出结果；对话则把文字填进输入框）
+  setInterval(async () => {
+    const s = await local('/float/mode');
+    if (!s || !s.ok || s.rev === REV) return;
+    REV = s.rev | 0;
+    if (MODE === 'extract' || MODE === 'translate') await runVision();
+    else await askPrefill();
+  }, 1500);
 })();
 </script>
 </body>

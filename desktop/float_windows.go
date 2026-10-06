@@ -44,6 +44,7 @@ const (
 
 	floatHeaderH = 40  // 顶部标题栏高度（原生拖动区，和 float.html 的 .fhead 对齐）
 	floatBtnZone = 132 // 标题栏右侧留给按钮的宽度：这块不参与拖动，不然按钮点不到
+	floatEdgeGap = 12  // 浮窗靠边时离屏幕边缘留的缝
 
 	floatImgMax = 64 << 20 // 推图上限（一张截图远到不了）
 
@@ -53,6 +54,7 @@ const (
 	wsClipChildren  = 0x02000000
 	htCaption       = 2
 	wmNCHitTest     = 0x0084
+	wmExitSizeMove  = 0x0232
 )
 
 var (
@@ -60,6 +62,7 @@ var (
 
 	pGetWindowLongPtrWF = fpUser32.NewProc("GetWindowLongPtrW")
 	pGetWindowRectF     = fpUser32.NewProc("GetWindowRect")
+	pPostMessageWF      = fpUser32.NewProc("PostMessageW")
 
 	floatHWND      uintptr
 	floatOldProc   uintptr
@@ -110,17 +113,21 @@ func floatProfileDir(mode string) string { return filepath.Join(floatDir(), mode
 // floatPortFile 记录该模式浮窗本机服务的端口，主进程靠它把新图 POST 过去。
 func floatPortFile(mode string) string { return filepath.Join(floatDir(), mode+".port") }
 
-// spawnFloatWindow 唤起（或复用）某个模式的浮窗。
+// spawnFloatWindow 唤起（或复用）某个模式的浮窗（不带截图）。
 //
-//	已有同模式窗口 → 把这次的图推过去 + 叫到前台；
-//	没有 → 起一个新进程（同一个 exe + `-float=<mode>`）。
-func spawnFloatWindow(mode string) error {
+//	已有同模式窗口 → 叫到前台；没有 → 起一个新进程（同一个 exe + `-float=<mode>`）。
+func spawnFloatWindow(mode string) error { return spawnFloat(mode, false) }
+
+// spawnFloatWithShot 带「最近一次截图」地唤起浮窗：提取文字 / 翻译 / 问问白泽 都走这条。
+func spawnFloatWithShot(mode string) error { return spawnFloat(mode, true) }
+
+func spawnFloat(mode string, withShot bool) error {
 	mode = strings.TrimSpace(mode)
 	if mode == "" {
 		mode = floatModeChat
 	}
 	var png []byte
-	if mode == floatModeExtract || mode == floatModeTranslate {
+	if withShot {
 		if shot, ok := ShotLatest(); ok && len(shot.PNG) > 0 {
 			png = shot.PNG
 		}
@@ -288,18 +295,80 @@ func styleFloatWindow(hwnd uintptr, w, h int) {
 
 	sw, _, _ := pGetSystemMetrics.Call(smCxScreen)
 	sh, _, _ := pGetSystemMetrics.Call(smCyScreen)
-	x := int32(sw)/2 - int32(w)/2 + int32(sw)/4
+	// 默认贴着屏幕右边（临时窗口就该靠边待着，不在桌面中间乱飘）
+	x := int32(sw) - int32(w) - floatEdgeGap
 	y := int32(sh)/2 - int32(h)/2
-	if x < 0 {
-		x = 0
+	if x < floatEdgeGap {
+		x = floatEdgeGap
 	}
-	if y < 0 {
-		y = 0
+	if y < floatEdgeGap {
+		y = floatEdgeGap
 	}
 	pSetWindowPos.Call(hwnd, hwndTopmost, uintptr(x), uintptr(y),
 		uintptr(w), uintptr(h), swpFrameChanged|swpShowWindow)
 
 	floatOldProc, _, _ = pSetWindowLongPtrW.Call(hwnd, gwlpWndProc, floatWndProcCb)
+}
+
+// floatSnapToEdge 把浮窗吸到离它最近的那条屏幕边（用户要求：必须挨着某一条边）。
+func floatSnapToEdge(hwnd uintptr) {
+	var rc struct{ L, T, R, B int32 }
+	pGetWindowRectF.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+	w, h := rc.R-rc.L, rc.B-rc.T
+	if w <= 0 || h <= 0 {
+		return
+	}
+	sw, _, _ := pGetSystemMetrics.Call(smCxScreen)
+	sh, _, _ := pGetSystemMetrics.Call(smCyScreen)
+	W, H := int32(sw), int32(sh)
+
+	x, y := rc.L, rc.T
+	dl, dr := rc.L, W-rc.R
+	dt, db := rc.T, H-rc.B
+	m := dl
+	if dr < m {
+		m = dr
+	}
+	if dt < m {
+		m = dt
+	}
+	if db < m {
+		m = db
+	}
+	clampY := func() {
+		if y < floatEdgeGap {
+			y = floatEdgeGap
+		}
+		if y+h > H-floatEdgeGap {
+			y = H - h - floatEdgeGap
+		}
+	}
+	clampX := func() {
+		if x < floatEdgeGap {
+			x = floatEdgeGap
+		}
+		if x+w > W-floatEdgeGap {
+			x = W - w - floatEdgeGap
+		}
+	}
+	switch m {
+	case dl:
+		x = floatEdgeGap
+		clampY()
+	case dr:
+		x = W - w - floatEdgeGap
+		clampY()
+	case dt:
+		y = floatEdgeGap
+		clampX()
+	default:
+		y = H - h - floatEdgeGap
+		clampX()
+	}
+	if x != rc.L || y != rc.T {
+		pSetWindowPos.Call(hwnd, hwndTopmost, uintptr(x), uintptr(y),
+			uintptr(w), uintptr(h), swpNoActivate|swpNoSize)
+	}
 }
 
 // floatWndProc 子类化：顶部标题栏返回 HTCAPTION → Windows 自己就把窗口拖起来了（不用 JS 拖）。
@@ -314,6 +383,9 @@ func floatWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		if localY >= 0 && localY < floatHeaderH && localX < (rc.R-rc.L)-floatBtnZone {
 			return htCaption
 		}
+	}
+	if uint32(msg) == wmExitSizeMove {
+		floatSnapToEdge(hwnd) // 拖完松手 → 吸到最近的那条屏幕边
 	}
 	if floatOldProc == 0 {
 		return 0
@@ -394,10 +466,13 @@ func registerFloatRoutes(mux *http.ServeMux) {
 	})
 
 	// 关掉这个浮窗（＝销毁窗口 → 消息循环结束 → 本进程退出）
+	// ⚠️ DestroyWindow 只能由「创建窗口的那个线程」调用；HTTP 处理器跑在别的线程上，
+	// 直接调等于没关 —— 这正是之前「关闭按钮是个摆设」的原因。
+	// 改成 PostMessage(WM_CLOSE)，让窗口线程自己去销毁。
 	mux.HandleFunc("/api/local/float/close", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		if floatHWND != 0 {
-			go pDestroyWindow.Call(floatHWND)
+			pPostMessageWF.Call(floatHWND, wmClose, 0, 0)
 		}
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -171,6 +172,149 @@ func (s *Store) Runs(limit int) ([]RunRecord, error) {
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// RunSummary 一段时间窗内的运行汇总（观测面用）。sinceMs<=0 表示不限时间。
+type RunSummary struct {
+	Total        int   `json:"total"`
+	Done         int   `json:"done"`
+	Failed       int   `json:"failed"`
+	Steps        int   `json:"steps"`
+	ToolCalls    int   `json:"toolCalls"`
+	Retries      int   `json:"retries"`
+	PromptTokens int   `json:"promptTokens"`
+	OutTokens    int   `json:"outTokens"`
+	AvgMs        int64 `json:"avgMs"`
+	MaxMs        int64 `json:"maxMs"`
+	P95Ms        int64 `json:"p95Ms"`
+	LastAt       int64 `json:"lastAt,omitempty"`
+}
+
+// RunBucket 一个时间桶里的运行数与 token（观测面画柱子用）
+type RunBucket struct {
+	At     int64 `json:"at"` // 桶起点（毫秒）
+	Runs   int   `json:"runs"`
+	Failed int   `json:"failed"`
+	Tokens int   `json:"tokens"`
+}
+
+// runScanLimit 单次汇总最多扫多少行。观测面看的是"最近怎么样"，
+// 不是精确的全历史审计 —— 到量了就以最近的那批为准（取最新的，不是最旧的）。
+const runScanLimit = 50000
+
+// runStatRow 汇总用的最小列集
+type runStatRow struct {
+	status        string
+	steps, tools  int
+	retries       int
+	ptok, otok    int
+	started, done int64
+}
+
+func (s *Store) runStatRows(sinceMs int64) ([]runStatRow, error) {
+	if s == nil {
+		return nil, nil
+	}
+	q := `SELECT status,steps,tool_calls,retries,prompt_tokens,out_tokens,started_at,finished_at FROM runs`
+	args := []any{}
+	if sinceMs > 0 {
+		q += ` WHERE started_at >= ?`
+		args = append(args, sinceMs)
+	}
+	q += ` ORDER BY started_at DESC LIMIT ?`
+	args = append(args, runScanLimit)
+
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []runStatRow{}
+	for rows.Next() {
+		var r runStatRow
+		if err := rows.Scan(&r.status, &r.steps, &r.tools, &r.retries, &r.ptok, &r.otok, &r.started, &r.done); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// RunSummary 汇总窗口内的运行（耗时按"已收尾且有结束时间"的那部分算）
+func (s *Store) RunSummary(sinceMs int64) (RunSummary, error) {
+	rows, err := s.runStatRows(sinceMs)
+	if err != nil {
+		return RunSummary{}, err
+	}
+	out := RunSummary{}
+	durs := make([]int64, 0, len(rows))
+	for _, r := range rows {
+		out.Total++
+		if r.status == "failed" {
+			out.Failed++
+		} else {
+			out.Done++
+		}
+		out.Steps += r.steps
+		out.ToolCalls += r.tools
+		out.Retries += r.retries
+		out.PromptTokens += r.ptok
+		out.OutTokens += r.otok
+		if d := r.done - r.started; r.done > r.started {
+			durs = append(durs, d)
+			if d > out.MaxMs {
+				out.MaxMs = d
+			}
+		}
+		if r.started > out.LastAt {
+			out.LastAt = r.started
+		}
+	}
+	if len(durs) > 0 {
+		var sum int64
+		for _, d := range durs {
+			sum += d
+		}
+		out.AvgMs = sum / int64(len(durs))
+		sort.Slice(durs, func(i, j int) bool { return durs[i] < durs[j] })
+		idx := (len(durs) * 95) / 100
+		if idx >= len(durs) {
+			idx = len(durs) - 1
+		}
+		out.P95Ms = durs[idx]
+	}
+	return out, nil
+}
+
+// RunBuckets 按 bucketMs 分桶（只返回有运行的桶，按时间升序）
+func (s *Store) RunBuckets(sinceMs, bucketMs int64) ([]RunBucket, error) {
+	if bucketMs <= 0 {
+		bucketMs = time.Hour.Milliseconds()
+	}
+	rows, err := s.runStatRows(sinceMs)
+	if err != nil {
+		return nil, err
+	}
+	idx := map[int64]*RunBucket{}
+	for _, r := range rows {
+		at := (r.started / bucketMs) * bucketMs
+		b := idx[at]
+		if b == nil {
+			b = &RunBucket{At: at}
+			idx[at] = b
+		}
+		b.Runs++
+		if r.status == "failed" {
+			b.Failed++
+		}
+		b.Tokens += r.ptok + r.otok
+	}
+	out := make([]RunBucket, 0, len(idx))
+	for _, b := range idx {
+		out = append(out, *b)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].At < out[j].At })
+	return out, nil
 }
 
 // Run 取单次运行

@@ -26,8 +26,10 @@ import (
 	"baize/internal/hooks"
 	"baize/internal/kb"
 	"baize/internal/llm"
+	"baize/internal/logx"
 	"baize/internal/mcp"
 	"baize/internal/memory"
+	"baize/internal/observe"
 	"baize/internal/persona"
 	"baize/internal/plugins"
 	"baize/internal/skills"
@@ -168,6 +170,9 @@ type Service struct {
 	approvedTools map[string]bool
 	devices       tools.DeviceExecutor // 可选：跨端调度层
 	activity      *activity.Tracker    // 智能体活动追踪（始终开启，AlwaysOn）
+	metrics       *observe.Metrics     // 可观测性：进程内的工具/通道调用计数（重启即清零）
+	logRing       *logx.Ring           // 可选：内存日志环（观测面要读它；由 cmd/backend 注入）
+	startedAt     time.Time            // 服务启动时间（观测面报 uptime 用）
 
 	runMu     sync.Mutex // 顶层运行串行，避免同一工作目录并发写
 	running   bool
@@ -183,6 +188,11 @@ type Option func(*Service)
 // WithDevices 接入跨端调度层（设备中枢），有了它 Agent 才能把活派到桌面/手机端
 func WithDevices(exec tools.DeviceExecutor) Option {
 	return func(s *Service) { s.devices = exec }
+}
+
+// WithLogRing 接入内存日志环（观测面的"日志概览"要读它；不接就只少那一块）
+func WithLogRing(ring *logx.Ring) Option {
+	return func(s *Service) { s.logRing = ring }
 }
 
 // New 打开数据目录并启动服务（含定时任务调度）
@@ -271,10 +281,13 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 		hooks:    hooks.NewBus(), approvals: NewApprovalQueue(200),
 		approvedTools: map[string]bool{},
 		activity:      activity.New(50),
+		startedAt:     time.Now(),
 		schedStop:     make(chan struct{}),
 	}
-	// 活动追踪始终开启：挂到同一根事件总线上，运行时的每一步都会实时反映出来
+	// 活动追踪与观测计数都挂到同一根事件总线上（运行时每走一步，两边都能看到）
 	s.activity.Attach(s.hooks)
+	s.metrics = observe.NewMetrics()
+	s.metrics.Attach(s.hooks)
 	// 插件市场：装插件 = 往技能目录落技能 + 往配置里加 MCP 服务，所以它需要上面那几个口子。
 	// 构造放在 Service 建好之后（hooks 里要回调 s）。
 	s.plugins = s.newPluginManager(dataDir)

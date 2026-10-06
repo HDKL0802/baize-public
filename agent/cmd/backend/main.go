@@ -35,7 +35,7 @@ import (
 	"baize/shared/proto"
 )
 
-const version = "0.9.22"
+const version = "0.9.23"
 
 func main() {
 	var (
@@ -98,7 +98,7 @@ func main() {
 
 	// Agent 运行时（模型通道/工具/记忆/审批/定时任务），配置在 <数据目录>/config.json；
 	// 把设备中枢交给它，Agent 就能把活派到桌面端/手机端执行（跨端调度）
-	agentSvc, err := agentsvc.New(*dataDir, lg, agentsvc.WithDevices(h))
+	agentSvc, err := agentsvc.New(*dataDir, lg, agentsvc.WithDevices(h), agentsvc.WithLogRing(ring))
 	if err != nil {
 		lg.Error("启动 Agent 服务失败", "err", err)
 		os.Exit(1)

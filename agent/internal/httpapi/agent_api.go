@@ -40,6 +40,8 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	s.registerConflicts(mux)
 	// 插件市场（静态源 + 插件包 → 技能目录 / MCP 配置）
 	s.registerPlugins(mux)
+	// 可观测性（运行汇总 + 工具/通道计数 + 日志概览 + 健康检查）
+	s.registerObservability(mux)
 	mux.HandleFunc("GET /api/agent/state", s.api(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, a.State())
 	}))

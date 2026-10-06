@@ -81,6 +81,7 @@ type Report struct {
 	Buckets   []agentrt.RunBucket `json:"buckets"`
 	Tools     []ToolStat          `json:"tools"`
 	Providers []ProviderStat      `json:"providers"`
+	External  []TargetStat        `json:"external"`
 	Logs      LogSummary          `json:"logs"`
 	Health    []HealthItem        `json:"health"`
 	Activity  activity.Snapshot   `json:"activity"`

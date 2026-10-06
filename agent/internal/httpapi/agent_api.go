@@ -42,6 +42,8 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	s.registerPlugins(mux)
 	// 可观测性（运行汇总 + 工具/通道计数 + 日志概览 + 健康检查）
 	s.registerObservability(mux)
+	// 外部 Agent（委托执行：把一段独立的活派给另一个 Agent）
+	s.registerExternalAgents(mux)
 	mux.HandleFunc("GET /api/agent/state", s.api(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, a.State())
 	}))

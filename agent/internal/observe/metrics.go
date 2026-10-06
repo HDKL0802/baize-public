@@ -11,6 +11,20 @@ import (
 	"baize/internal/hooks"
 )
 
+// TargetStat 单个「外部 Agent / 委托目标」的调用统计（进程内，重启即清零）。
+//
+// 与工具/通道同一口径：外部 Agent 的调用**按 target 累积**，回答"派给谁派得多、谁老失败、
+// 平均等多久"。运行记录不记这个，所以同样只代表"本次启动以来"。
+type TargetStat struct {
+	Target  string `json:"target"`
+	Calls   int    `json:"calls"`
+	Failed  int    `json:"failed"`
+	TotalMs int64  `json:"totalMs"`
+	AvgMs   int64  `json:"avgMs"`
+	LastErr string `json:"lastErr,omitempty"`
+	LastAt  int64  `json:"lastAt,omitempty"`
+}
+
 // Metrics 进程内的观测计数器：订阅生命周期事件，按「工具」与「模型通道」累积
 // 调用数 / 失败数 / 被审批拦下数 / 耗时 / 最近一次出错原因。
 //
@@ -23,6 +37,7 @@ type Metrics struct {
 
 	tools map[string]*ToolStat
 	provs map[string]*ProviderStat
+	targ  map[string]*TargetStat
 
 	toolStart   map[string]int64 // 工具：before 的时间（与 after/error 配对算耗时）
 	provStart   map[string]int64 // 通道：request 的时间（与 response 配对算等待）
@@ -36,6 +51,7 @@ func NewMetrics() *Metrics {
 	return &Metrics{
 		tools:       map[string]*ToolStat{},
 		provs:       map[string]*ProviderStat{},
+		targ:        map[string]*TargetStat{},
 		toolStart:   map[string]int64{},
 		provStart:   map[string]int64{},
 		blockedTool: map[string]bool{},
@@ -206,6 +222,62 @@ func (m *Metrics) Snapshot() ([]ToolStat, []ProviderStat) {
 		return provs[i].Provider < provs[j].Provider
 	})
 	return tools, provs
+}
+
+// NoteTarget 记一次「外部 Agent 委托」。不订阅事件总线，由服务层在委托前后直接调用
+// （外部 Agent 的调用不产生工具/通道那种生命周期事件）。
+func (m *Metrics) NoteTarget(target string, ok bool, ms int64, errText string) {
+	if m == nil {
+		return
+	}
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return
+	}
+	now := m.now()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st := m.targ[target]
+	if st == nil {
+		st = &TargetStat{Target: target}
+		m.targ[target] = st
+	}
+	st.Calls++
+	st.LastAt = now
+	if ms > 0 {
+		st.TotalMs += ms
+	}
+	if ok {
+		return
+	}
+	st.Failed++
+	if e := strings.TrimSpace(errText); e != "" {
+		st.LastErr = e
+	}
+}
+
+// TargetSnapshot 外部 Agent 统计（按调用数降序，并列按名字，保证顺序稳定）
+func (m *Metrics) TargetSnapshot() []TargetStat {
+	if m == nil {
+		return []TargetStat{}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]TargetStat, 0, len(m.targ))
+	for _, st := range m.targ {
+		c := *st
+		if c.Calls > 0 {
+			c.AvgMs = c.TotalMs / int64(c.Calls)
+		}
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Calls != out[j].Calls {
+			return out[i].Calls > out[j].Calls
+		}
+		return out[i].Target < out[j].Target
+	})
+	return out
 }
 
 /* ---------- 取值小工具 ---------- */

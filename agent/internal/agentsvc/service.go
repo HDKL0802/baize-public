@@ -95,30 +95,31 @@ type HeartbeatState struct {
 
 // State 控制台需要的全部状态
 type State struct {
-	Version      string              `json:"version"`
-	DataDir      string              `json:"dataDir"`
-	Workdir      string              `json:"workdir"`
-	SkillsDir    string              `json:"skillsDir"`
-	BackupDir    string              `json:"backupDir"`
-	AllowShell   bool                `json:"allowShell"`
-	AllowRemote  bool                `json:"allowRemote"`
-	Running      bool                `json:"running"`
-	CurrentRunID string              `json:"currentRunId,omitempty"` // 正在跑的那次运行 id
-	Providers    []ProviderInfo      `json:"providers"`
-	Skills       []skills.Skill      `json:"skills"`
-	Runs         []agentrt.RunRecord `json:"runs"`
-	Approvals    []Approval          `json:"approvals"`
-	Cron         []JobState          `json:"cron"`
-	Heartbeat    HeartbeatState      `json:"heartbeat"`
-	Memory       memory.Stats        `json:"memory"`
-	Embedding    EmbeddingInfo       `json:"embedding"`
-	MemoryCfg    config.Memory       `json:"memoryCfg"`
-	MCP          []mcp.ServerState   `json:"mcp"`
-	Backups      []backup.Archive    `json:"backups"`
-	LastRun      *agentrt.RunResult  `json:"lastRun,omitempty"`
-	Activity     activity.Snapshot   `json:"activity"`
-	Accounts     AccountsInfo        `json:"accounts"`        // 多用户概览（用户数 / 用户组数）
-	Issue        string              `json:"issue,omitempty"` // 配置层面的问题（例如没有任何可用模型）
+	Version        string              `json:"version"`
+	DataDir        string              `json:"dataDir"`
+	Workdir        string              `json:"workdir"`
+	SkillsDir      string              `json:"skillsDir"`
+	BackupDir      string              `json:"backupDir"`
+	AllowShell     bool                `json:"allowShell"`
+	AllowRemote    bool                `json:"allowRemote"`
+	Running        bool                `json:"running"`
+	CurrentRunID   string              `json:"currentRunId,omitempty"` // 正在跑的那次运行 id
+	Providers      []ProviderInfo      `json:"providers"`
+	Skills         []skills.Skill      `json:"skills"`
+	Runs           []agentrt.RunRecord `json:"runs"`
+	Approvals      []Approval          `json:"approvals"`
+	Cron           []JobState          `json:"cron"`
+	Heartbeat      HeartbeatState      `json:"heartbeat"`
+	Memory         memory.Stats        `json:"memory"`
+	Embedding      EmbeddingInfo       `json:"embedding"`
+	MemoryCfg      config.Memory       `json:"memoryCfg"`
+	MCP            []mcp.ServerState   `json:"mcp"`
+	Backups        []backup.Archive    `json:"backups"`
+	LastRun        *agentrt.RunResult  `json:"lastRun,omitempty"`
+	Activity       activity.Snapshot   `json:"activity"`
+	Accounts       AccountsInfo        `json:"accounts"`        // 多用户概览（用户数 / 用户组数）
+	ExternalAgents []ExternalAgentInfo `json:"externalAgents"`  // 外部 Agent（委托执行）清单
+	Issue          string              `json:"issue,omitempty"` // 配置层面的问题（例如没有任何可用模型）
 }
 
 // AccountsInfo 多用户底座概览
@@ -173,6 +174,11 @@ type Service struct {
 	metrics       *observe.Metrics     // 可观测性：进程内的工具/通道调用计数（重启即清零）
 	logRing       *logx.Ring           // 可选：内存日志环（观测面要读它；由 cmd/backend 注入）
 	startedAt     time.Time            // 服务启动时间（观测面报 uptime 用）
+
+	// delMu/delegations 外部 Agent 委托的最近记录（进程内环形，重启即清零；
+	// 与活动追踪/观测计数同一口径——"最近派过什么"看的是当下，完整轨迹在 runs.db）
+	delMu       sync.Mutex
+	delegations []DelegationRecord
 
 	runMu     sync.Mutex // 顶层运行串行，避免同一工作目录并发写
 	running   bool
@@ -980,6 +986,8 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 	kb.RegisterTools(reg, s.kbs)
 	// 跨端调度：把 device_list / device_run 交给设备中枢执行，结果落记忆
 	tools.RegisterDevices(reg, s.devices, s.recordDeviceResult)
+	// 外部 Agent 委托：agent_call（危险 → 走人工审批）。没配也没关系，工具会明确报"还没有外部 Agent"。
+	tools.RegisterExternalAgents(reg, s)
 	// 技能管理：Agent 自己把做法沉淀成技能（新建/改写免审批但要快照，删除走审批）
 	skills.RegisterTools(reg, skillMgr)
 	// 定时任务：Agent 自己安排按点自动跑的活（删除单独成 cron_remove，走审批）
@@ -1078,6 +1086,11 @@ func (s *Service) systemExtra() string {
 	}
 	if lib != nil && lib.Index() != "" {
 		b.WriteString("\n【可用技能】（需要照做时用 skill_load 取全文）\n" + lib.Index())
+	}
+	// 外部 Agent 委托：把"可派给谁"写进系统提示（空清单一个字都不提，免得模型去派不存在的目标）
+	if hint := tools.ExternalAgentsHint(s.listExternalAgentBriefs()); hint != "" {
+		b.WriteString("\n【外部 Agent】（要把一段独立的活外包出去时，用 agent_call 指定 target 委托；" +
+			"只传任务文本，别放本机文件/密钥；这是危险操作，会走人工审批）\n" + hint + "\n")
 	}
 	if s.skillMgr != nil && strings.TrimSpace(s.skillMgr.Dir()) != "" {
 		b.WriteString("\n【技能管理】把反复用到的做法沉淀成技能：新建/改写用 skill_manage（免审批），" +
@@ -1413,7 +1426,7 @@ func (s *Service) State() State {
 		Heartbeat: s.heartbeatState(),
 		BackupDir: backup.Dir(s.dataDir),
 		MemoryCfg: cfg.Memory, Embedding: s.embeddingInfo(),
-		Activity: s.Activity(),
+		Activity: s.Activity(), ExternalAgents: s.ExternalAgents(),
 	}
 	if s.mcp != nil {
 		st.MCP = s.mcp.Status()

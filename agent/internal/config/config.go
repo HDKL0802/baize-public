@@ -162,6 +162,29 @@ type Search struct {
 	MaxResults int    `json:"maxResults,omitempty"`
 }
 
+// ExternalAgent 一个「外部 Agent」：白泽可以把一段独立的活委托给它执行，只把结论拿回来。
+//
+// 类型（Type）：
+//
+//	http  —— 任意 HTTP 端点：POST 一段 JSON（{"goal":"..."}），把回复当结论
+//	         （OpenAI 兼容的 agent、或别的编排服务都能这么接）。
+//	baize —— 另一个白泽实例：喂它的 POST /api/agent/run + 它的配对令牌，复用同一套协议。
+//
+// 安全口径（关键）：外部 Agent 一律当**不可信执行体**——
+//   - 只传任务文本与最小上下文，**不外泄**本机文件 / 记忆 / 密钥；
+//   - 回来的内容按**外部输入**处理（防提示注入），不当作可信指令；
+//   - 地址不是本机时沿用 AllowRemote 开关（与模型通道同一条"本地优先"规矩）。
+type ExternalAgent struct {
+	ID         string `json:"id"`              // 唯一 id（出现在 agent_call 的 target 参数里）
+	Name       string `json:"name"`            // 显示名
+	Type       string `json:"type"`            // http | baize
+	URL        string `json:"url"`             // 端点地址
+	Token      string `json:"token,omitempty"` // 鉴权令牌（http 走 Authorization: Bearer；baize 走 X-Baize-Token）
+	Note       string `json:"note,omitempty"`  // 说明（进系统提示，帮模型决定该派给谁）
+	Enabled    bool   `json:"enabled"`
+	TimeoutSec int    `json:"timeoutSec,omitempty"`
+}
+
 // PluginSource 一个插件源（插件市场从它的 index.json 拉货架）。
 // URL 可以是 http(s) 地址（静态托管即可，比如 GitHub raw / Pages），也可以是本机路径
 // （离线安装 / 自建源 / 开发插件时用）。插件包本身也是静态文件，所以整套东西**零成本**。
@@ -206,6 +229,9 @@ type Config struct {
 	Browser        Browser            `json:"browser"`                 // 浏览器工具（打开网页 / 跑 JS / 截图）
 	Search         Search             `json:"search"`                  // 联网搜索通道（web_search 工具）
 	PluginSources  []PluginSource     `json:"pluginSources,omitempty"` // 插件源（插件市场）
+	// ExternalAgents 外部 Agent（委托执行）：白泽可以把一段独立的活派给它，只把结论拿回来。
+	// 只做"清理/去重"，**不自动新建**——没配就是没配（agent_call 会明确报"还没有外部 Agent"）。
+	ExternalAgents []ExternalAgent `json:"externalAgents,omitempty"`
 }
 
 // 记忆检索的权重档位（非法值一律回落到 balanced）
@@ -466,6 +492,30 @@ func (c *Config) normalize() {
 		cleanedSrc = append(cleanedSrc, s)
 	}
 	c.PluginSources = cleanedSrc
+	// 外部 Agent：去空白、按 id 去重、类型/超时兜底；**不自动新建**。
+	// 没配就是没配（agent_call 会明确报"还没有外部 Agent"，而不是静默失败）。
+	cleanedEA := make([]ExternalAgent, 0, len(c.ExternalAgents))
+	seenEA := map[string]bool{}
+	for _, ea := range c.ExternalAgents {
+		ea.ID = strings.TrimSpace(ea.ID)
+		ea.Name = strings.TrimSpace(ea.Name)
+		ea.Type = normalizeExternalAgentType(ea.Type)
+		ea.URL = strings.TrimRight(strings.TrimSpace(ea.URL), "/")
+		ea.Token = strings.TrimSpace(ea.Token)
+		ea.Note = strings.TrimSpace(ea.Note)
+		if ea.ID == "" || seenEA[ea.ID] {
+			continue // 没 id / 重复 id 的直接丢，别让它们躺在配置里装样子
+		}
+		seenEA[ea.ID] = true
+		if ea.Name == "" {
+			ea.Name = ea.ID
+		}
+		if ea.TimeoutSec <= 0 {
+			ea.TimeoutSec = 120
+		}
+		cleanedEA = append(cleanedEA, ea)
+	}
+	c.ExternalAgents = cleanedEA
 }
 
 // 语音通道支持的协议
@@ -616,6 +666,35 @@ func normalizeChannelFormat(v string) string {
 		}
 	}
 	return "generic"
+}
+
+// 外部 Agent 支持的类型：http（任意 HTTP 端点）/ baize（另一个白泽实例）。
+// 「本机 CLI agent」（claude / codex 之类）**暂不做**——白泽后端只跑在 NAS 上，
+// 容器里没有这些 CLI；真要做得走桌面端 device_run 那条路，等前两种跑通再说。
+var externalAgentTypes = []string{"http", "baize"}
+
+// ExternalAgentTypes 支持的外部 Agent 类型（界面下拉用）
+func ExternalAgentTypes() []string { return append([]string{}, externalAgentTypes...) }
+
+// ValidExternalAgentType 类型是否合法（接口层挡笔误，别让 normalize 悄悄改成 http）
+func ValidExternalAgentType(v string) bool {
+	v = strings.ToLower(strings.TrimSpace(v))
+	for _, t := range externalAgentTypes {
+		if v == t {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeExternalAgentType(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	for _, t := range externalAgentTypes {
+		if v == t {
+			return v
+		}
+	}
+	return "http"
 }
 
 // MainProviders 主通道（非回退）

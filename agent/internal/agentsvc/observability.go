@@ -44,6 +44,9 @@ func (s *Service) Observability(window string) (observe.Report, error) {
 	// 进程内计数（本次启动以来）
 	if s.metrics != nil {
 		rep.Tools, rep.Providers = s.metrics.Snapshot()
+		rep.External = s.metrics.TargetSnapshot()
+	} else {
+		rep.External = []observe.TargetStat{}
 	}
 
 	// 日志环概览（没接环就回空，不假装有日志）
@@ -139,6 +142,33 @@ func (s *Service) health() []observe.HealthItem {
 	default:
 		items = append(items, observe.HealthItem{Name: "MCP 服务", Status: "ok",
 			Detail: fmt.Sprintf("已连 %d 个（停用 %d 个）", connected, disabled)})
+	}
+
+	/* 外部 Agent（委托执行） */
+	eas := s.ExternalAgents()
+	enabledEA, noURL := 0, 0
+	for _, ea := range eas {
+		if ea.Enabled {
+			enabledEA++
+		}
+		if strings.TrimSpace(ea.URL) == "" {
+			noURL++
+		}
+	}
+	switch {
+	case len(eas) == 0:
+		items = append(items, observe.HealthItem{Name: "外部 Agent", Status: "ok", Detail: "没配（不需要就不用管）"})
+	case noURL > 0:
+		items = append(items, observe.HealthItem{Name: "外部 Agent", Status: "error",
+			Detail: fmt.Sprintf("%d 个没填 url（派不过去）", noURL),
+			Hint:   "在「外部 Agent」里补上端点地址"})
+	case enabledEA == 0:
+		items = append(items, observe.HealthItem{Name: "外部 Agent", Status: "warn",
+			Detail: fmt.Sprintf("配了 %d 个，但都停用了", len(eas)),
+			Hint:   "要用就把要派的那几个启用"})
+	default:
+		items = append(items, observe.HealthItem{Name: "外部 Agent", Status: "ok",
+			Detail: fmt.Sprintf("%d 个（启用 %d）", len(eas), enabledEA)})
 	}
 
 	/* 频道 */

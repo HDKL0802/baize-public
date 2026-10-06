@@ -27,9 +27,11 @@ type FileInfo struct {
 	Size int64  `json:"size"`
 	At   int64  `json:"at"`
 	Refs int    `json:"refs"` // 被引用次数（待办里挂了几处），只是参考值
-	// By 上传者（用户组共享文档用；手机端附件留空）。
-	// 同名但不同内容 = 两份文档并存，也就是"分叉"，靠它标出各是谁的一版。
-	By string `json:"by,omitempty"`
+	// By / ByID 上传者（用户组共享文档用；手机端附件留空）。
+	// 同名但不同内容 = 两份文档并存，也就是"分叉"，靠它们标出各是谁的一版；
+	// ByID 是稳定标识（判"谁放弃了自己那版"要用），By 只是给人看的名字。
+	By   string `json:"by,omitempty"`
+	ByID string `json:"byId,omitempty"`
 }
 
 // FileStore 附件仓库：内容寻址（id = 内容 sha256 前 16 位），同一份内容只存一份
@@ -71,11 +73,11 @@ func (f *FileStore) metaPath(id string) string { return filepath.Join(f.dir, id+
 
 // Put 存一份附件，返回它的信息（同样的内容第二次上传直接复用，不重复占地方）
 func (f *FileStore) Put(name, kind, mime string, data []byte) (FileInfo, error) {
-	return f.PutBy(name, kind, mime, "", data)
+	return f.PutBy(name, kind, mime, "", "", data)
 }
 
 // PutBy 与 Put 相同，额外记录上传者（用户组共享文档用来标"这是谁的一版"）
-func (f *FileStore) PutBy(name, kind, mime, by string, data []byte) (FileInfo, error) {
+func (f *FileStore) PutBy(name, kind, mime, byID, byName string, data []byte) (FileInfo, error) {
 	if len(data) == 0 {
 		return FileInfo{}, errors.New("附件内容为空")
 	}
@@ -96,7 +98,8 @@ func (f *FileStore) PutBy(name, kind, mime, by string, data []byte) (FileInfo, e
 	}
 	info := FileInfo{
 		ID: id, Name: strings.TrimSpace(name), Kind: kind, Mime: mime,
-		Size: int64(len(data)), At: time.Now().UnixMilli(), By: strings.TrimSpace(by),
+		Size: int64(len(data)), At: time.Now().UnixMilli(),
+		ByID: strings.TrimSpace(byID), By: strings.TrimSpace(byName),
 	}
 	if info.Name == "" {
 		info.Name = id

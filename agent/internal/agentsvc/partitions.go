@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"baize/internal/accounts"
+	"baize/internal/conflicts"
 	"baize/internal/kb"
 	"baize/internal/llm"
 	"baize/internal/memory"
@@ -22,7 +23,8 @@ type partition struct {
 	key    string
 	mem    *memory.Store
 	kb     *kb.Service
-	shared *kb.FileStore // 用户组的共享文档仓库（用户分区为 nil）
+	shared *kb.FileStore    // 用户组的共享文档仓库（用户分区为 nil）
+	conf   *conflicts.Store // 用户组的冲突协商记录（用户分区为 nil）
 }
 
 // Accounts 账号注册表（多用户底座；没接时为 nil）
@@ -63,18 +65,24 @@ func (s *Service) Partition(p accounts.Principal) (*memory.Store, *kb.Service, e
 
 	// 用户组多一个「共享文档」仓库（各成员都能上传/下载；内容寻址天然支持"同名两版"）
 	var shared *kb.FileStore
+	var conf *conflicts.Store
 	if p.GroupID() != "" {
 		shared, err = kb.OpenFileStore(filepath.Join(dir, "shared"))
 		if err != nil {
 			mem.Close()
 			return nil, nil, fmt.Errorf("打开分区「%s」的共享文档库失败：%w", key, err)
 		}
+		conf, err = conflicts.Open(dir)
+		if err != nil {
+			mem.Close()
+			return nil, nil, fmt.Errorf("打开分区「%s」的协商记录库失败：%w", key, err)
+		}
 	}
 
 	if s.parts == nil {
 		s.parts = map[string]*partition{}
 	}
-	s.parts[key] = &partition{key: key, mem: mem, kb: kbSvc, shared: shared}
+	s.parts[key] = &partition{key: key, mem: mem, kb: kbSvc, shared: shared, conf: conf}
 	s.lg.Info("已打开数据分区", "principal", key, "dir", dir)
 	return mem, kbSvc, nil
 }
@@ -108,6 +116,23 @@ func (s *Service) GroupDocs(p accounts.Principal) (*kb.FileStore, error) {
 	return pt.shared, nil
 }
 
+// ConflictsFor 取某个用户组的冲突协商记录库（非用户组主体返回错误）
+func (s *Service) ConflictsFor(p accounts.Principal) (*conflicts.Store, error) {
+	if p.GroupID() == "" {
+		return nil, errors.New("只有用户组有冲突协商记录")
+	}
+	if _, _, err := s.Partition(p); err != nil {
+		return nil, err
+	}
+	s.partMu.Lock()
+	pt := s.parts[p.Key()]
+	s.partMu.Unlock()
+	if pt == nil || pt.conf == nil {
+		return nil, errors.New("协商记录库未就绪")
+	}
+	return pt.conf, nil
+}
+
 // closePartitions 关闭全部非默认分区（知识库是纯文件，无需关闭）
 func (s *Service) closePartitions() {
 	s.partMu.Lock()
@@ -115,6 +140,9 @@ func (s *Service) closePartitions() {
 	for _, pt := range s.parts {
 		if pt.mem != nil {
 			pt.mem.Close()
+		}
+		if pt.conf != nil {
+			pt.conf.Close()
 		}
 	}
 	s.parts = nil

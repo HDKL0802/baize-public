@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"baize/internal/accounts"
+	"baize/internal/conflicts"
 	"baize/internal/kb"
 )
 
@@ -40,10 +41,14 @@ func (s *Server) registerSharing(mux *http.ServeMux) {
 	}))
 
 	mux.HandleFunc("POST /api/agent/groups/{id}/docs", s.api(func(w http.ResponseWriter, r *http.Request) {
-		gid := r.PathValue("id")
-		store, err := s.groupDocsStore(r, gid)
+		g, u, err := s.groupMemberCheck(r, r.PathValue("id"))
 		if err != nil {
 			writeErr(w, http.StatusForbidden, err.Error())
+			return
+		}
+		store, err := s.agent.GroupDocs(accounts.GroupPrincipal(g.ID))
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		var req struct {
@@ -61,17 +66,22 @@ func (s *Server) registerSharing(mux *http.ServeMux) {
 			writeErr(w, http.StatusBadRequest, "文档内容不是合法的 base64："+err.Error())
 			return
 		}
-		// 上传者 = 当前登录用户（没登录则留空，但下面已经要求必须登录）
-		_, u, _ := s.principalOf(r)
-		info, err := store.PutBy(req.Name, req.Kind, req.Mime, u.Name, data)
+		info, err := store.PutBy(req.Name, req.Kind, req.Mime, u.ID, u.Name, data)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		list, _ := store.List(0)
-		writeJSON(w, http.StatusOK, map[string]any{
-			"ok": true, "doc": info, "versions": groupByName(list),
-		})
+		out := map[string]any{"ok": true, "doc": info, "versions": groupByName(list)}
+		// 同名两份 = 分叉 → 自动开一次协商，让两边到场把话说清（用户要的"自动发请求"）
+		if vers, forked := forkVersions(list, info.Name); forked {
+			if cs, err := s.agent.ConflictsFor(accounts.GroupPrincipal(g.ID)); err == nil {
+				if sess, err := cs.OpenSession(g.ID, info.Name, u.ID, vers); err == nil {
+					out["conflict"] = sess
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, out)
 	}))
 
 	mux.HandleFunc("GET /api/agent/groups/{id}/docs/{docId}", s.api(func(w http.ResponseWriter, r *http.Request) {
@@ -108,23 +118,32 @@ func (s *Server) registerSharing(mux *http.ServeMux) {
 	}))
 }
 
-// groupDocsStore 解析并鉴权：只有**组内成员**（或管理员）能碰这个组的共享空间。
-// 未登录 / 非成员一律 403 —— 共享文档是组内隐私，不因为是"同一个后端"就放开。
-func (s *Server) groupDocsStore(r *http.Request, groupID string) (*kb.FileStore, error) {
+// groupMemberCheck 鉴权：只有**组内成员**（或管理员）能碰这个组的东西。
+// 未登录 / 非成员一律报错 —— 组内共享是隐私，不因为是"同一个后端"就放开。
+func (s *Server) groupMemberCheck(r *http.Request, groupID string) (accounts.Group, accounts.User, error) {
 	reg := s.agent.Accounts()
 	if reg == nil {
-		return nil, errors.New("多用户未启用")
+		return accounts.Group{}, accounts.User{}, errors.New("多用户未启用")
 	}
 	g, err := reg.Group(groupID)
 	if err != nil {
-		return nil, err
+		return accounts.Group{}, accounts.User{}, err
 	}
 	_, u, loggedIn := s.principalOf(r)
 	if !loggedIn {
-		return nil, errors.New("请先登录再访问用户组的共享文档")
+		return accounts.Group{}, accounts.User{}, errors.New("请先登录再访问用户组的共享空间")
 	}
 	if !u.Admin && !reg.IsMember(g.ID, u.ID) {
-		return nil, errors.New("你不是用户组「" + g.Name + "」的成员，看不到它的共享文档")
+		return accounts.Group{}, accounts.User{}, errors.New("你不是用户组「" + g.Name + "」的成员")
+	}
+	return g, u, nil
+}
+
+// groupDocsStore 取共享文档库（带成员鉴权）
+func (s *Server) groupDocsStore(r *http.Request, groupID string) (*kb.FileStore, error) {
+	g, _, err := s.groupMemberCheck(r, groupID)
+	if err != nil {
+		return nil, err
 	}
 	return s.agent.GroupDocs(accounts.GroupPrincipal(g.ID))
 }
@@ -149,4 +168,22 @@ func groupByName(list []kb.FileInfo) []map[string]any {
 		})
 	}
 	return out
+}
+
+// forkVersions 把"某个文件名的多份同名文档"转成协商用的版本清单。
+// 少于两份就不算分叉（返回 false），调用方据此决定要不要开协商。
+func forkVersions(list []kb.FileInfo, name string) ([]conflicts.DocVersion, bool) {
+	out := []conflicts.DocVersion{}
+	for _, f := range list {
+		if f.Name != name {
+			continue
+		}
+		out = append(out, conflicts.DocVersion{
+			DocID: f.ID, OwnerID: f.ByID, OwnerName: f.By, Size: f.Size, At: f.At,
+		})
+	}
+	if len(out) < 2 {
+		return nil, false
+	}
+	return out, true
 }

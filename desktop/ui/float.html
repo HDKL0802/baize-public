@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>白泽浮窗</title>
+<style>
+  :root{
+    --bg:#0e1218; --surface:#141a23; --surface-2:#1a222d;
+    --border:#222c38; --border-strong:#2c3846;
+    --text:#e6ecf4; --muted:#8b98a8; --faint:#5c6878;
+    --accent:#38bdf8; --ok:#34d399; --err:#f87171; --warn:#fbbf24;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:13px/1.55 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    overflow:hidden; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{display:flex;flex-direction:column;height:100vh}
+
+  /* 顶部标题栏：高 40px，右侧 132px 留给按钮（原生拖动区与 float_windows.go 对齐） */
+  .fhead{
+    height:40px;flex:0 0 40px;display:flex;align-items:center;gap:8px;
+    padding:0 8px 0 12px;background:var(--surface);border-bottom:1px solid var(--border);
+    user-select:none;cursor:default;
+  }
+  .ftitle{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:var(--muted);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.2px}
+  .fbtns{flex:0 0 132px;display:flex;justify-content:flex-end;align-items:center;gap:4px}
+  .ibtn{
+    width:30px;height:30px;display:grid;place-items:center;border:0;border-radius:7px;
+    background:transparent;color:var(--muted);cursor:pointer;font-size:13px;line-height:1;
+    transition:background .12s,color .12s;
+  }
+  .ibtn:hover{background:var(--surface-2);color:var(--text)}
+  .ibtn.on{background:rgba(56,189,248,.14);color:var(--accent)}
+
+  .body{flex:1;min-height:0;display:flex;flex-direction:column}
+  .pane{padding:12px 12px 6px;overflow:auto;flex:1;min-height:0}
+
+  .hint{color:var(--faint);font-size:12px;line-height:1.6}
+  .hint.err{color:var(--err)}
+
+  /* 提取 / 翻译 */
+  .pic{border:1px solid var(--border);border-radius:8px;max-width:100%;display:block;margin-bottom:10px}
+  .result{
+    white-space:pre-wrap;word-break:break-word;background:var(--surface);
+    border:1px solid var(--border);border-radius:8px;padding:10px 11px;min-height:120px;
+    font-size:13px;line-height:1.7;
+  }
+  .result:empty::before{content:attr(data-ph);color:var(--faint)}
+  .row{display:flex;gap:6px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  select{
+    background:var(--surface);color:var(--text);border:1px solid var(--border-strong);
+    border-radius:7px;padding:5px 8px;font:inherit;font-size:12px;outline:none;
+  }
+
+  button.btn{
+    border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text);
+    border-radius:7px;padding:6px 12px;font:inherit;font-size:12.5px;cursor:pointer;
+    transition:background .12s,border-color .12s,opacity .12s;
+  }
+  button.btn:hover{background:#22303e}
+  button.btn:disabled{opacity:.45;cursor:not-allowed}
+  button.btn.primary{background:var(--accent);border-color:var(--accent);color:#08131b;font-weight:600}
+  button.btn.primary:hover{background:#4cc6fa}
+
+  /* 对话 */
+  .msgs{flex:1;min-height:0;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:88%;border-radius:10px;padding:8px 11px;font-size:13px;line-height:1.6;word-break:break-word}
+  .msg.me{align-self:flex-end;background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.28)}
+  .msg.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--border)}
+  .msg.ai .meta{display:block;margin-top:5px;color:var(--faint);font-size:11px}
+  .composer{flex:0 0 auto;padding:10px 12px 12px;border-top:1px solid var(--border);background:var(--surface)}
+  .composer textarea{
+    width:100%;resize:none;height:56px;background:var(--bg);color:var(--text);
+    border:1px solid var(--border-strong);border-radius:9px;padding:9px 10px;font:inherit;
+    font-size:13px;outline:none;line-height:1.55;
+  }
+  .composer textarea:focus{border-color:var(--accent)}
+  .send{display:flex;justify-content:flex-end;margin-top:8px}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--faint);margin-right:5px;vertical-align:1px}
+  .dot.busy{background:var(--warn);animation:pulse 1s infinite}
+  .dot.ok{background:var(--ok)}
+  .dot.err{background:var(--err)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="fhead">
+    <div class="ftitle" id="title">白泽</div>
+    <div class="fbtns">
+      <button class="ibtn" id="pin" title="钉住（锁死位置并置顶）">📌</button>
+      <button class="ibtn" id="close" title="关闭">✕</button>
+    </div>
+  </div>
+
+  <!-- 对话 -->
+  <div class="body" id="vChat" hidden>
+    <div class="msgs" id="msgs">
+      <div class="msg ai">你好，我是白泽。说一句话就行，跑完结果我给你放这儿。<span class="meta"><span class="dot" id="chatDot"></span><span id="chatStat">就绪</span></span></div>
+    </div>
+    <div class="composer">
+      <textarea id="goal" placeholder="说一句要做什么…（Ctrl+Enter 发送）"></textarea>
+      <div class="send"><button class="btn primary" id="send">发送</button></div>
+    </div>
+  </div>
+
+  <!-- 提取文字 / 翻译 -->
+  <div class="body" id="vText" hidden>
+    <div class="pane">
+      <img class="pic" id="pic" alt="截图" hidden>
+      <div class="result" id="result" data-ph="正在处理…"></div>
+      <div class="row">
+        <label class="hint">目标语言
+          <select id="lang"><option value="zh">中文</option><option value="en">英文</option></select>
+        </label>
+        <button class="btn" id="again">重来</button>
+        <button class="btn primary" id="copy">复制文字</button>
+        <span class="hint" id="stat"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const SESSION_KEY = 'bz_session';
+const session = () => { try { return localStorage.getItem(SESSION_KEY) || ''; } catch (e) { return ''; } };
+
+async function api(path, method, body) {
+  const headers = {};
+  if (body) headers['Content-Type'] = 'application/json';
+  const s = session();
+  if (s) headers['X-Baize-Session'] = s;
+  try {
+    const r = await fetch('/api/be' + path, {
+      method: method || 'GET', headers, body: body ? JSON.stringify(body) : undefined,
+    });
+    const t = await r.text();
+    let d = {}; try { d = t ? JSON.parse(t) : {}; } catch (e) { d = { raw: t }; }
+    if (!r.ok) return { ok: false, error: (d && d.error) || ('HTTP ' + r.status) };
+    return { ok: true, data: d };
+  } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+}
+const local = async (p, body) => {
+  try {
+    const r = await fetch('/api/local' + p, body
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+      : {});
+    return await r.json();
+  } catch (e) { return { ok: false, error: String(e) }; }
+};
+
+/* ---------- 顶部按钮 ---------- */
+let pinned = false;
+function paintPin() { $('pin').classList.toggle('on', pinned); $('pin').title = pinned ? '取消钉住' : '钉住（锁死位置并置顶）'; }
+$('pin').onclick = async () => {
+  const r = await local('/float/pin', { on: !pinned });
+  pinned = !!(r && r.pinned); paintPin();
+};
+$('close').onclick = () => local('/float/close', {});
+
+/* ---------- 提取 / 翻译 ---------- */
+let MODE = 'chat';
+let TEXT_REV = 0;
+
+async function imageBase64() {
+  const r = await fetch('/api/local/float/image', { cache: 'no-store' });
+  if (!r.ok) return '';
+  const buf = new Uint8Array(await r.arrayBuffer());
+  let s = ''; const CH = 0x8000;
+  for (let i = 0; i < buf.length; i += CH) s += String.fromCharCode.apply(null, buf.subarray(i, i + CH));
+  return btoa(s);
+}
+
+async function runVision(action) {
+  const res = $('result'), stat = $('stat');
+  $('again').disabled = true; $('copy').disabled = true;
+  res.textContent = ''; res.dataset.ph = action === 'translate' ? '翻译中…（可能几秒）' : '识别中…（可能几秒）';
+  stat.textContent = '';
+  const b64 = await imageBase64();
+  if (!b64) { res.dataset.ph = ''; res.textContent = ''; stat.textContent = '没拿到截图'; return; }
+  const body = { action, imageBase64: b64 };
+  if (action === 'translate') body.lang = $('lang').value;
+  const r = await api('/api/agent/vision', 'POST', body);
+  $('again').disabled = false;
+  if (!r.ok) { res.dataset.ph = ''; res.textContent = ''; stat.textContent = '失败：' + (r.error || '未知'); res.classList.remove('hint'); return; }
+  const d = r.data || {};
+  const text = (d.data && d.data.text) || d.text || '';
+  res.dataset.ph = '（没有识别到内容）';
+  res.textContent = text;
+  $('copy').disabled = !text;
+  const m = (d.data && d.data.model) || d.model;
+  stat.textContent = m ? (m + ' · ' + (((d.data && d.data.latencyMs) || d.latencyMs) || 0) + ' ms') : '';
+}
+$('again').onclick = () => runVision(MODE === 'translate' ? 'translate' : 'extract');
+$('lang').onchange = () => runVision('translate');
+$('copy').onclick = async () => {
+  const t = $('result').textContent || '';
+  if (!t) return;
+  try { await navigator.clipboard.writeText(t); $('stat').textContent = '已复制'; }
+  catch (e) { $('stat').textContent = '复制失败'; }
+};
+
+/* ---------- 对话 ---------- */
+function addMsg(cls, text) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.textContent = text;
+  $('msgs').appendChild(d);
+  $('msgs').scrollTop = $('msgs').scrollHeight;
+  return d;
+}
+function setDot(cls, text) {
+  $('chatDot').className = 'dot' + (cls ? ' ' + cls : '');
+  $('chatStat').textContent = text;
+}
+async function send() {
+  const ta = $('goal'), goal = ta.value.trim();
+  if (!goal) return;
+  addMsg('me', goal);
+  ta.value = '';
+  setDot('busy', '已派发，跑着…');
+  const r = await api('/api/agent/run', 'POST', { goal, wait: false });
+  if (!r.ok) { addMsg('ai', '派发失败：' + (r.error || '未知')); setDot('err', '失败'); return; }
+  const d = r.data || {};
+  if (d.command) {
+    addMsg('ai', d.reply || '（命令已执行）');
+    setDot('ok', '魔法命令 /' + (d.name || ''));
+    return;
+  }
+  const id = d.runId || d.id || '';
+  const m = addMsg('ai', '已派发' + (id ? ' · ' + id : '') + '，跑完我把结果放这儿。');
+  setDot('busy', '运行中…');
+  pollRun(id, m);
+}
+async function pollRun(id, node) {
+  let n = 0;
+  const tick = async () => {
+    n++;
+    const r = await api('/api/agent/runs?limit=8');
+    if (r.ok) {
+      const list = (r.data && (r.data.runs || r.data.items)) || (Array.isArray(r.data) ? r.data : []);
+      const it = id ? list.find(x => (x.id || x.runId) === id) : list[0];
+      if (it) {
+        node.textContent = (it.goal || it.title || '') + '\n状态：' + (it.status || '?') +
+          ' · ' + (it.steps ?? '?') + ' 步 · ' + (it.totalTokens ?? '?') + ' token';
+        if (it.status === 'done') { setDot('ok', '完成'); return; }
+        if (it.status === 'failed') { setDot('err', '失败'); return; }
+      }
+    }
+    if (n < 100) setTimeout(tick, 3000); else setDot('', '超时未回');
+  };
+  setTimeout(tick, 2500);
+}
+$('send').onclick = send;
+$('goal').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
+});
+
+/* ---------- 启动：按模式显示对应界面 ---------- */
+(async function boot() {
+  const st = await local('/float/state');
+  pinned = !!(st && st.pinned); paintPin();
+
+  const m = await local('/float/mode');
+  const mode = (m && m.mode) || (location.hash.replace(/^#mode=/, '') || 'chat');
+  MODE = mode;
+  // 同步窗口标题：主进程靠它做「同模式已有窗口就叫到前台」的去重（见 float_windows.go）
+  document.title = (m && m.title) || '白泽浮窗';
+  if (mode === 'extract' || mode === 'translate') {
+    $('vText').hidden = false;
+    $('title').textContent = mode === 'translate' ? '白泽 · 翻译' : '白泽 · 提取文字';
+    TEXT_REV = (m && m.rev) | 0;
+
+    const showPic = () => {
+      const pic = $('pic');
+      pic.hidden = false;
+      pic.src = '/api/local/float/image?t=' + Date.now();
+    };
+    const runNow = async () => {
+      if (!(m && m.hasImage) && TEXT_REV === 0) {
+        // 还没图：等一下（主进程可能随后推过来）
+        $('result').dataset.ph = '正在等截图…';
+        $('result').textContent = '';
+        return;
+      }
+      showPic();
+      await runVision(mode);
+    };
+
+    if (m && m.hasImage) {
+      showPic();
+      await runVision(mode);
+    } else {
+      $('result').dataset.ph = '正在等截图…';
+      $('result').textContent = '';
+    }
+    // 主进程推来新图 → rev 变化 → 刷新图片并重跑（见 float_windows.go 的 /float/img）
+    setInterval(async () => {
+      const s = await local('/float/mode');
+      if (!s || !s.ok || s.rev === TEXT_REV) return;
+      TEXT_REV = s.rev | 0;
+      await runNow();
+    }, 1500);
+  } else {
+    $('vChat').hidden = false;
+    $('title').textContent = '白泽 · 对话';
+    $('goal').focus();
+  }
+})();
+</script>
+</body>
+</html>

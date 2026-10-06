@@ -9,6 +9,7 @@ package main
 
 import (
 	"archive/zip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -34,11 +36,12 @@ type updateManifest struct {
 }
 
 func init() {
-	// 平台专属路由：自动更新 + 截图提问（截图那组见 shot_windows.go）+ 悬浮球迷你小窗
+	// 平台专属路由：自动更新 + 截图提问（截图那组见 shot_windows.go）+ 悬浮球迷你小窗 + 临时浮窗
 	registerPlatformRoutes = func(mux *http.ServeMux) {
 		registerUpdateRoutes(mux)
 		registerShotRoutes(mux)
 		registerBallRoutes(mux)
+		registerFloatRoutes(mux)
 	}
 }
 
@@ -339,4 +342,54 @@ func registerUpdateRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, res)
 	})
+	// 自动更新开关 + 检查间隔（分钟）
+	mux.HandleFunc("/api/local/update/auto", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req struct {
+				Enabled *bool `json:"enabled"`
+				Minutes *int  `json:"minutes"`
+			}
+			if r.Body != nil {
+				_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req)
+			}
+			setAutoUpdate(req.Enabled, req.Minutes)
+		}
+		en, mn := autoUpdateState()
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "enabled": en, "minutes": mn})
+	})
+}
+
+// startAutoUpdateLoop 后台定时检查更新；开着「自动更新」时，发现新版就自动下载并重启。
+// 关着就只是空转（不打扰）。间隔取配置里的分钟数，最小 1 分钟。
+func startAutoUpdateLoop(ctx context.Context) {
+	go func() {
+		for {
+			en, mn := autoUpdateState()
+			wait := time.Duration(mn) * time.Minute
+			if wait < time.Minute {
+				wait = time.Minute
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(wait):
+			}
+			if !en {
+				continue
+			}
+			m, err := fetchManifest()
+			if err != nil {
+				log.Printf("[自动更新] 检查失败：%v", err)
+				continue
+			}
+			if !newerVersion(m.Version, desktopAppVersion) {
+				continue
+			}
+			log.Printf("[自动更新] 发现新版本 %s（当前 %s），开始下载并重启", m.Version, desktopAppVersion)
+			if _, err := ApplyUpdate(); err != nil {
+				log.Printf("[自动更新] 升级失败：%v", err)
+			}
+			return // 成功会重启进程；失败也先停一轮，下轮再说
+		}
+	}()
 }

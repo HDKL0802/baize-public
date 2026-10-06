@@ -16,7 +16,7 @@ window.Shell = (function () {
     { title: '知识', ids: ['kb', 'memory', 'activity'] },
     { title: '协作', ids: ['accounts', 'conflicts'] },
     { title: '能力', ids: ['providers', 'mcp', 'channels', 'external', 'skills', 'plugins', 'persona', 'cron'] },
-    { title: '系统', ids: ['shot', 'observe', 'backup', 'settings'] },
+    { title: '系统', ids: ['observe', 'backup', 'settings'] },
   ];
 
   /* 线性图标（24×24，stroke=currentColor）。emoji 在深色界面里又跳又廉价，换成这套。 */

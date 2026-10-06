@@ -250,13 +250,13 @@ async function renderSettings(root) {
           <button class="btn" id="upApply" hidden>下载并重启</button>
           <span class="sub" id="upMsg" style="margin:0"></span>
         </div>
-      </div>
-
-      <div class="sect">
-        <h3>关于</h3>
-        <div class="sub">白泽桌面端（Go + WebView2，纯 Go 无 cgo）· 冷色暗色直角<br>
-          控制台 12 个应用 + 协作 2 个（账号与共享 / 冲突协商）+ 插件市场 / 可观测性 / 外部 Agent 已全部接入；本机作为设备的能力已接（只读）。<br>
-          已接：开机自启、关窗隐藏到托盘、自动更新、NSIS 安装包、多用户与组共享、插件市场、可观测性、外部 Agent 委托。</div>
+        <div style="display:flex;gap:12px;align-items:center;margin-top:12px;flex-wrap:wrap">
+          <label class="sub" style="margin:0"><input type="checkbox" id="upAuto" style="margin-right:6px">自动更新（后台定时检查，有新版就自动下载并重启）</label>
+          <label class="sub" style="margin:0">检查间隔
+            <input id="upAutoMin" type="number" min="10" step="10" style="width:88px;display:inline-block;margin:0 4px"> 分钟</label>
+          <button class="btn ghost sm" id="upAutoSave">保存</button>
+          <span class="sub" id="upAutoMsg" style="margin:0"></span>
+        </div>
       </div>
     </div>`;
 
@@ -277,6 +277,9 @@ async function renderSettings(root) {
     const auto = await (await fetch('/api/local/autostart')).json().catch(() => ({}));
     $i('setAuto').checked = !!auto.enabled;
     $i('upCur').textContent = dv.version || '—';
+    const au = await (await fetch('/api/local/update/auto')).json().catch(() => ({}));
+    $i('upAuto').checked = !!au.enabled;
+    $i('upAutoMin').value = au.minutes || 360;
     if (c.server) await test();
   };
 
@@ -473,6 +476,14 @@ async function renderSettings(root) {
     if (r && r.ok) { $i('upMsg').innerHTML = `<span class="ok">已升级到 ${esc(r.version || '')}，正在重启…</span>`; return; }
     $i('upApply').disabled = false;
     $i('upMsg').innerHTML = `<span class="err">${esc((r && r.error) || '升级失败')}</span>`;
+  };
+  $i('upAutoSave').onclick = async () => {
+    const body = { enabled: $i('upAuto').checked, minutes: Number($i('upAutoMin').value) || 360 };
+    const r = await (await fetch('/api/local/update/auto', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })).json().catch(() => ({}));
+    $i('upAutoMsg').innerHTML = (r && r.ok) ? '<span class="ok">已保存</span>'
+      : `<span class="err">${esc((r && r.error) || '保存失败')}</span>`;
   };
 
   await loadPerm();

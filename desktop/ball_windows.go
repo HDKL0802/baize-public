@@ -54,6 +54,15 @@ const menuTasks = 1003
 const menuShot = 1004
 const menuFloat = 1005
 
+// 全局快捷键：截图提问 = Alt+Shift+S（豆包那套；先写死，之后进「快捷键可配」）
+const (
+	wmHotkey   = 0x0312
+	modAlt     = 0x0001
+	modShift   = 0x0004
+	vkS        = 0x53
+	hotkeyShot = 1
+)
+
 // SetWindowPos 的插入位序（HWND_TOPMOST = -1 / HWND_NOTOPMOST = -2，用补码表示）
 const (
 	hwndTopmost    = ^uintptr(0)
@@ -84,6 +93,7 @@ var (
 	pSetLayeredWinAttr = ballUser32.NewProc("SetLayeredWindowAttributes")
 	pGetCursorPosBall  = ballUser32.NewProc("GetCursorPos")
 	pGetWindowRectBall = ballUser32.NewProc("GetWindowRect")
+	pRegisterHotKey    = ballUser32.NewProc("RegisterHotKey")
 
 	pCreateSolidBrush = ballGdi32.NewProc("CreateSolidBrush")
 	pCreatePen        = ballGdi32.NewProc("CreatePen")
@@ -197,7 +207,13 @@ func ballCreate() error {
 	// 半透明（220/255），看起来更像"浮"在桌面上
 	pSetLayeredWinAttr.Call(hwnd, 0, 220, lwaAlpha)
 	pShowWindow.Call(hwnd, 4) // SW_SHOWNOACTIVATE：别抢焦点
-	log.Printf("[悬浮球] 已就绪（拖动移动 / 单击菜单 / 双击打开）")
+	// 全局快捷键 Alt+Shift+S = 截图提问（豆包同款）。被别的程序占了就只记日志、不致命。
+	if r, _, _ := pRegisterHotKey.Call(hwnd, hotkeyShot, modAlt|modShift, vkS); r == 0 {
+		log.Printf("[悬浮球] Alt+Shift+S 注册失败（可能被别的程序占用）：截图提问请走右键菜单")
+	} else {
+		log.Printf("[悬浮球] 快捷键已就绪：Alt+Shift+S = 截图提问")
+	}
+	log.Printf("[悬浮球] 已就绪（拖动移动 / 单击小窗 / 双击打开 / 右键菜单）")
 	return nil
 }
 
@@ -293,6 +309,11 @@ func ballWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 	case wmRButtonUp:
 		ballShowMenu(hwnd)
 		return 0
+	case wmHotkey:
+		if uint32(wparam) == hotkeyShot {
+			startShotCapture()
+		}
+		return 0
 	case wmDestroy:
 		pPostQuitMessage.Call(0)
 		return 0
@@ -371,7 +392,9 @@ func ballShowMenu(hwnd uintptr) {
 	case menuOpen:
 		ballOpenMain(false)
 	case menuFloat:
-		enterMiniChat()
+		if err := spawnFloatWindow(floatModeChat); err != nil {
+			log.Printf("[悬浮球] 起对话浮窗失败：%v", err)
+		}
 	case menuShot:
 		startShotCapture()
 	case menuTasks:
@@ -416,7 +439,10 @@ func ballClick(hwnd uintptr) {
 		still := ballClickGen == gen
 		ballClickMu.Unlock()
 		if still { // 没等来第二下 → 当单击
-			toggleMiniChat()
+			// 单击＝唤起「对话浮窗」（独立进程的小窗，不缩主窗；这就是豆包的用法）
+			if err := spawnFloatWindow(floatModeChat); err != nil {
+				log.Printf("[悬浮球] 起对话浮窗失败：%v", err)
+			}
 		}
 	})
 }

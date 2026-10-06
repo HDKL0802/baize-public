@@ -54,7 +54,17 @@ func main() {
 	server := flag.String("server", "", "NAS 后端地址，例如 http://192.168.1.100:8787（会写入本地配置）")
 	token := flag.String("token", "", "配对令牌（会写入本地配置；留空 = 用已保存的那串）")
 	debug := flag.Bool("debug", false, "打开 WebView2 调试（可用 CDP 连）")
+	// 临时浮窗（内部用）：同一个 exe 带这个参数再起一个进程，只当一块临时浮窗用。
+	// 见 float_windows.go —— 照豆包「一堆进程」那套，每个临时窗口一个独立进程。
+	floatMode := flag.String("float", "", "临时浮窗模式：chat / extract / translate（内部用）")
+	floatImg := flag.String("img", "", "浮窗（提取/翻译）要处理的截图临时文件（内部用）")
 	flag.Parse()
+
+	// 浮窗进程：不起单实例检查、托盘、悬浮球、设备连接 —— 它只负责显示那一小块窗口
+	if strings.TrimSpace(*floatMode) != "" {
+		runFloatMode(*floatMode, *floatImg)
+		os.Exit(0)
+	}
 
 	// 单实例：已经有一个在跑就把它的窗口叫到前台（它可能正隐藏在后台）
 	if !ensureSingleInstance() {
@@ -107,6 +117,8 @@ func main() {
 	installShell(w)
 	// 悬浮球（B1）：常驻桌面的轻量入口（失败只记日志）
 	startFloatingBall()
+	// 自动更新：后台定时检查（是否真升级看「设置 → 更新」里的开关）
+	startAutoUpdateLoop(ctx)
 
 	w.Run()
 	os.Exit(0)

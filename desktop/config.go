@@ -24,6 +24,11 @@ type Config struct {
 	DisclaimerAck bool `json:"disclaimerAck"`
 	// DataDir 数据目录（桌面端的配置与日志；留空 = 默认 %APPDATA%\白泽）
 	DataDir string `json:"dataDir,omitempty"`
+
+	// AutoUpdate 是否自动更新（后台定时检查，有新版就自动下载并重启）；默认关
+	AutoUpdate bool `json:"autoUpdate,omitempty"`
+	// AutoUpdateMin 自动更新的检查间隔（分钟）；<=0 时按默认 360
+	AutoUpdateMin int `json:"autoUpdateMin,omitempty"`
 }
 
 var (
@@ -63,6 +68,9 @@ func loadConfig() {
 	if cfg.GuiPerm == 0 {
 		cfg.GuiPerm = PermReadOnly
 	}
+	if cfg.AutoUpdateMin <= 0 {
+		cfg.AutoUpdateMin = 360 // 默认 6 小时扫一次
+	}
 }
 
 func saveConfigLocked() {
@@ -97,7 +105,36 @@ func localConfigSnapshot() map[string]any {
 		"disclaimerAck": cfg.DisclaimerAck,
 		"dataDir":       dataDir(), "dataDirDefault": defaultDataDir(),
 		"configPath": cfgPath,
+		"autoUpdate": cfg.AutoUpdate, "autoUpdateMin": autoUpdateMinLocked(),
 	}
+}
+
+// autoUpdateMinLocked 取检查间隔（调用方须已持锁）；<=0 按默认 360
+func autoUpdateMinLocked() int {
+	if cfg.AutoUpdateMin <= 0 {
+		return 360
+	}
+	return cfg.AutoUpdateMin
+}
+
+// autoUpdateState 返回（是否自动更新, 间隔分钟）
+func autoUpdateState() (bool, int) {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	return cfg.AutoUpdate, autoUpdateMinLocked()
+}
+
+// setAutoUpdate 改自动更新设置（指针为 nil 表示该项不改）
+func setAutoUpdate(enabled *bool, minutes *int) {
+	cfgMu.Lock()
+	defer cfgMu.Unlock()
+	if enabled != nil {
+		cfg.AutoUpdate = *enabled
+	}
+	if minutes != nil && *minutes > 0 {
+		cfg.AutoUpdateMin = *minutes
+	}
+	saveConfigLocked()
 }
 
 // setGuiPerm 改桌面控制权限。返回错误时什么都没改。

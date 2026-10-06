@@ -253,6 +253,10 @@ func toggleWindow(hwnd uintptr) {
 		pShowWindow.Call(hwnd, swHide)
 		return
 	}
+	// 从托盘唤出时一律恢复「工作模式」的完整窗口（不要在迷你小窗里出）
+	if ballMini {
+		exitMiniChat()
+	}
 	pShowWindow.Call(hwnd, swRestore)
 	pSetForegroundWindow.Call(hwnd)
 }

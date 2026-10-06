@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"html"
 	"log/slog"
 	"net"
 	"net/http"
@@ -60,6 +61,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerKB(mux)
 	s.registerVoice(mux)
 	s.registerDL(mux)
+	s.registerWebUI(mux) // 手机版控制台的静态资源（/css、/js）+ 应用图标（/icon.png）
 	return mux
 }
 
@@ -135,6 +137,9 @@ func atoiDefault(s string, def int) int {
 // 面板页里嵌着配对令牌，所以这一页本身也要过令牌闸门：
 // 本机回环访问免验证（本机进程本来就能直接读 data/token），跨机必须给对令牌，
 // 不然局域网里谁打开首页都能从页面源码把令牌抄走。
+//
+// 同一地址按 UA 分两套：电脑版 = panel.html（自包含单文件），
+// 手机版 = webui/ 那套手机前端（见 webui.go）；?ver=mobile|desktop 可强制切换。
 func (s *Server) handlePanel(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -143,7 +148,14 @@ func (s *Server) handlePanel(w http.ResponseWriter, r *http.Request) {
 	if !s.panelAccessOK(w, r) {
 		return
 	}
-	body := bytes.ReplaceAll(panelHTML, []byte("__BAIZE_TOKEN__"), []byte(s.hub.Token()))
+	var body []byte
+	if panelVariant(r) == "mobile" {
+		// 手机版：令牌落在 HTML 属性里（<meta>），先做属性转义再塞
+		body = bytes.ReplaceAll(mobileIndexHTML, []byte(mobileTokenPlaceholder), []byte(html.EscapeString(s.hub.Token())))
+	} else {
+		// 电脑版：令牌落在 JS 字符串字面量里，原样塞
+		body = bytes.ReplaceAll(panelHTML, []byte("__BAIZE_TOKEN__"), []byte(s.hub.Token()))
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(body)
@@ -214,6 +226,7 @@ const panelLoginHTML = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/icon.png" type="image/png">
 <title>白泽智能体 · 需要配对令牌</title>
 <style>
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f9f8f4;

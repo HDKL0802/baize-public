@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/icon.png" type="image/png">
+<link rel="apple-touch-icon" href="/icon.png">
 <title>白泽智能体 · 控制台</title>
 <!--
   白泽智能体 控制台（产品自带 UI）
@@ -72,10 +74,10 @@
     position: sticky; top: 0; height: 100vh; overflow-y: auto;
   }
   .brand { display: flex; align-items: center; gap: 8px; padding: 6px 10px 14px; }
+  /* 品牌标 = 应用图标（/icon.png，与桌面端 App 同一张），不再是「蓝底黑字泽字」 */
   .brand .mark {
-    width: 26px; height: 26px; border-radius: var(--app-radius); flex: none;
-    background: var(--app-accent); color: var(--app-accent-ink); display: grid; place-items: center;
-    font-weight: 700; font-size: 14px;
+    width: 26px; height: 26px; border-radius: 6px; flex: none;
+    display: block; object-fit: contain;
   }
   .brand b { font-size: 15px; font-weight: 600; }
   .brand span { color: var(--app-text-3); font-size: 11px; display: block; }
@@ -293,7 +295,7 @@
   <!-- 侧栏 -->
   <aside class="side">
     <div class="brand">
-      <span class="mark">泽</span>
+      <img class="mark" src="/icon.png" width="26" height="26" alt="白泽">
       <div><b>白泽智能体</b><span id="brand-sub">控制台</span></div>
     </div>
     <nav id="nav"></nav>

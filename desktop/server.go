@@ -47,8 +47,7 @@ func buildHandler() http.Handler {
 	mux.HandleFunc("/api/local/config", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			s, t := getConfig()
-			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "server": s, "tokenSet": t != ""})
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "config": localConfigSnapshot()})
 		case http.MethodPost:
 			var req struct {
 				Server string `json:"server"`
@@ -57,8 +56,77 @@ func buildHandler() http.Handler {
 			_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req)
 			setConfig(req.Server, req.Token)
 			deviceRestart(baseCtx, "设置页改了连接") // 地址/令牌变了就重连
-			s, t := getConfig()
-			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "server": s, "tokenSet": t != ""})
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "config": localConfigSnapshot()})
+		default:
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "只支持 GET/POST"})
+		}
+	})
+
+	// 桌面控制（权限分级）：这一层是**设备侧真正的闸门**，弹窗只是提醒
+	mux.HandleFunc("/api/local/perm", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok": true, "perm": permNow(), "scopes": scopesNow(),
+				"disclaimerAck": disclaimerAcked(),
+				"levels":        permLevelViews(),
+				"volumes":       listVolumes(),
+			})
+		case http.MethodPost:
+			var req struct {
+				Perm   *int     `json:"perm"`
+				Scopes []string `json:"scopes"`
+				// AckDisclaimer 用户是否已勾选"我已了解风险"。
+				// 高权限档（指定盘 / 完全访问）**必须**为 true，否则拒绝保存。
+				AckDisclaimer bool `json:"ackDisclaimer"`
+			}
+			if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+				writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "请求体解析失败：" + err.Error()})
+				return
+			}
+			if req.Perm == nil {
+				// 只确认免责声明（首次运行引导）
+				ackDisclaimer()
+				writeJSON(w, http.StatusOK, map[string]any{"ok": true, "config": localConfigSnapshot()})
+				return
+			}
+			if err := setGuiPerm(*req.Perm, req.Scopes, req.AckDisclaimer); err != nil {
+				writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+				return
+			}
+			log.Printf("[桌面控制] 权限已改为 %s（范围 %v）", PermTitle(*req.Perm), cleanScopes(req.Scopes))
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "config": localConfigSnapshot()})
+		default:
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "只支持 GET/POST"})
+		}
+	})
+
+	// 数据目录：桌面端的配置与日志放哪儿（默认 %APPDATA%\白泽，可改到 D 盘等）
+	mux.HandleFunc("/api/local/datadir", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok": true, "dataDir": dataDir(), "default": defaultDataDir(), "configPath": cfgPath,
+			})
+		case http.MethodPost:
+			var req struct {
+				Dir string `json:"dir"`
+			}
+			_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req)
+			if strings.TrimSpace(req.Dir) == "" {
+				// 传空 = 恢复默认
+				cfgMu.Lock()
+				cfg.DataDir = ""
+				saveConfigLocked()
+				cfgMu.Unlock()
+				writeJSON(w, http.StatusOK, map[string]any{"ok": true, "dataDir": dataDir(), "default": defaultDataDir()})
+				return
+			}
+			if err := setDataDir(req.Dir); err != nil {
+				writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "dataDir": dataDir(), "configPath": cfgPath})
 		default:
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "只支持 GET/POST"})
 		}

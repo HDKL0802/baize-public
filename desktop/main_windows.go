@@ -28,14 +28,11 @@ import (
 )
 
 // setupLogging: 以 GUI 子系统链接（-H windowsgui）启动时没有控制台窗口，日志默认
-// 无处可去。这里把它落到 %APPDATA%\白泽\desktop.log，同时仍写 stderr（有控制台时可见）。
+// 无处可去。这里把它落到 <数据目录>\desktop.log，同时仍写 stderr（有控制台时可见）。
+// 数据目录默认 %APPDATA%\白泽，用户可以在「设置 → 数据目录」里改到 D 盘等位置。
 // 超过 512KB 就先删掉重来，免得无限长大。
 func setupLogging() {
-	dir, err := os.UserConfigDir()
-	if err != nil || dir == "" {
-		dir = "."
-	}
-	dir = filepath.Join(dir, "白泽")
+	dir := dataDir()
 	_ = os.MkdirAll(dir, 0o755)
 	path := filepath.Join(dir, "desktop.log")
 	if fi, err := os.Stat(path); err == nil && fi.Size() > 512*1024 {
@@ -49,6 +46,8 @@ func setupLogging() {
 }
 
 func main() {
+	// 先读本地配置（数据目录可能被改过），再按数据目录去落日志
+	loadConfig()
 	setupLogging()
 
 	addr := flag.String("addr", "127.0.0.1:0", "本机回环监听地址")
@@ -64,7 +63,6 @@ func main() {
 	}
 	cleanupOldVersion() // 上次自动更新留下的 .old 顺手删掉
 
-	loadConfig()
 	if strings.TrimSpace(*server) != "" || strings.TrimSpace(*token) != "" {
 		setConfig(*server, *token)
 	}

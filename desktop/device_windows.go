@@ -28,7 +28,7 @@ import (
 	"baize/shared/proto"
 )
 
-const desktopAppVersion = "0.5.1"
+const desktopAppVersion = "0.5.2"
 
 /* ---------------- 本机信息（与 agent/internal/sysinfo 同一口径） ---------------- */
 
@@ -84,7 +84,9 @@ func deviceID() string {
 	return sanitize(hostname()) + "-" + toHex(h.Sum32())
 }
 
-func caps() []string { return []string{proto.CapWindow, proto.CapFs} }
+// caps 本机能力标记：**完全由桌面控制权限等级决定**（权限不够的能力根本不上报，
+// 后端也就不会派这类活过来）。等级说明见 perm.go。
+func caps() []string { return permCaps() }
 
 func localInfo() map[string]any {
 	wd, _ := os.Getwd()
@@ -214,6 +216,18 @@ func pathsFrom(args map[string]any) ([]string, error) {
 }
 
 func runAction(action string, args map[string]any) (map[string]any, error) {
+	// 桌面控制权限闸门：**先过闸门再动手**。fs 类动作先把 paths 抽出来给闸门看范围，
+	// 越权直接在这儿被挡下（错误信息会如实回给后端与用户）。
+	var gatePaths []string
+	if action == proto.ActionFsStat || action == proto.ActionFsDelete {
+		if ps, err := pathsFrom(args); err == nil {
+			gatePaths = ps
+		}
+	}
+	if err := permGate(action, gatePaths); err != nil {
+		return nil, err
+	}
+
 	switch action {
 	case proto.ActionPing:
 		return map[string]any{"pong": true, "at": time.Now().UnixMilli()}, nil
@@ -232,10 +246,65 @@ func runAction(action string, args map[string]any) (map[string]any, error) {
 		}
 		return statPaths(paths), nil
 	case proto.ActionFsDelete:
-		return nil, errors.New("桌面端不执行删除（本端只读；请在 PowerShell 里手动做，或走带护栏的 agent 桌面端）")
+		paths, err := pathsFrom(args)
+		if err != nil {
+			return nil, err
+		}
+		return deletePaths(paths), nil
 	default:
-		return nil, fmt.Errorf("本端不支持的动作：%s（只读：ping / sys.info / window.now / fs.stat）", action)
+		return nil, fmt.Errorf("本端不支持的动作：%s（支持：ping / %s / %s / %s / %s）",
+			action, proto.ActionSysInfo, proto.ActionWindowNow, proto.ActionFsStat, proto.ActionFsDelete)
 	}
+}
+
+// deletePaths 删除文件/目录。**只有在「完全访问」档 + 后端人工审批通过后**才会走到这里，
+// 所以这里再做一层"危险目标"护栏：盘根与系统目录一律拒绝，避免手滑把系统删了。
+func deletePaths(paths []string) map[string]any {
+	items := make([]map[string]any, 0, len(paths))
+	for _, p := range paths {
+		item := map[string]any{"path": p, "removed": false}
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			item["error"] = "路径不合法"
+			items = append(items, item)
+			continue
+		}
+		abs = filepath.Clean(abs)
+		if guardedPath(abs) {
+			item["abs"] = abs
+			item["error"] = "拒绝删除盘根或系统目录（护栏）"
+			items = append(items, item)
+			continue
+		}
+		if err := os.RemoveAll(abs); err != nil {
+			item["error"] = err.Error()
+			items = append(items, item)
+			continue
+		}
+		item["abs"] = abs
+		item["removed"] = true
+		items = append(items, item)
+	}
+	return map[string]any{"count": len(items), "items": items}
+}
+
+// guardedPath 是不是"不许删"的路径：盘根、以及系统目录的第一层
+func guardedPath(abs string) bool {
+	// 盘根：D:\ 这种（去掉了末尾反斜杠也就剩 "D:"）
+	if len(abs) <= 3 && strings.HasSuffix(abs, `:\`) {
+		return true
+	}
+	vol := filepath.VolumeName(abs)
+	rest := strings.TrimPrefix(strings.TrimPrefix(abs, vol), `\`)
+	first := rest
+	if i := strings.Index(rest, `\`); i >= 0 {
+		first = rest[:i]
+	}
+	switch strings.ToLower(strings.TrimSpace(first)) {
+	case "windows", "program files", "program files (x86)", "programdata", "system volume information", "$recycle.bin":
+		return true
+	}
+	return false
 }
 
 /* ---------------- 设备连接状态（给界面看） ---------------- */
@@ -341,6 +410,7 @@ func restartDevice(ctx context.Context, trigger string) {
 			DeviceID: id, Name: hostname(), OS: runtime.GOOS, Arch: runtime.GOARCH,
 			Hostname: hostname(), User: username(), Version: desktopAppVersion,
 			Protocol: proto.Version, Caps: caps(), StartedAt: time.Now().UnixMilli(),
+			GuiPerm: permNow(), GuiScopes: scopesNow(),
 		},
 	}
 	onReady := func(sess *client.Session) {

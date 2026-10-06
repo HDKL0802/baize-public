@@ -34,6 +34,7 @@ Unicode true
 !endif
 
 Var IsUpdate
+Var PrevVersion
 
 !define APPNAME   "白泽"
 !define APPEXE    "baize-desktop.exe"
@@ -49,6 +50,12 @@ OutFile "${OUTFILE}"
 ; 安装包 / 卸载器 / 窗口都用同一个图标（assets/icon.ico）
 Icon "${ICON}"
 UninstallIcon "${ICON}"
+
+; 全新安装的欢迎页：把"风险与免责"写在最前面（用户明确要求"本台电脑安装时也要有提醒"）。
+; 更新时会跳过这一页，但桌面端里第一次打开「设置 → 桌面控制」还会再提醒一次。
+!define MUI_WELCOMEPAGE_TITLE "欢迎安装白泽桌面端"
+!define MUI_WELCOMEPAGE_TEXT "白泽是私有部署的个人智能体：数据都放在你自己的 NAS 上，桌面端只当「手脚」。$\r$\n$\r$\n请注意：桌面端会按你在「桌面控制」里的授权被派活（读本机信息 / 读文件，最高档甚至允许删除文件）。$\r$\n$\r$\n$\r$\n放开高权限所产生的一切后果由你自行承担，与白泽作者无关。$\r$\n建议从最低权限开始，确认无误再逐步放开。"
+!define MUI_WELCOMEPAGE_TITLE_3LINES
 
 ; Per-user install: no UAC, no admin, and it lines up with the app writing its
 ; own autostart entry to HKCU (see autostart_windows.go).
@@ -72,10 +79,12 @@ VIAddVersionKey /LANG=2052 "LegalCopyright" "MIT License"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APPEXE}"
 !define MUI_FINISHPAGE_RUN_TEXT "立即启动白泽"
 
-; 更新模式（检测到已安装）时跳过欢迎页与选目录页，直接更新
+; 页面：检测到已安装时跳过"欢迎页"，但**目录页始终显示** ——
+; 用户的诉求是"既要自动认出来是更新，也要能改到别的盘"，跳过目录页就改不了盘了。
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfUpdate
 !insertmacro MUI_PAGE_WELCOME
-!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfUpdate
+!define MUI_PAGE_HEADER_TEXT "白泽桌面端"
+!define MUI_PAGE_HEADER_SUBTEXT "选择安装位置（检测到已安装时默认沿用原目录，也可以改到别的盘或目录）"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
@@ -86,15 +95,51 @@ VIAddVersionKey /LANG=2052 "LegalCopyright" "MIT License"
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "English"
 
-; .onInit：先判断是不是「已装过」——
-;  - 已装过：沿用原目录、进更新模式（跳过欢迎/选目录），不再像「重新安装」；
-;  - 全新安装：优先装到非系统盘（有 D/E/F 就装过去），否则回退到 %LOCALAPPDATA%。
+; .onInit：先**尽量认出"本机已经装过白泽"**，认出就按更新走（沿用原目录，不再像重新安装），
+; 认不出才当全新安装。
+;
+; 为什么要多路探测：老版本（0.4.x）的安装器不一定写了我们自己的记录键，
+; 只读一个键就会漏检，用户就会看到"又是重新安装一遍"（实测踩过）。
+; 所以按「可信度从高到低」依次试，任一命中即算已安装。
 Function .onInit
+  StrCpy $IsUpdate 0
+  StrCpy $PrevVersion ""
+  StrCpy $0 ""
+
+  ; ① 我们自己的记录（0.5.0 起写）
   ReadRegStr $0 HKCU "Software\Baize\Desktop" "InstallDir"
+  ; ② 卸载信息里的安装位置（更老版本可能只写了这个）
+  ${If} $0 == ""
+    ReadRegStr $0 HKCU "${UNKEY}" "InstallLocation"
+  ${EndIf}
+  ; ③ 默认位置里已经有主程序（最兜底：注册表没写也能认出来）
+  ${If} $0 == ""
+    ${If} ${FileExists} "$LOCALAPPDATA\Programs\Baize\${APPEXE}"
+      StrCpy $0 "$LOCALAPPDATA\Programs\Baize"
+    ${EndIf}
+  ${EndIf}
+  ; ④ 老版本装在别的盘（用户要求"自己扫描一遍"）：把常见位置扫一遍
+  ${If} $0 == ""
+    ${If} ${FileExists} "D:\Programs\Baize\${APPEXE}"
+      StrCpy $0 "D:\Programs\Baize"
+    ${ElseIf} ${FileExists} "E:\Programs\Baize\${APPEXE}"
+      StrCpy $0 "E:\Programs\Baize"
+    ${ElseIf} ${FileExists} "F:\Programs\Baize\${APPEXE}"
+      StrCpy $0 "F:\Programs\Baize"
+    ${EndIf}
+  ${EndIf}
+
   ${If} $0 != ""
+    ReadRegStr $1 HKCU "${UNKEY}" "DisplayVersion"
+    StrCpy $PrevVersion $1
     StrCpy $INSTDIR $0
     StrCpy $IsUpdate 1
+    ; 明确告诉用户"这是更新"，并说清下一步可以改盘
+    MessageBox MB_OKCANCEL|MB_ICONINFORMATION "检测到本机已安装白泽（版本 $PrevVersion）。$\r$\n$\r$\n将更新到：$\r$\n$INSTDIR$\r$\n$\r$\n下一步可以改到别的盘或目录。$\r$\n$\r$\n继续更新？" IDOK update_ok
+    Abort
+    update_ok:
   ${Else}
+    ; 全新安装：默认选非系统盘（有 D/E/F 就装过去），用户仍可在目录页改
     ${If} ${FileExists} "D:\*.*"
       StrCpy $INSTDIR "D:\Programs\Baize"
     ${ElseIf} ${FileExists} "E:\*.*"

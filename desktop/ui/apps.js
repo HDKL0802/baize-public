@@ -27,14 +27,34 @@ window.API = {
   get(p) { return this.call(p, 'GET'); },
   post(p, b) { return this.call(p, 'POST', b); },
   async localConfig() {
-    try { return await (await fetch('/api/local/config')).json(); }
-    catch (e) { return { ok: false, error: String(e) }; }
+    try {
+      const r = await (await fetch('/api/local/config')).json();
+      // 原生侧返回 {ok, config:{server,tokenSet,guiPerm,guiScopes,disclaimerAck,dataDir,...}}；
+      // 这里摊平一层，调用方直接用 c.server / c.guiPerm。
+      if (r && r.config) return Object.assign({ ok: r.ok !== false }, r.config);
+      return r && typeof r === 'object' ? r : { ok: false };
+    } catch (e) { return { ok: false, error: String(e) }; }
   },
   async saveConfig(server, token) {
     try {
-      return await (await fetch('/api/local/config', {
+      const r = await (await fetch('/api/local/config', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ server: server, token: token }),
+      })).json();
+      if (r && r.config) return Object.assign({ ok: r.ok !== false }, r.config);
+      return r || { ok: false };
+    } catch (e) { return { ok: false, error: String(e) }; }
+  },
+  // 本机 JSON 小工具：/api/local/* 都是这一层（含桌面控制权限、数据目录、自启、退出）
+  async localGet(path) {
+    try { return await (await fetch('/api/local' + path)).json(); }
+    catch (e) { return { ok: false, error: String(e) }; }
+  },
+  async localPost(path, body) {
+    try {
+      return await (await fetch('/api/local' + path, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
       })).json();
     } catch (e) { return { ok: false, error: String(e) }; }
   },
@@ -108,8 +128,45 @@ async function renderSettings(root) {
 
       <div class="sect">
         <h3>本机设备（这台电脑）</h3>
-        <div class="sub">桌面端自己也注册成设备，可以被 NAS 派活；只读能力：ping / sys.info / window.now / fs.stat（不做删除）。</div>
+        <div class="sub">桌面端自己也注册成设备，可以被 NAS 派活；<b>能做什么由下面的「桌面控制」权限决定</b>。</div>
         <div id="setDev" class="pre">读取中…</div>
+      </div>
+
+      <div class="sect">
+        <h3>桌面控制（智能体能对这台电脑做什么）</h3>
+        <div class="sub">这是<b>设备侧真正的闸门</b>：权限不够的能力，本机根本不会上报给后端，后端也就派不过来。
+          高权限档（只读指定盘 / 完全访问）需要先确认下面的风险提示。</div>
+        <div id="permLevels" style="display:grid;gap:6px;margin-bottom:10px">读取中…</div>
+        <div class="fields" id="permScopeWrap" style="grid-template-columns:1fr" hidden>
+          <div><label>允许的范围（每行一条；第 2 档填目录如 D:\\文档，第 3 档填盘如 D:\\）</label>
+            <textarea id="permScopes" style="min-height:70px" placeholder="D:\\文档&#10;E:\\项目"></textarea></div>
+        </div>
+        <div class="fields" id="permDiskWrap" style="grid-template-columns:1fr" hidden>
+          <div><label>本机可选的盘（勾选允许读取的盘）</label><div id="permDisks" class="sub" style="margin:4px 0 0"></div></div>
+        </div>
+        <label class="sub" id="permAckWrap" style="display:flex;gap:6px;align-items:flex-start;margin:10px 0" hidden>
+          <input type="checkbox" id="permAck">
+          <span>我已了解：放开高权限后，智能体可以读取（甚至删除）本机文件；<b>由此产生的一切后果由我自己承担</b>，
+            与白泽作者无关。</span></label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn" id="permSave">保存桌面控制权限</button>
+          <span class="sub" id="permMsg" style="margin:0"></span>
+        </div>
+      </div>
+
+      <div class="sect">
+        <h3>数据目录</h3>
+        <div class="sub">桌面端的配置与日志放哪儿。<b>不是必须放 C 盘</b> —— 默认在
+          <span class="mono" id="ddDefault">…</span>，你可以改到 D 盘或任意文件夹（改完立即搬过去）。
+          <br>（NAS 上后端的数据目录由部署时决定，改法见项目文档 §4.1。）</div>
+        <div class="fields" style="grid-template-columns:1fr 150px">
+          <div><label>数据目录</label><input id="ddPath" placeholder="例如 D:\\白泽数据"></div>
+          <div style="display:flex;align-items:flex-end"><button class="btn ghost" id="ddReset">恢复默认</button></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn" id="ddSave">保存并迁移</button>
+          <span class="sub" id="ddMsg" style="margin:0"></span>
+        </div>
       </div>
 
       <div class="sect">
@@ -160,6 +217,135 @@ async function renderSettings(root) {
     $i('upCur').textContent = dv.version || '—';
     if (c.server) await test();
   };
+
+  /* ---------- 桌面控制权限 ---------- */
+  let permState = { perm: 1, scopes: [], levels: [], volumes: [], disclaimerAck: false };
+  const permLevelEl = lv =>
+    `<label class="row" style="align-items:flex-start;padding:6px 0">
+       <input type="radio" name="permLv" value="${lv.level}" style="margin-top:3px">
+       <span class="who"><b>${esc(lv.title)}${lv.risky ? ' <span class="tag warn">高风险</span>' : ''}</b>
+       <span>${esc(lv.desc)}</span></span></label>`;
+  const permDirty = () => {
+    const lv = permChosen();
+    const needScope = (permState.levels.find(x => x.level === lv) || {}).needScope;
+    const risky = (permState.levels.find(x => x.level === lv) || {}).risky;
+    $i('permScopeWrap').hidden = !needScope;
+    $i('permDiskWrap').hidden = lv !== 3;      // 3 = 只读指定盘：给盘符勾选
+    $i('permAckWrap').hidden = !risky;
+  };
+  const permChosen = () => {
+    const el = root.querySelector('input[name=permLv]:checked');
+    return el ? Number(el.value) : permState.perm;
+  };
+  const permScopesFromUI = () => {
+    const lv = permChosen();
+    if (lv === 3) {
+      const out = [];
+      root.querySelectorAll('#permDisks input[type=checkbox]').forEach(c => { if (c.checked) out.push(c.value); });
+      return out;
+    }
+    return $i('permScopes').value.split('\n').map(s => s.trim()).filter(Boolean);
+  };
+
+  const loadPerm = async () => {
+    const r = await API.localGet('/perm');
+    if (!r || !r.ok) { $i('permLevels').innerHTML = `<span class="err">${esc((r && r.error) || '读不到')}</span>`; return; }
+    permState = { perm: r.perm | 0, scopes: r.scopes || [], levels: r.levels || [], volumes: r.volumes || [], disclaimerAck: !!r.disclaimerAck };
+    $i('permLevels').innerHTML = permState.levels.map(permLevelEl).join('');
+    root.querySelectorAll('input[name=permLv]').forEach(el => {
+      el.checked = Number(el.value) === permState.perm;
+      el.onchange = permDirty;
+    });
+    $i('permScopes').value = (permState.scopes || []).join('\n');
+    $i('permDisks').innerHTML = permState.volumes.length
+      ? permState.volumes.map(v => {
+          const on = (permState.scopes || []).some(s => String(s).toUpperCase().startsWith(v.toUpperCase().slice(0, 2)));
+          return `<label class="sub" style="margin:0 14px 0 0"><input type="checkbox" value="${esc(v)}" ${on ? 'checked' : ''}> ${esc(v)}</label>`;
+        }).join('')
+      : '<span class="err">没读到任何盘（非 Windows 或权限不足）</span>';
+    // 没确认过免责声明 → 首次启动也要提醒（用户要求：本台电脑第一次用就得看到）
+    if (!permState.disclaimerAck) showDisclaimer(() => {});
+    permDirty();
+  };
+
+  // showDisclaimer 免责提醒弹窗。onOk 在用户勾选并确认后回调；
+  // 真正的闸门在原生侧（保存高权限时也要求 ack=true），这里只是别让人"不知情就点下去"。
+  const showDisclaimer = (onOk) => {
+    if (root.querySelector('#discBox')) return;
+    const box = el(`<div id="discBox" style="position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:120;display:grid;place-items:center">
+      <div style="width:min(620px,92vw);background:var(--surface);border:1px solid var(--border-strong);padding:20px">
+        <h3 style="margin:0 0 8px">风险与免责声明</h3>
+        <div class="sub" style="line-height:1.7">
+          白泽的「桌面控制」允许你把这个智能体接到本机上执行操作。放开权限前请清楚：
+          <br>1. 高权限（<b>只读指定盘</b> / <b>完全访问</b>）意味着智能体可以读取、甚至删除本机文件；
+          <br>2. 智能体可能出现误解指令、误删文件等不可预期行为，请务必先备份重要数据；
+          <br>3. <b>你自行选择放开权限所产生的一切后果由你自己承担，与白泽作者无关</b>；
+          <br>4. 建议从最低档（关闭 / 只读）开始，确认无误再逐步放开。
+        </div>
+        <label class="sub" style="display:flex;gap:6px;align-items:flex-start;margin:14px 0">
+          <input type="checkbox" id="discAck"><span>我已阅读并理解上述风险，自愿承担相应后果。</span></label>
+        <div style="display:flex;gap:10px">
+          <button class="btn" id="discOk">我已了解</button>
+          <button class="btn ghost" id="discLater">稍后再说</button>
+        </div>
+      </div></div>`);
+    root.appendChild(box);
+    box.querySelector('#discOk').onclick = async () => {
+      if (!box.querySelector('#discAck').checked) return;
+      await API.localPost('/perm', { ackDisclaimer: true }); // 只确认声明，不改权限
+      box.remove();
+      onOk && onOk();
+      await loadPermQuiet();
+    };
+    box.querySelector('#discLater').onclick = () => box.remove();
+  };
+  const loadPermQuiet = async () => { permState.disclaimerAck = true; };
+
+  $i('permSave').onclick = async () => {
+    const lv = permChosen();
+    const lvInfo = permState.levels.find(x => x.level === lv) || {};
+    const body = { perm: lv, scopes: permScopesFromUI(), ackDisclaimer: !!(lvInfo.risky && $i('permAck').checked) };
+    if (lvInfo.risky && !body.ackDisclaimer) {
+      $i('permMsg').innerHTML = '<span class="err">这一档需要先勾选风险免责</span>';
+      return;
+    }
+    if (lvInfo.needScope && body.scopes.length === 0) {
+      $i('permMsg').innerHTML = '<span class="err">这一档需要先圈定范围（目录或盘）</span>';
+      return;
+    }
+    $i('permMsg').textContent = '保存中…';
+    const r = await API.localPost('/perm', body);
+    if (!r || !r.ok) { $i('permMsg').innerHTML = `<span class="err">${esc((r && r.error) || '保存失败')}</span>`; return; }
+    $i('permMsg').innerHTML = `<span class="ok">已保存：${esc(lvInfo.title || lv)}（设备会重连以更新能力）</span>`;
+    await loadPerm();
+    refresh();
+  };
+
+  /* ---------- 数据目录 ---------- */
+  const loadDataDir = async () => {
+    const r = await API.localGet('/datadir');
+    if (!r || !r.ok) return;
+    $i('ddPath').value = r.dataDir || '';
+    $i('ddDefault').textContent = r.default || '—';
+  };
+  $i('ddSave').onclick = async () => {
+    const dir = $i('ddPath').value.trim();
+    if (!dir) { $i('ddMsg').innerHTML = '<span class="err">请填一个目录</span>'; return; }
+    if (!confirm(`把数据目录改到：\n${dir}\n\n配置文件会搬过去（日志下次启动起在新位置）。继续？`)) return;
+    $i('ddMsg').textContent = '迁移中…';
+    const r = await API.localPost('/datadir', { dir: dir });
+    if (!r || !r.ok) { $i('ddMsg').innerHTML = `<span class="err">${esc((r && r.error) || '失败')}</span>`; return; }
+    $i('ddMsg').innerHTML = '<span class="ok">已迁移（重启后日志也在新位置）</span>';
+    await loadDataDir();
+  };
+  $i('ddReset').onclick = async () => {
+    $i('ddMsg').textContent = '恢复默认中…';
+    const r = await API.localPost('/datadir', { dir: '' });
+    if (!r || !r.ok) { $i('ddMsg').innerHTML = `<span class="err">${esc((r && r.error) || '失败')}</span>`; return; }
+    $i('ddMsg').innerHTML = '<span class="ok">已恢复默认</span>';
+    await loadDataDir();
+  };
+
   const test = async () => {
     $i('setState').textContent = '测试中…';
     const r = await API.get('/api/health');
@@ -227,6 +413,8 @@ async function renderSettings(root) {
     $i('upMsg').innerHTML = `<span class="err">${esc((r && r.error) || '升级失败')}</span>`;
   };
 
+  await loadPerm();
+  await loadDataDir();
   refresh();
 }
 

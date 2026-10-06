@@ -138,6 +138,13 @@ type Hello struct {
 	Caps      []string `json:"caps"`
 	StartedAt int64    `json:"startedAt"`
 	Token     string   `json:"token,omitempty"` // 配对令牌
+
+	// GuiPerm 桌面端的「桌面控制」权限等级（0=关闭 1=只读 2=只读指定目录 3=只读指定盘 4=完全访问）。
+	// 0 同时也是"不是桌面端/没上报"的默认值；手机端等其它端不上报这个字段。
+	// 它在设备侧已经决定了 caps（权限不够的能力根本不上报），这里再报一次是为了
+	// 让后端/控制台能直接把"这台机器放开了多少"显示给人看。
+	GuiPerm   int      `json:"guiPerm,omitempty"`
+	GuiScopes []string `json:"guiScopes,omitempty"`
 }
 
 // HelloAck 后端 → 端 注册结果

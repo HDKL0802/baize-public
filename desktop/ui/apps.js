@@ -135,6 +135,7 @@ window.APPS = [
   { id: 'memory', name: '记忆星图', icon: '🧠', w: 980, h: 640 },
   { id: 'providers', name: '模型通道', icon: '✨', w: 860, h: 560 },
   { id: 'mcp', name: 'MCP 服务', icon: '🔌', w: 820, h: 560 },
+  { id: 'external', name: '外部 Agent', icon: '🤖', w: 1000, h: 700 },
   { id: 'skills', name: '技能', icon: '🧩', w: 820, h: 560 },
   { id: 'plugins', name: '插件市场', icon: '📦', w: 1000, h: 660 },
   { id: 'persona', name: '人设', icon: '🎭', w: 940, h: 640 },
@@ -251,8 +252,8 @@ async function renderSettings(root) {
       <div class="sect">
         <h3>关于</h3>
         <div class="sub">白泽桌面端（Go + WebView2，纯 Go 无 cgo）· 冷色暗色直角<br>
-          控制台 12 个应用 + 协作 2 个（账号与共享 / 冲突协商）+ 插件市场已全部接入；本机作为设备的能力已接（只读）。<br>
-          已接：开机自启、关窗隐藏到托盘、自动更新、NSIS 安装包、多用户与组共享、插件市场。</div>
+          控制台 12 个应用 + 协作 2 个（账号与共享 / 冲突协商）+ 插件市场 / 可观测性 / 外部 Agent 已全部接入；本机作为设备的能力已接（只读）。<br>
+          已接：开机自启、关窗隐藏到托盘、自动更新、NSIS 安装包、多用户与组共享、插件市场、可观测性、外部 Agent 委托。</div>
       </div>
     </div>`;
 

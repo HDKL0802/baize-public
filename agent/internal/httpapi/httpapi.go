@@ -104,10 +104,15 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 }
 
 func decodeBody(r *http.Request, v any) error {
+	return decodeBodyMax(r, v, 1<<20)
+}
+
+// decodeBodyMax 同 decodeBody，但可指定请求体上限（截图这类大 body 用得上）
+func decodeBodyMax(r *http.Request, v any, maxBytes int64) error {
 	if r.Body == nil {
 		return errors.New("请求体为空")
 	}
-	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))
+	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, maxBytes))
 	if err := dec.Decode(v); err != nil {
 		return errors.New("请求体解析失败：" + err.Error())
 	}

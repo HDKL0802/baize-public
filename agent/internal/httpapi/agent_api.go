@@ -467,6 +467,31 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 		}
 	}))
 
+	// 截图提问：把一张截图交给多模态模型做「提取文字 / 翻译」
+	mux.HandleFunc("POST /api/agent/vision", s.api(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Action      string `json:"action"` // extract | translate
+			ImageBase64 string `json:"imageBase64"`
+			Lang        string `json:"lang"` // translate 用：zh | en
+		}
+		// 截图 base64 可能好几 MB：这个口子把 body 上限放大（默认 1MB 装不下）
+		if err := decodeBodyMax(r, &req, 32<<20); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
+		defer cancel()
+		res, err := a.Vision(ctx, req.Action, req.ImageBase64, req.Lang)
+		out := map[string]any{
+			"action": res.Action, "text": res.Text,
+			"model": res.Model, "latencyMs": res.LatencyMs,
+		}
+		if err != nil {
+			out["error"] = err.Error()
+		}
+		writeJSON(w, http.StatusOK, out)
+	}))
+
 	mux.HandleFunc("GET /api/agent/mcp", s.api(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"servers": a.MCP(), "hint": a.MCPHints()})
 	}))

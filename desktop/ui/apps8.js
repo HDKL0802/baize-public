@@ -73,7 +73,7 @@ async function renderShot(root) {
       bytes(latest.sizeBytes || 0) + ' · ' + fmtTime(latest.at);
   };
 
-  // refresh 汇报"有没有新图"（at 变了）；新图来了就顺带清掉上一次的识别结果
+  // refresh 汇报"有没有新图"（at 变了）；新图来了就清掉上次结果，并执行操作条带过来的动作
   const refresh = async () => {
     const r = await fetch('/api/local/shot/latest').then(x => x.json()).catch(() => null);
     if (!r || !r.ok) return false;
@@ -84,6 +84,9 @@ async function renderShot(root) {
     setButtons();
     $i('shotResult').textContent = '';
     $i('shotCopyText').hidden = true;
+    // 从截图操作条带过来的动作（「复制」在原生侧就完成了，这里只剩 extract/translate/ask）
+    if (r.action === 'extract' || r.action === 'translate') runVision(r.action);
+    else if (r.action === 'ask') askInChat();
     return true;
   };
 
@@ -117,29 +120,46 @@ async function renderShot(root) {
     else Shell.toast('复制失败：' + ((r && r.error) || '未知错误'), 'err');
   };
 
-  const askVision = async (action) => {
-    if (!latest) { Shell.toast('先截一张图', 'err'); return; }
-    const btn = action === 'translate' ? $i('shotTranslate') : $i('shotExtract');
-    btn.disabled = true;
-    $i('shotResult').textContent = action === 'translate' ? '翻译中…（可能几秒）' : '识别中…（可能几秒）';
+  // 把当前截图交给后端多模态模型；返回识别/翻译出的文字（失败返回 null）
+  const visionText = async (action) => {
+    if (!latest) { Shell.toast('先截一张图', 'err'); return null; }
     const body = { action: action, imageBase64: latest.imageBase64 };
     if (action === 'translate') body.lang = $i('shotLang').value;
     const r = await API.post('/api/agent/vision', body);
-    btn.disabled = false;
-    if (!r.ok) {
-      $i('shotResult').innerHTML = '<span class="err">失败：' + esc(r.error || '未知错误') + '</span>';
-      return;
-    }
+    if (!r.ok) { Shell.toast('失败：' + (r.error || '未知错误'), 'err'); return null; }
     const d = r.data || {};
-    $i('shotResult').textContent = d.text || '（没有识别到内容）';
-    $i('shotCopyText').hidden = false;
     if (d.model) Shell.toast('模型 ' + d.model + ' · ' + (d.latencyMs || 0) + ' ms', 'ok');
+    return d.text || '';
+  };
+
+  // 提取文字 / 翻译：结果显示在结果区
+  const runVision = async (action) => {
+    const btn = action === 'translate' ? $i('shotTranslate') : $i('shotExtract');
+    if (btn) btn.disabled = true;
+    $i('shotResult').textContent = action === 'translate' ? '翻译中…（可能几秒）' : '识别中…（可能几秒）';
+    const text = await visionText(action);
+    if (btn) btn.disabled = false;
+    if (text == null) { $i('shotResult').textContent = ''; return; }
+    $i('shotResult').textContent = text || '（没有识别到内容）';
+    $i('shotCopyText').hidden = false;
+  };
+
+  // 问问白泽：把截图里的文字带进对话（对话暂不支持图片，先带文字过去接着问）
+  const askInChat = async () => {
+    const text = await visionText('extract');
+    if (text == null) return;
+    location.hash = '#chat';
+    setTimeout(() => {
+      const ta = document.querySelector('#chGoal');
+      if (ta) { ta.value = text; ta.focus(); }
+      Shell.toast('已把截图文字带进对话，接着问吧', 'ok');
+    }, 80);
   };
 
   $i('shotNew').onclick = capture;
   $i('shotCopy').onclick = copyImage;
-  $i('shotExtract').onclick = () => askVision('extract');
-  $i('shotTranslate').onclick = () => askVision('translate');
+  $i('shotExtract').onclick = () => runVision('extract');
+  $i('shotTranslate').onclick = () => runVision('translate');
   $i('shotCopyText').onclick = async () => {
     const t = $i('shotResult').textContent || '';
     if (!t) return;

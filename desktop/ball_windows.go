@@ -52,6 +52,7 @@ const (
 // 悬浮球菜单项（menuOpen / menuQuit 复用托盘那两个 id）
 const menuTasks = 1003
 const menuShot = 1004
+const menuFloat = 1005
 
 // SetWindowPos 的插入位序（HWND_TOPMOST = -1 / HWND_NOTOPMOST = -2，用补码表示）
 const (
@@ -348,8 +349,11 @@ func ballShowMenu(hwnd uintptr) {
 		return
 	}
 	defer pDestroyMenu.Call(hmenu)
-	appendMenu(hmenu, mfString, menuOpen, "打开白泽")
+	// 照豆包的排布：窗口 / 对话浮窗 / 截图提问 / --- / 待审批 / --- / 退出
+	appendMenu(hmenu, mfString, menuOpen, "打开白泽窗口")
+	appendMenu(hmenu, mfString, menuFloat, "打开对话浮窗")
 	appendMenu(hmenu, mfString, menuShot, "截图提问")
+	appendMenu(hmenu, mfSeparator, 0, "")
 	label := "待审批"
 	if ballPending > 0 {
 		label = "待审批（" + strconv.Itoa(ballPending) + "）"
@@ -366,6 +370,8 @@ func ballShowMenu(hwnd uintptr) {
 	switch cmd {
 	case menuOpen:
 		ballOpenMain(false)
+	case menuFloat:
+		enterMiniChat()
 	case menuShot:
 		startShotCapture()
 	case menuTasks:

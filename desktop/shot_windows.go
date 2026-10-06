@@ -35,6 +35,22 @@ const (
 	vkEscape  = 0x1B
 
 	shotOverlayClass = "BaizeShotOverlay"
+
+	// 框选阶段
+	shotPhaseSelect  = 0 // 正在拖框
+	shotPhaseToolbar = 1 // 已框好、操作条已弹出
+
+	// 操作条按钮
+	shotActCopy      = 1
+	shotActExtract   = 2
+	shotActTranslate = 3
+	shotActCancel    = 4
+	shotActAsk       = 5
+
+	shotBarH = 42 // 操作条高度
+
+	// PatBlt 的 PATINVERT：dst = dst XOR 图案 —— 配 50% 棋盘格笔刷就是"选区外压暗"
+	patInvert = 0x005A0049
 )
 
 var (
@@ -44,17 +60,50 @@ var (
 	pGetDC                  = shotUser32.NewProc("GetDC")
 	pReleaseDC              = shotUser32.NewProc("ReleaseDC")
 	pFrameRect              = shotUser32.NewProc("FrameRect")
+	pDrawTextW              = shotUser32.NewProc("DrawTextW")
+	pFillRect               = shotUser32.NewProc("FillRect")
 	pCreateCompatibleDC     = shotGdi32.NewProc("CreateCompatibleDC")
 	pCreateCompatibleBitmap = shotGdi32.NewProc("CreateCompatibleBitmap")
 	pBitBlt                 = shotGdi32.NewProc("BitBlt")
 	pGetDIBits              = shotGdi32.NewProc("GetDIBits")
 	pDeleteDC               = shotGdi32.NewProc("DeleteDC")
+	pPatBlt                 = shotGdi32.NewProc("PatBlt")
+	pCreateBitmap           = shotGdi32.NewProc("CreateBitmap")
+	pCreatePatternBrush     = shotGdi32.NewProc("CreatePatternBrush")
+	pCreateFontW            = shotGdi32.NewProc("CreateFontW")
+	pSetBkMode              = shotGdi32.NewProc("SetBkMode")
+	pSetTextColor           = shotGdi32.NewProc("SetTextColor")
+	pRoundRect              = shotGdi32.NewProc("RoundRect")
 
 	shotWndProcCb = syscall.NewCallback(shotWndProc)
 
 	shotRunMu   sync.Mutex
 	shotRunning bool
 )
+
+// shotRect 屏幕坐标矩形（左上右下）
+type shotRect struct{ L, T, R, B int32 }
+
+// shotBarBtn 操作条上的一个按钮
+type shotBarBtn struct {
+	id    int
+	label string
+	w     int32
+	rc    shotRect
+}
+
+// shotBarItems 操作条按钮（照豆包的：复制 / 提取文字 / 翻译 / 取消 / 问问豆包）
+var shotBarItems = []struct {
+	id    int
+	label string
+	w     int32
+}{
+	{shotActCopy, "复制", 62},
+	{shotActExtract, "提取文字", 90},
+	{shotActTranslate, "翻译", 62},
+	{shotActCancel, "取消", 62},
+	{shotActAsk, "问问白泽", 90},
+}
 
 type shotWindow struct {
 	hwnd             uintptr
@@ -69,16 +118,22 @@ type shotWindow struct {
 	hasSel    bool
 	selStart  ballPoint
 	selEnd    ballPoint
+
+	phase int      // shotPhaseSelect / shotPhaseToolbar
+	hover int      // 悬停的按钮 id（0=没有）
+	bar   shotRect // 操作条外框
+	btns  []shotBarBtn
 }
 
 var shotCur *shotWindow
 
 // shotLast 最近一次截到的图（供剪贴板 / 网页接口用）
 type shotResult struct {
-	Path string
-	W, H int
-	BGRA []byte
-	At   int64
+	Path   string
+	W, H   int
+	BGRA   []byte
+	At     int64
+	Action string // 这次截图随带要做的事："" | extract | translate | ask
 }
 
 var (
@@ -252,18 +307,38 @@ func shotWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		return 0
 	case wmLButtonDown:
 		if s != nil {
+			pt := shotPoint(lparam)
+			// 已弹出操作条：先看是不是点在按钮上
+			if s.phase == shotPhaseToolbar {
+				if id := s.hitToolbar(pt); id != 0 {
+					s.act(hwnd, id)
+					return 0
+				}
+			}
+			// 否则（重新）开始框选
+			s.phase = shotPhaseSelect
+			s.hover = 0
 			s.selecting = true
 			s.hasSel = false
-			s.selStart = shotPoint(lparam)
-			s.selEnd = s.selStart
+			s.selStart = pt
+			s.selEnd = pt
 			pSetCapture.Call(hwnd)
+			pInvalidateRect.Call(hwnd, 0, 0)
 		}
 		return 0
 	case wmMouseMove:
-		if s != nil && s.selecting {
+		if s == nil {
+			return 0
+		}
+		if s.selecting {
 			s.selEnd = shotPoint(lparam)
 			s.hasSel = true
 			pInvalidateRect.Call(hwnd, 0, 0)
+		} else if s.phase == shotPhaseToolbar {
+			if h := s.hitToolbar(shotPoint(lparam)); h != s.hover {
+				s.hover = h
+				pInvalidateRect.Call(hwnd, 0, 0)
+			}
 		}
 		return 0
 	case wmLButtonUp:
@@ -276,8 +351,11 @@ func shotWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 				s.selStart = ballPoint{X: 0, Y: 0}
 				s.selEnd = ballPoint{X: int32(s.w), Y: int32(s.h)}
 			}
-			_ = s.finish()
-			pDestroyWindow.Call(hwnd)
+			// 框好了 → 原地弹出操作条（照豆包），不直接落盘
+			s.phase = shotPhaseToolbar
+			s.hover = 0
+			s.layoutToolbar()
+			pInvalidateRect.Call(hwnd, 0, 0)
 		}
 		return 0
 	case wmKeyDown:
@@ -301,6 +379,100 @@ func shotPoint(lparam uintptr) ballPoint {
 func (s *shotWindow) selW() int { return int(abs32(s.selEnd.X - s.selStart.X)) }
 func (s *shotWindow) selH() int { return int(abs32(s.selEnd.Y - s.selStart.Y)) }
 
+// selRect 选区（已归一化：左<右、上<下）
+func (s *shotWindow) selRect() shotRect {
+	x0, y0 := s.selStart.X, s.selStart.Y
+	x1, y1 := s.selEnd.X, s.selEnd.Y
+	if x1 < x0 {
+		x0, x1 = x1, x0
+	}
+	if y1 < y0 {
+		y0, y1 = y1, y0
+	}
+	return shotRect{L: x0, T: y0, R: x1, B: y1}
+}
+
+// layoutToolbar 把操作条摆在选区下方（下面放不下就摆上方），并算好每个按钮的位置
+func (s *shotWindow) layoutToolbar() {
+	sel := s.selRect()
+	const pad, gap = int32(6), int32(2)
+	var total int32 = pad
+	for _, it := range shotBarItems {
+		total += it.w + gap
+	}
+	total += pad - gap
+
+	bx := sel.L
+	if bx+total > int32(s.w) {
+		bx = int32(s.w) - total
+	}
+	if bx < 0 {
+		bx = 0
+	}
+	by := sel.B + 8
+	if by+shotBarH > int32(s.h) {
+		by = sel.T - shotBarH - 8 // 下方放不下 → 摆上方
+	}
+	if by < 0 {
+		by = 0
+	}
+	s.bar = shotRect{L: bx, T: by, R: bx + total, B: by + shotBarH}
+
+	s.btns = s.btns[:0]
+	cx := bx + pad
+	for _, it := range shotBarItems {
+		s.btns = append(s.btns, shotBarBtn{
+			id: it.id, label: it.label, w: it.w,
+			rc: shotRect{L: cx, T: by, R: cx + it.w, B: by + shotBarH},
+		})
+		cx += it.w + gap
+	}
+}
+
+func inRect(r shotRect, p ballPoint) bool {
+	return p.X >= r.L && p.X < r.R && p.Y >= r.T && p.Y < r.B
+}
+
+// hitToolbar 返回点中的按钮 id（没点中返回 0）
+func (s *shotWindow) hitToolbar(p ballPoint) int {
+	if !inRect(s.bar, p) {
+		return 0
+	}
+	for _, b := range s.btns {
+		if inRect(b.rc, p) {
+			return b.id
+		}
+	}
+	return 0
+}
+
+// act 点了操作条上的按钮
+func (s *shotWindow) act(hwnd uintptr, id int) {
+	switch id {
+	case shotActCancel:
+		log.Printf("[截图] 已取消")
+		pDestroyWindow.Call(hwnd)
+	case shotActCopy:
+		if err := s.finish("", false); err != nil {
+			log.Printf("[截图] 落盘失败：%v", err)
+		} else if w, h, err := copyShotToClipboard(); err != nil {
+			log.Printf("[截图] 复制失败：%v", err)
+		} else {
+			log.Printf("[截图] 已复制 %dx%d", w, h)
+		}
+		pDestroyWindow.Call(hwnd)
+	case shotActExtract:
+		_ = s.finish("extract", true)
+		pDestroyWindow.Call(hwnd)
+	case shotActTranslate:
+		_ = s.finish("translate", true)
+		pDestroyWindow.Call(hwnd)
+	case shotActAsk:
+		_ = s.finish("ask", true)
+		pDestroyWindow.Call(hwnd)
+	}
+}
+
 func abs32(v int32) int32 {
 	if v < 0 {
 		return -v
@@ -308,7 +480,7 @@ func abs32(v int32) int32 {
 	return v
 }
 
-// paint 把抓到的全屏图画出来，再描一个选框
+// paint 画全屏图 + 选框（操作条阶段再压暗选区外、画操作条）
 func (s *shotWindow) paint(hwnd uintptr) {
 	var ps ballPaint
 	pBeginPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
@@ -318,33 +490,108 @@ func (s *shotWindow) paint(hwnd uintptr) {
 		// 把内存位图贴到窗口 DC 上（SRCCOPY）
 		pBitBlt.Call(hdc, 0, 0, uintptr(s.w), uintptr(s.h), s.hdcMem, 0, 0, 0x00CC0020)
 	}
-	if s.hasSel {
-		x0, y0 := s.selStart.X, s.selStart.Y
-		x1, y1 := s.selEnd.X, s.selEnd.Y
-		if x1 < x0 {
-			x0, x1 = x1, x0
-		}
-		if y1 < y0 {
-			y0, y1 = y1, y0
-		}
-		br, _, _ := pCreateSolidBrush.Call(ballRGB(56, 189, 248))
-		var rc struct{ L, T, R, B int32 }
-		rc.L, rc.T, rc.R, rc.B = x0, y0, x1, y1
-		pFrameRect.Call(hdc, uintptr(unsafe.Pointer(&rc)), br)
-		pDeleteObject.Call(br)
+	if !s.hasSel {
+		return
+	}
+	sel := s.selRect()
+	if s.phase == shotPhaseToolbar {
+		s.dimOutside(hdc, sel) // 选区外压暗（跟豆包一样突出选区）
+	}
+	// 选区边框
+	br, _, _ := pCreateSolidBrush.Call(ballRGB(56, 189, 248))
+	rc := struct{ L, T, R, B int32 }{sel.L, sel.T, sel.R, sel.B}
+	pFrameRect.Call(hdc, uintptr(unsafe.Pointer(&rc)), br)
+	pDeleteObject.Call(br)
+
+	if s.phase == shotPhaseToolbar {
+		s.paintToolbar(hdc)
 	}
 }
 
-// finish 裁剪选区 → 编码 PNG → 落盘 → 打开主窗口的 #shot
-func (s *shotWindow) finish() error {
-	x0, y0 := s.selStart.X, s.selStart.Y
-	x1, y1 := s.selEnd.X, s.selEnd.Y
-	if x1 < x0 {
-		x0, x1 = x1, x0
+// dimOutside 选区以外压暗：50% 黑白棋盘格笔刷 + PatBlt(PATINVERT) = 逐像素异或，等效压暗一半
+func (s *shotWindow) dimOutside(hdc uintptr, sel shotRect) {
+	var bits [8 * 8 * 4]byte
+	for y := 0; y < 8; y++ {
+		for x := 0; x < 8; x++ {
+			if (x+y)%2 == 0 { // 白格 → 异或时把该像素反色（黑格保持不变）
+				o := (y*8 + x) * 4
+				bits[o], bits[o+1], bits[o+2] = 0xFF, 0xFF, 0xFF
+			}
+		}
 	}
-	if y1 < y0 {
-		y0, y1 = y1, y0
+	hbm, _, _ := pCreateBitmap.Call(8, 8, 1, 32, uintptr(unsafe.Pointer(&bits[0])))
+	if hbm == 0 {
+		return
 	}
+	defer pDeleteObject.Call(hbm)
+	pbr, _, _ := pCreatePatternBrush.Call(hbm)
+	if pbr == 0 {
+		return
+	}
+	defer pDeleteObject.Call(pbr)
+	old, _, _ := pSelectObject.Call(hdc, pbr)
+	W := uintptr(s.w)
+	if sel.T > 0 { // 上
+		pPatBlt.Call(hdc, 0, 0, W, uintptr(sel.T), patInvert)
+	}
+	if sel.B < int32(s.h) { // 下
+		pPatBlt.Call(hdc, 0, uintptr(sel.B), W, uintptr(int32(s.h)-sel.B), patInvert)
+	}
+	if sel.L > 0 { // 左
+		pPatBlt.Call(hdc, 0, uintptr(sel.T), uintptr(sel.L), uintptr(sel.B-sel.T), patInvert)
+	}
+	if sel.R < int32(s.w) { // 右
+		pPatBlt.Call(hdc, uintptr(sel.R), uintptr(sel.T), uintptr(int32(s.w)-sel.R), uintptr(sel.B-sel.T), patInvert)
+	}
+	pSelectObject.Call(hdc, old)
+}
+
+// paintToolbar 画操作条：深色圆角底 + 按钮文字（悬停高亮）
+func (s *shotWindow) paintToolbar(hdc uintptr) {
+	bgb, _, _ := pCreateSolidBrush.Call(ballRGB(28, 33, 43))
+	pen, _, _ := pCreatePen.Call(0, 1, ballRGB(58, 70, 86))
+	ob, _, _ := pSelectObject.Call(hdc, bgb)
+	op, _, _ := pSelectObject.Call(hdc, pen)
+	pRoundRect.Call(hdc, uintptr(s.bar.L), uintptr(s.bar.T), uintptr(s.bar.R), uintptr(s.bar.B), 10, 10)
+	pSelectObject.Call(hdc, ob)
+	pSelectObject.Call(hdc, op)
+	pDeleteObject.Call(bgb)
+	pDeleteObject.Call(pen)
+
+	if s.hover != 0 {
+		for _, b := range s.btns {
+			if b.id == s.hover {
+				hb, _, _ := pCreateSolidBrush.Call(ballRGB(45, 54, 70))
+				rc := struct{ L, T, R, B int32 }{b.rc.L + 2, b.rc.T + 4, b.rc.R - 2, b.rc.B - 4}
+				pFillRect.Call(hdc, uintptr(unsafe.Pointer(&rc)), hb)
+				pDeleteObject.Call(hb)
+			}
+		}
+	}
+
+	face, _ := syscall.UTF16FromString("Microsoft YaHei")
+	ch := int32(-14) // CreateFontW 的 cHeight：负数 = 字符高度 14px
+	font, _, _ := pCreateFontW.Call(
+		uintptr(ch), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 0, 0,
+		uintptr(unsafe.Pointer(&face[0])))
+	oldFont, _, _ := pSelectObject.Call(hdc, font)
+	pSetBkMode.Call(hdc, 1) // TRANSPARENT
+	pSetTextColor.Call(hdc, ballRGB(226, 234, 245))
+	for _, b := range s.btns {
+		txt, _ := syscall.UTF16FromString(b.label)
+		rc := struct{ L, T, R, B int32 }{b.rc.L, b.rc.T, b.rc.R, b.rc.B}
+		// DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX
+		pDrawTextW.Call(hdc, uintptr(unsafe.Pointer(&txt[0])), uintptr(len(txt)-1),
+			uintptr(unsafe.Pointer(&rc)), 0x1|0x4|0x20|0x800)
+	}
+	pSelectObject.Call(hdc, oldFont)
+	pDeleteObject.Call(font)
+}
+
+// finish 裁剪选区 → 编码 PNG → 落盘；openUI=true 时打开主窗口的 #shot，action 随图带给界面
+func (s *shotWindow) finish(action string, openUI bool) error {
+	sel := s.selRect()
+	x0, y0, x1, y1 := sel.L, sel.T, sel.R, sel.B
 	cw, ch := int(x1-x0), int(y1-y0)
 	if cw <= 0 || ch <= 0 {
 		return syscall.EINVAL
@@ -376,10 +623,13 @@ func (s *shotWindow) finish() error {
 	_ = os.WriteFile(stamped, buf.Bytes(), 0o600)
 
 	shotMu.Lock()
-	shotLast = &shotResult{Path: latest, W: cw, H: ch, BGRA: crop, At: time.Now().UnixMilli()}
+	shotLast = &shotResult{Path: latest, W: cw, H: ch, BGRA: crop, At: time.Now().UnixMilli(), Action: action}
 	shotMu.Unlock()
-	log.Printf("[截图] 已截图 %dx%d -> %s", cw, ch, latest)
+	log.Printf("[截图] 已截图 %dx%d（action=%q）-> %s", cw, ch, action, latest)
 
+	if !openUI {
+		return nil
+	}
 	// 打开主窗口并跳到「截图提问」
 	if mainHWND != 0 {
 		pShowWindow.Call(mainHWND, swRestore)
@@ -423,7 +673,7 @@ func registerShotRoutes(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"ok": true, "w": shot.W, "h": shot.H, "at": shot.At,
+			"ok": true, "w": shot.W, "h": shot.H, "at": shot.At, "action": shot.Action,
 			"sizeBytes": len(b), "imageBase64": base64.StdEncoding.EncodeToString(b),
 		})
 	})

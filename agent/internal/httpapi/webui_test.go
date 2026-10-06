@@ -122,6 +122,12 @@ func TestWebUIAssetsAndIcon(t *testing.T) {
 		t.Fatalf("manifest 状态 %d 类型 %q", code, ctype)
 	}
 
+	// 朗读：网页版必须走同源（原先写死 127.0.0.1:<内核端口>，浏览器里必然取不到音频）
+	vbody := ""
+	if code, _, vbody = webGet(t, srv, "/js/voice.js", uaPhone); code != 200 || !strings.Contains(vbody, "origin: location.origin") {
+		t.Fatalf("voice.js 没给网页版接上同源朗读（状态 %d）", code)
+	}
+
 	for _, p := range []string{"/icon.png", "/favicon.ico"} {
 		code, ctype, body = webGet(t, srv, p, uaPC)
 		if code != 200 || ctype != "image/png" {

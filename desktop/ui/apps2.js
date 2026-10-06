@@ -293,6 +293,14 @@ async function renderKB(root) {
 async function renderMemory(root) {
   root.innerHTML = `
     <div style="padding:14px 16px">
+      <div class="tabs" id="mmTabs">
+        <button data-tab="search" class="on">检索</button>
+        <button data-tab="graph">星图</button>
+        <button data-tab="notes">笔记</button>
+        <button data-tab="import">导入</button>
+      </div>
+
+      <div data-panel="search">
       <div class="sect" style="margin-top:0">
         <h3>记忆库</h3>
         <div id="mmTiles" class="sub" style="margin-bottom:6px">读取中…</div>
@@ -326,6 +334,80 @@ async function renderMemory(root) {
       <div class="sect">
         <h3>结果</h3>
         <div id="mmOut"></div>
+      </div>
+      </div>
+
+      <div data-panel="graph" hidden>
+        <div class="sect" style="margin-top:0">
+          <h3>记忆星图</h3>
+          <div class="sub" id="gpStats">读取中…</div>
+          <div class="fields" style="grid-template-columns:repeat(4,1fr)">
+            <div><label>最多显示</label><input id="gpLimit" value="200"></div>
+            <div><label>自动边相似度下限</label><input id="gpMin" value="0.55"></div>
+            <div><label>每篇最多连几个</label><input id="gpTopK" value="5"></div>
+            <div><label>局部图跳数</label><input id="gpHops" value="1"></div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <label style="display:flex;gap:5px;align-items:center;margin:0;color:var(--text-2)">
+              <input type="checkbox" id="gpAuto" checked> 显示自动边</label>
+            <button class="btn ghost" id="gpReload">刷新</button>
+            <button class="btn" id="gpAutolink">自动连边</button>
+            <button class="btn ghost" id="gpResolve">重解析链接</button>
+            <button class="btn ghost" id="gpFocus">只看选中</button>
+            <button class="btn ghost" id="gpAll">看全图</button>
+            <span class="sub" id="gpMsg" style="margin:0"></span>
+          </div>
+          <div class="graph-wrap" style="margin-top:10px">
+            <canvas id="gpCanvas"></canvas>
+            <div class="graph-hint">滚轮缩放 · 拖动节点 · 单击看笔记 · 双击以它为中心</div>
+          </div>
+          <div class="legend"><span><i></i>手工双链</span><span><i class="auto"></i>自动连边</span>
+            <span id="gpSel" style="margin-left:auto"></span></div>
+        </div>
+      </div>
+
+      <div data-panel="notes" hidden>
+        <div class="split">
+          <div>
+            <div class="fields" style="grid-template-columns:1fr;margin-top:0">
+              <div><label>找笔记</label><input id="ntQ" placeholder="标题 / 正文关键词"></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+              <button class="btn ghost sm" id="ntReload">刷新</button>
+              <button class="btn sm" id="ntNew">新建</button>
+            </div>
+            <div class="pane-list" id="ntList"></div>
+          </div>
+          <div>
+            <div class="fields" style="grid-template-columns:1fr 1fr;margin-top:0">
+              <div><label>路径（同一路径 = 覆盖保存）</label><input id="ntPath" placeholder="例如 项目/白泽.md"></div>
+              <div><label>标题（可空，默认取正文首个一级标题）</label><input id="ntTitle"></div>
+            </div>
+            <div style="margin-bottom:8px"><label>正文（[[双向链接]] 会自动解析，写 #标签 也能被识别）</label>
+              <textarea id="ntContent" style="min-height:220px"></textarea></div>
+            <div style="display:flex;gap:10px;align-items:center">
+              <button class="btn" id="ntSave">保存</button>
+              <button class="btn ghost" id="ntDelete">删除</button>
+              <span class="sub" id="ntMsg" style="margin:0"></span>
+            </div>
+            <div class="sect"><h3>出链（指向别人）</h3><div id="ntOut"></div></div>
+            <div class="sect"><h3>反向链接（谁指向它）</h3><div id="ntBack"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div data-panel="import" hidden>
+        <div class="sect" style="margin-top:0">
+          <h3>从本机文件夹导入笔记（Obsidian 库）</h3>
+          <div class="sub">后端在 NAS 上读不到你电脑的磁盘，所以由桌面端扫描本机文件夹，把 .md 内容交给后端。
+            正文里的 [[双向链接]] 与 #标签 会自动解析，导入完自动把链接接上；.obsidian / .git 等目录会跳过。</div>
+          <div class="fields" style="grid-template-columns:1fr 180px">
+            <div><label>库目录（本机绝对路径）</label><input id="imDir" placeholder="例如 D:\\我的笔记\\Obsidian"></div>
+            <div><label>导入到分区</label><input id="imNs" placeholder="留空 = 默认分区"></div>
+          </div>
+          <button class="btn" id="imGo">开始导入</button>
+          <span class="sub" id="imMsg" style="margin-left:10px"></span>
+        </div>
       </div>
     </div>`;
 
@@ -411,8 +493,359 @@ async function renderMemory(root) {
     if (r.ok) { $i('mmWContent').value = ''; $i('mmWTitle').value = ''; await loadTiles(); }
   };
 
+  /* ---------- 页签切换 ---------- */
+  const tabs = $i('mmTabs');
+  const showTab = (name) => {
+    tabs.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+    root.querySelectorAll('[data-panel]').forEach(p => { p.hidden = p.dataset.panel !== name; });
+    if (name === 'graph') loadGraph();
+    if (name === 'notes') loadNotes();
+  };
+  tabs.querySelectorAll('button').forEach(b => { b.onclick = () => showTab(b.dataset.tab); });
+
+  /* ---------- 记忆星图 ---------- */
+  let graphData = { nodes: [], edges: [] };
+  let selKey = '';        // 当前选中的笔记键（星图里高亮）
+  let focusRoot = '';     // 局部图的中心
+  let sim = { raf: 0, stopped: false };
+
+  const loadGraph = async () => {
+    const limit = $i('gpLimit').value.trim() || '200';
+    let q = `/api/agent/notes/graph?limit=${encodeURIComponent(limit)}&auto=${$i('gpAuto').checked ? 1 : 0}`;
+    q += `&minWeight=${encodeURIComponent($i('gpMin').value.trim() || '0')}`;
+    if (focusRoot) q += `&root=${encodeURIComponent(focusRoot)}&hops=${encodeURIComponent($i('gpHops').value.trim() || '1')}`;
+    const r = await API.get(q);
+    if (!r.ok) { $i('gpStats').innerHTML = `<span class="err">读取失败：${esc(r.error)}</span>`; return; }
+    graphData = r.data || { nodes: [], edges: [] };
+    const d = graphData;
+    $i('gpStats').innerHTML =
+      `笔记 <b>${d.noteCount || 0}</b> 篇 · 显示 <b>${d.shown || 0}</b> 个点 · ` +
+      `手工链 <b>${d.explicitEdges || 0}</b> · 自动链 <b>${d.autoEdges || 0}</b> · 孤立 <b>${d.orphans || 0}</b>` +
+      (focusRoot ? ' · <span class="sub">局部图</span>' : '') +
+      (d.note ? `<br><span class="sub">${esc(d.note)}</span>` : '');
+    startGraph();
+  };
+
+  // 力导向布局：斥力（点之间）+ 弹簧（有边相连的）+ 向心力（别飘走）。
+  // 纯 canvas，无外部依赖；几百个点用 O(n²) 也够快。
+  const startGraph = () => {
+    if (sim.raf) cancelAnimationFrame(sim.raf);
+    sim.stopped = true;
+    sim = { raf: 0, stopped: false };
+    const canvas = $i('gpCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.clientWidth || 640, H = canvas.clientHeight || 430;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+
+    const nodes = (graphData.nodes || []).map(n => ({
+      ...n,
+      x: W / 2 + (Math.random() - 0.5) * W * 0.72,
+      y: H / 2 + (Math.random() - 0.5) * H * 0.72,
+      vx: 0, vy: 0,
+    }));
+    const idx = {};
+    nodes.forEach((n, i) => { idx[n.key] = i; });
+    const edges = (graphData.edges || [])
+      .filter(e => idx[e.from] != null && idx[e.to] != null)
+      .map(e => ({ s: idx[e.from], t: idx[e.to], kind: e.kind, weight: Number(e.weight) || 0 }));
+    const N = nodes.length;
+    const view = { k: 1, x: 0, y: 0 };
+    const st = { drag: null, sel: selKey };
+
+    const font = '11px "Segoe UI","Microsoft YaHei",sans-serif';
+    const shorten = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; };
+
+    const draw = () => {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      ctx.save();
+      ctx.translate(view.x, view.y);
+      ctx.scale(view.k, view.k);
+      for (const e of edges) {
+        const a = nodes[e.s], b = nodes[e.t];
+        const near = !st.sel || a.key === st.sel || b.key === st.sel;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        if (e.kind === 'auto') {
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = near
+            ? 'rgba(56,189,248,' + (0.18 + Math.min(0.5, e.weight * 0.6)).toFixed(2) + ')'
+            : 'rgba(100,116,139,.14)';
+        } else {
+          ctx.setLineDash([]);
+          ctx.strokeStyle = near ? 'rgba(56,189,248,.62)' : 'rgba(100,116,139,.22)';
+        }
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      for (const n of nodes) {
+        const r = 4 + (Number(n.size) || 1) * 1.5;
+        const on = n.key === st.sel;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, on ? r + 2 : r, 0, Math.PI * 2);
+        ctx.fillStyle = on ? '#38bdf8' : (n.explicitDegree ? '#7dd3fc' : (n.autoDegree ? '#a5b4c4' : '#64748b'));
+        ctx.fill();
+        if (on || view.k > 1.2 || nodes.length <= 30) {
+          ctx.fillStyle = on ? 'rgba(219,228,238,.95)' : 'rgba(219,228,238,.6)';
+          ctx.font = font;
+          ctx.fillText(shorten(n.title || n.key, 16), n.x + r + 4, n.y + 3);
+        }
+      }
+      ctx.restore();
+    };
+
+    const toWorld = (mx, my) => ({ x: (mx - view.x) / view.k, y: (my - view.y) / view.k });
+    const localXY = (ev) => {
+      const rect = canvas.getBoundingClientRect();
+      return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+    };
+    const pick = (mx, my) => {
+      const p = toWorld(mx, my);
+      let best = -1, bestD = 20 * 20;
+      nodes.forEach((n, i) => {
+        const dx = n.x - p.x, dy = n.y - p.y, d2 = dx * dx + dy * dy;
+        if (d2 < bestD) { bestD = d2; best = i; }
+      });
+      return best;
+    };
+
+    const step = () => {
+      if (st.stopped) return;
+      const rep = 5600, spring = 0.012, springLen = 88, center = 0.0024, damp = 0.85;
+      for (let i = 0; i < N; i++) {
+        const a = nodes[i];
+        for (let j = i + 1; j < N; j++) {
+          const b = nodes[j];
+          let dx = a.x - b.x, dy = a.y - b.y;
+          let d2 = dx * dx + dy * dy;
+          if (d2 < 1) { d2 = 1; dx = Math.random() - 0.5; dy = Math.random() - 0.5; }
+          const d = Math.sqrt(d2);
+          const f = rep / d2;
+          const fx = (dx / d) * f, fy = (dy / d) * f;
+          a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
+        }
+      }
+      for (const e of edges) {
+        const a = nodes[e.s], b = nodes[e.t];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const d = Math.sqrt(dx * dx + dy * dy) || 1;
+        const f = (d - springLen) * spring;
+        const fx = (dx / d) * f, fy = (dy / d) * f;
+        a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
+      }
+      for (const n of nodes) {
+        n.vx += (W / 2 - n.x) * center;
+        n.vy += (H / 2 - n.y) * center;
+        n.vx *= damp; n.vy *= damp;
+        if (st.drag !== n) { n.x += n.vx; n.y += n.vy; }
+        n.x = Math.max(16, Math.min(W - 16, n.x));
+        n.y = Math.max(16, Math.min(H - 16, n.y));
+      }
+      draw();
+      sim.raf = requestAnimationFrame(step);
+    };
+
+    let panning = null;
+    canvas.onmousedown = (ev) => {
+      const p = localXY(ev);
+      const i = pick(p.x, p.y);
+      if (i >= 0) { st.drag = nodes[i]; canvas.classList.add('grabbing'); }
+      else panning = { cx: ev.clientX, cy: ev.clientY, vx: view.x, vy: view.y };
+    };
+    canvas.onmousemove = (ev) => {
+      const p = localXY(ev);
+      if (st.drag) {
+        const w = toWorld(p.x, p.y);
+        st.drag.x = w.x; st.drag.y = w.y; st.drag.vx = 0; st.drag.vy = 0;
+      } else if (panning) {
+        view.x = panning.vx + (ev.clientX - panning.cx);
+        view.y = panning.vy + (ev.clientY - panning.cy);
+      } else {
+        canvas.style.cursor = pick(p.x, p.y) >= 0 ? 'pointer' : 'grab';
+      }
+    };
+    const endDrag = () => { st.drag = null; panning = null; canvas.classList.remove('grabbing'); };
+    canvas.onmouseup = endDrag;
+    canvas.onmouseleave = endDrag;
+    canvas.onclick = (ev) => {
+      const p = localXY(ev);
+      const i = pick(p.x, p.y);
+      if (i < 0) { st.sel = ''; selKey = ''; $i('gpSel').textContent = ''; return; }
+      st.sel = nodes[i].key;
+      selKey = nodes[i].key;
+      $i('gpSel').innerHTML = `已选：<b>${esc(nodes[i].title || nodes[i].key)}</b> · 连接 ${nodes[i].degree}（手工 ${nodes[i].explicitDegree} / 自动 ${nodes[i].autoDegree}）`;
+    };
+    canvas.ondblclick = async (ev) => {
+      const p = localXY(ev);
+      const i = pick(p.x, p.y);
+      if (i < 0) return;
+      showTab('notes');
+      await loadNotes();
+      await openNote(nodes[i].key);
+    };
+    canvas.onwheel = (ev) => {
+      ev.preventDefault();
+      const p = localXY(ev);
+      const w = toWorld(p.x, p.y);
+      const nk = Math.max(0.25, Math.min(3, view.k * (ev.deltaY < 0 ? 1.12 : 0.89)));
+      view.k = nk;
+      view.x = p.x - w.x * nk;
+      view.y = p.y - w.y * nk;
+    };
+
+    sim.stopped = false;
+    sim.raf = requestAnimationFrame(step);
+  };
+
+  $i('gpReload').onclick = loadGraph;
+  $i('gpAuto').onchange = loadGraph;
+  $i('gpAll').onclick = () => { focusRoot = ''; loadGraph(); };
+  $i('gpFocus').onclick = () => {
+    if (!selKey) { $i('gpMsg').textContent = '先在图上点一个点'; return; }
+    focusRoot = selKey; loadGraph();
+  };
+  $i('gpAutolink').onclick = async () => {
+    $i('gpMsg').textContent = '按语义连边中…';
+    const r = await API.post('/api/agent/notes/autolink', {
+      minSim: Number($i('gpMin').value) || 0.55,
+      topK: Number($i('gpTopK').value) || 5,
+    });
+    if (!r.ok) { $i('gpMsg').innerHTML = `<span class="err">失败：${esc(r.error)}</span>`; return; }
+    const d = r.data || {};
+    $i('gpMsg').textContent = d.vectorUsed
+      ? `已连 ${d.pairs || 0} 对（${d.edges || 0} 条边）`
+      : (d.note || '没能连边');
+    await loadGraph();
+  };
+  $i('gpResolve').onclick = async () => {
+    const r = await API.post('/api/agent/notes/resolve', {});
+    $i('gpMsg').textContent = r.ok ? `解析到 ${r.data.resolved || 0} 条链接` : ('失败：' + r.error);
+    await loadGraph();
+  };
+
+  /* ---------- 笔记编辑 ---------- */
+  let curNote = null;
+
+  const loadNotes = async () => {
+    const q = $i('ntQ').value.trim();
+    const r = await API.get('/api/agent/notes?limit=200' + (q ? '&q=' + encodeURIComponent(q) : ''));
+    if (!r.ok) { $i('ntList').innerHTML = `<div class="empty err" style="padding:12px">${esc(r.error)}</div>`; return; }
+    const notes = (r.data && r.data.notes) || [];
+    $i('ntList').innerHTML = notes.length ? notes.map(n =>
+      `<div class="note-item${curNote && curNote.docKey === n.docKey ? ' on' : ''}" data-key="${esc(n.docKey)}">
+        <b>${esc(n.title || n.path)}</b>
+        <span>${esc(n.path)} · ${n.links ? n.links.length : 0} 出链${n.tags && n.tags.length ? ' · #' + n.tags.map(esc).join(' #') : ''}</span>
+      </div>`).join('')
+      : '<div class="empty" style="padding:12px">还没有笔记；点「新建」，或到「导入」里导入 Obsidian 库</div>';
+    $i('ntList').querySelectorAll('[data-key]').forEach(el => { el.onclick = () => openNote(el.dataset.key); });
+    if (notes.length && (!curNote || !notes.some(n => n.docKey === curNote.docKey))) {
+      await openNote(notes[0].docKey);
+    }
+  };
+
+  const renderRel = (el, items, kind) => {
+    $i(el).innerHTML = items.length ? items.map(o => {
+      const missing = !!o.missing;
+      const label = kind === 'out'
+        ? (missing ? `${o.target}（目标还不存在）` : (o.title || o.target))
+        : (o.title || o.path) + (o.kind === 'auto' ? `（自动，相似度 ${(Number(o.weight) || 0).toFixed(2)}）` : '');
+      const mark = kind === 'out' ? (missing ? '悬空' : '→') : (o.kind === 'auto' ? '≈' : '←');
+      return `<div class="link-item"${missing ? '' : ` data-key="${esc(o.noteKey)}"`}>
+        <span class="mono">${mark}</span><span class="ln">${esc(label)}</span></div>`;
+    }).join('') : `<div class="sub" style="margin:0">${kind === 'out' ? '没有出链' : '还没有反向链接'}</div>`;
+    $i(el).querySelectorAll('[data-key]').forEach(x => { x.onclick = () => openNote(x.dataset.key); });
+  };
+
+  const openNote = async (key) => {
+    const r = await API.get('/api/agent/notes/' + encodeURIComponent(key));
+    if (!r.ok) { $i('ntMsg').innerHTML = `<span class="err">打开失败：${esc(r.error)}</span>`; return; }
+    const d = r.data || {};
+    curNote = d.note || null;
+    if (!curNote) return;
+    $i('ntPath').value = curNote.path || '';
+    $i('ntTitle').value = curNote.title || '';
+    $i('ntContent').value = curNote.content || '';
+    renderRel('ntOut', d.outlinks || [], 'out');
+    renderRel('ntBack', d.backlinks || [], 'back');
+    $i('ntMsg').textContent = '';
+    $i('ntList').querySelectorAll('[data-key]').forEach(el => {
+      el.classList.toggle('on', el.dataset.key === key);
+    });
+  };
+
+  $i('ntReload').onclick = loadNotes;
+  $i('ntNew').onclick = () => {
+    curNote = null;
+    $i('ntPath').value = '';
+    $i('ntTitle').value = '';
+    $i('ntContent').value = '';
+    $i('ntOut').innerHTML = '';
+    $i('ntBack').innerHTML = '';
+    $i('ntMsg').textContent = '填好内容点「保存」';
+    $i('ntPath').focus();
+  };
+  $i('ntQ').onkeydown = (ev) => { if (ev.key === 'Enter') loadNotes(); };
+  $i('ntSave').onclick = async () => {
+    const content = $i('ntContent').value.trim();
+    if (!content) { $i('ntMsg').textContent = '正文不能为空'; return; }
+    const r = await API.post('/api/agent/notes', {
+      path: $i('ntPath').value.trim(),
+      title: $i('ntTitle').value.trim(),
+      content: content,
+    });
+    if (!r.ok) { $i('ntMsg').innerHTML = `<span class="err">保存失败：${esc(r.error)}</span>`; return; }
+    const n = (r.data && r.data.note) || {};
+    curNote = n;
+    $i('ntPath').value = n.path || $i('ntPath').value;
+    $i('ntMsg').innerHTML = `<span class="ok">已保存${n.links && n.links.length ? `，解析到 ${n.links.length} 条链接` : ''}${n.hasVector ? '' : '（没落向量：语义连边要先配 embedding 通道）'}</span>`;
+    await loadNotes();
+    await openNote(n.docKey);
+  };
+  $i('ntDelete').onclick = async () => {
+    if (!curNote) { $i('ntMsg').textContent = '先选一篇笔记'; return; }
+    if (!confirm(`确定删除「${curNote.title}」？连同它的双向链接一起删掉，删了就真没了。`)) return;
+    const r = await API.post('/api/agent/notes/' + encodeURIComponent(curNote.docKey) + '/forget', {});
+    if (!r.ok) { $i('ntMsg').innerHTML = `<span class="err">删除失败：${esc(r.error)}</span>`; return; }
+    curNote = null;
+    $i('ntPath').value = ''; $i('ntTitle').value = ''; $i('ntContent').value = '';
+    $i('ntOut').innerHTML = ''; $i('ntBack').innerHTML = '';
+    $i('ntMsg').innerHTML = '<span class="ok">已删除</span>';
+    await loadNotes();
+  };
+
+  /* ---------- 导入（走桌面端本机接口，能读你电脑的磁盘） ---------- */
+  $i('imGo').onclick = async () => {
+    const dir = $i('imDir').value.trim();
+    if (!dir) { $i('imMsg').textContent = '请填写要导入的文件夹'; return; }
+    $i('imMsg').textContent = '扫描并导入中，笔记多时可能要一会儿…';
+    let r;
+    try {
+      const resp = await fetch('/api/local/notes/import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dir: dir, namespace: $i('imNs').value.trim() }),
+      });
+      r = await resp.json();
+    } catch (e) {
+      $i('imMsg').innerHTML = `<span class="err">失败：${esc(e && e.message)}</span>`;
+      return;
+    }
+    if (!r || !r.ok) {
+      $i('imMsg').innerHTML = `<span class="err">失败：${esc((r && r.error) || '未知错误')}</span>`;
+      return;
+    }
+    $i('imMsg').innerHTML = `<span class="ok">导入完成：扫描 ${r.scanned || 0} 个文件，写入 ${r.notes || 0} 篇，解析链接 ${r.links || 0} 条`
+      + (r.skipped ? `，跳过 ${r.skipped}` : '') + '</span>';
+    await loadNotes();
+  };
+
   await loadTiles();
   await search();
+  return () => { sim.stopped = true; if (sim.raf) cancelAnimationFrame(sim.raf); };
 }
 
 /* ================= 4. 模型通道 ================= */

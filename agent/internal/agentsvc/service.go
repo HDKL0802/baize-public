@@ -777,6 +777,8 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 		reg.Register(&tools.BrowserTool{Sess: browser, WS: s.ws})
 	}
 	tools.RegisterMemory(reg, s.mem, cfg.Memory.Namespace)
+	// 笔记（记忆星图）：成篇的 Markdown 笔记 + [[双向链接]] 关系网
+	tools.RegisterNotes(reg, s.mem, cfg.Memory.Namespace)
 	// 知识库（待办 + 密码本的正本在后端）：增/查随便用，删与看密码明文走审批
 	kb.RegisterTools(reg, s.kbs)
 	// 跨端调度：把 device_list / device_run 交给设备中枢执行，结果落记忆

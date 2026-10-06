@@ -248,6 +248,10 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := ensureNotesSchema(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("初始化笔记关系表失败：%w", err)
+	}
 	return &Store{db: db, dir: dir, maxTokens: DefaultMaxTokens}, nil
 }
 

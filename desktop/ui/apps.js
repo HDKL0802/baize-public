@@ -59,7 +59,7 @@ window.APPS = [
 
   { id: 'tasks', name: '任务与审批', icon: '📋', w: 900, h: 600 },
   { id: 'kb', name: '知识库', icon: '📚', w: 980, h: 640 },
-  { id: 'memory', name: '记忆', icon: '🧠', w: 900, h: 600 },
+  { id: 'memory', name: '记忆星图', icon: '🧠', w: 980, h: 640 },
   { id: 'providers', name: '模型通道', icon: '✨', w: 860, h: 560 },
   { id: 'mcp', name: 'MCP 服务', icon: '🔌', w: 820, h: 560 },
   { id: 'skills', name: '技能', icon: '🧩', w: 820, h: 560 },

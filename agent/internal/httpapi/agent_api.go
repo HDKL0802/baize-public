@@ -30,6 +30,8 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	s.registerCommands(mux)
 	// 频道（IM / webhook 接入）
 	s.registerChannels(mux)
+	// 记忆星图（笔记 + 双向链接 + 图谱）
+	s.registerNotes(mux)
 	mux.HandleFunc("GET /api/agent/state", s.api(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, a.State())
 	}))

@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -90,6 +92,9 @@ func buildHandler() http.Handler {
 		appQuit()
 	})
 
+	// 从本机文件夹导入 Markdown 笔记（Obsidian 库）
+	mux.HandleFunc("/api/local/notes/import", handleLocalNotesImport)
+
 	// 平台专属路由（Windows：自动更新）
 	registerPlatformRoutes(mux)
 
@@ -142,6 +147,163 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+/* ---------- 从本机文件夹导入笔记（Obsidian 库） ---------- */
+
+// 导入上限：挡住"手滑选了整个 C 盘"这类误操作，超了如实回报，不静默截断。
+const (
+	notesImportMaxFiles = 2000
+	notesImportMaxFile  = 2 << 20  // 单个 .md 最多 2MB
+	notesImportMaxTotal = 32 << 20 // 一次导入总量上限
+)
+
+// 扫目录时要跳过的目录名（Obsidian 自身的配置、版本库、依赖等，都不是笔记正文）
+var notesSkipDirs = map[string]bool{
+	".obsidian": true, ".git": true, ".trash": true, "node_modules": true,
+	".idea": true, ".vscode": true, "__pycache__": true,
+}
+
+type localNoteFile struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+// handleLocalNotesImport 扫描本机文件夹里的 .md，转发给后端导入。
+//
+// 为什么必须在桌面端做这一步：后端跑在 NAS 上，读不到用户 PC 的磁盘；
+// 桌面端在用户机器上，才扫得到 Obsidian 库。扫完把正文一次性转给后端，
+// 令牌只在这一层加，网页不接触。
+func handleLocalNotesImport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "只支持 POST"})
+		return
+	}
+	var req struct {
+		Dir       string `json:"dir"`
+		Namespace string `json:"namespace"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req)
+	dir := strings.TrimSpace(req.Dir)
+	if dir == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "请填写要导入的文件夹路径"})
+		return
+	}
+	fi, err := os.Stat(dir)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "文件夹不存在或读不到：" + err.Error()})
+		return
+	}
+	if !fi.IsDir() {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "给的不是文件夹：" + dir})
+		return
+	}
+	files, skipped, total, err := scanMarkdown(dir)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "扫描失败：" + err.Error()})
+		return
+	}
+	if len(files) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "这个文件夹里没有找到 .md 笔记"})
+		return
+	}
+
+	server, token := getConfig()
+	if strings.TrimSpace(server) == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "还没配置后端地址（去「设置」里填）"})
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{"namespace": req.Namespace, "files": files})
+	url := strings.TrimRight(server, "/") + "/api/agent/notes/import"
+	hreq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "构造请求失败：" + err.Error()})
+		return
+	}
+	hreq.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		hreq.Header.Set("X-Baize-Token", token)
+	}
+	resp, err := beClient.Do(hreq)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "连不上后端：" + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if resp.StatusCode != http.StatusOK {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false,
+			"error": "后端导入失败（HTTP " + strconv.Itoa(resp.StatusCode) + "）：" + string(body)})
+		return
+	}
+	var res map[string]any
+	if err := json.Unmarshal(body, &res); err != nil {
+		res = map[string]any{}
+	}
+	res["ok"] = true
+	res["scanned"] = len(files)
+	res["skippedNames"] = skipped
+	res["bytes"] = total
+	writeJSON(w, http.StatusOK, res)
+}
+
+// scanMarkdown 递归扫 .md，返回（文件列表, 跳过的文件数, 总字节, 错误）。
+// 顺序稳定（按路径排序），同名不同目录靠相对路径区分。
+func scanMarkdown(root string) ([]localNoteFile, int, int64, error) {
+	var out []localNoteFile
+	skipped := 0
+	var total int64
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	err = filepath.WalkDir(rootAbs, func(p string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			skipped++
+			return nil // 单个条目读不了就跳过，不中断整趟导入
+		}
+		if d.IsDir() {
+			name := d.Name()
+			if p != rootAbs && (notesSkipDirs[name] || strings.HasPrefix(name, ".")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.EqualFold(filepath.Ext(d.Name()), ".md") {
+			return nil
+		}
+		if len(out) >= notesImportMaxFiles {
+			skipped++
+			return nil
+		}
+		rel, err := filepath.Rel(rootAbs, p)
+		if err != nil {
+			rel = d.Name()
+		}
+		rel = filepath.ToSlash(rel)
+		fi, err := d.Info()
+		if err != nil || fi.Size() > notesImportMaxFile {
+			skipped++
+			return nil
+		}
+		if total+fi.Size() > notesImportMaxTotal {
+			skipped++
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			skipped++
+			return nil
+		}
+		total += int64(len(b))
+		out = append(out, localNoteFile{Path: rel, Content: string(b)})
+		return nil
+	})
+	if err != nil {
+		return nil, skipped, total, err
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out, skipped, total, nil
 }
 
 // findUIDir 定位界面目录。安装后是 exe 同级的 ui/；开发时 exe 在 desktop/bin/、

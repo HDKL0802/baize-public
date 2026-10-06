@@ -3,7 +3,8 @@
    - APPS 里每个应用只负责把自己画进给定的容器
    已做实 13 个：对话 / 设备 / 设置 / 任务与审批 / 知识库 / 记忆 / 模型通道 / MCP 服务 /
    技能 / 人设 / 定时任务 / 备份与恢复 / 活动追踪。
-   后 10 个的 render 在 apps2.js 末尾回填（直接写 render: renderXxx 会是前向引用，见那边的说明）。 */
+   后 10 个的 render 在 apps2.js 末尾回填（直接写 render: renderXxx 会是前向引用，见那边的说明）；
+   协作 2 个在 apps3.js、插件市场在 apps4.js，同样在文件末尾回填。 */
 'use strict';
 
 /* 登录会话（多用户）：后端按它决定"以谁的身份访问数据"。
@@ -135,6 +136,7 @@ window.APPS = [
   { id: 'providers', name: '模型通道', icon: '✨', w: 860, h: 560 },
   { id: 'mcp', name: 'MCP 服务', icon: '🔌', w: 820, h: 560 },
   { id: 'skills', name: '技能', icon: '🧩', w: 820, h: 560 },
+  { id: 'plugins', name: '插件市场', icon: '📦', w: 1000, h: 660 },
   { id: 'persona', name: '人设', icon: '🎭', w: 940, h: 640 },
   { id: 'cron', name: '定时任务', icon: '⏰', w: 820, h: 520 },
   { id: 'backup', name: '备份与恢复', icon: '🗄️', w: 820, h: 520 },
@@ -248,8 +250,8 @@ async function renderSettings(root) {
       <div class="sect">
         <h3>关于</h3>
         <div class="sub">白泽桌面端（Go + WebView2，纯 Go 无 cgo）· 冷色暗色直角<br>
-          控制台 12 个应用 + 协作 2 个（账号与共享 / 冲突协商）已全部接入；本机作为设备的能力已接（只读）。<br>
-          已接：开机自启、关窗隐藏到托盘、自动更新、NSIS 安装包、多用户与组共享。</div>
+          控制台 12 个应用 + 协作 2 个（账号与共享 / 冲突协商）+ 插件市场已全部接入；本机作为设备的能力已接（只读）。<br>
+          已接：开机自启、关窗隐藏到托盘、自动更新、NSIS 安装包、多用户与组共享、插件市场。</div>
       </div>
     </div>`;
 

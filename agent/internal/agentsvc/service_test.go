@@ -419,8 +419,15 @@ func TestSkillsInjectedIntoPrompt(t *testing.T) {
 		t.Fatal("渐进式披露：正文不该出现在系统提示里")
 	}
 	st := s.State()
-	if len(st.Skills) != 1 || st.Skills[0].Name != "分诊" {
-		t.Fatalf("状态里应有技能：%+v", st.Skills)
+	// 环境里还会带上随二进制分发的内置技能，所以按名字找自己这条（别断言总数）
+	found := false
+	for _, sk := range st.Skills {
+		if sk.Name == "分诊" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("状态里应有技能「分诊」：%+v", st.Skills)
 	}
 	_ = dir
 }

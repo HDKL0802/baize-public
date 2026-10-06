@@ -19,13 +19,30 @@ type cronResp struct {
 	Added string `json:"added"`
 }
 
+// skillView 技能清单里的一条（与接口返回同形）
+type skillView struct {
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
+	Body        string `json:"body"`
+}
+
 type skillsResp struct {
-	Skills []struct {
-		Name        string `json:"name"`
-		Slug        string `json:"slug"`
-		Description string `json:"description"`
-		Body        string `json:"body"`
-	} `json:"skills"`
+	Skills []skillView `json:"skills"`
+}
+
+// findSkill 按 slug 找一条技能（返回的是切片元素副本；找不到返回 nil）
+//
+// 为什么需要它：环境里现在带着随二进制分发的**内置技能**（读文件/文档/造技能/定时任务/笔记），
+// 所以"清单里有几条"不再是一个固定数字，测试要按 slug 定位自己那条。
+func findSkill(list []skillView, slug string) *skillView {
+	for _, s := range list {
+		if s.Slug == slug {
+			cp := s
+			return &cp
+		}
+	}
+	return nil
 }
 
 // 一份合法的 SKILL.md。
@@ -121,9 +138,11 @@ func TestSkillsCRUD(t *testing.T) {
 	if code := e.do("GET", "/api/agent/skills", nil, true, &base); code != 200 {
 		t.Fatalf("GET /api/agent/skills 期望 200，实际 %d", code)
 	}
-	if len(base.Skills) != 0 {
-		t.Fatalf("新建的环境里不该有技能：%+v", base.Skills)
+	// 环境里会有随二进制分发的内置技能；这里要确认的是"还没有用户自己建的技能"
+	if findSkill(base.Skills, "triage") != nil {
+		t.Fatalf("新建的环境里不该有 triage：%+v", base.Skills)
 	}
+	baseCount := len(base.Skills)
 
 	// 缺 front-matter 要明确报错，不能悄悄落一个坏技能
 	if code := e.do("POST", "/api/agent/skills",
@@ -142,14 +161,15 @@ func TestSkillsCRUD(t *testing.T) {
 		map[string]any{"action": "save", "name": "triage", "content": goodSkill}, true, &made); code != 200 {
 		t.Fatalf("新建技能期望 200，实际 %d", code)
 	}
-	if len(made.Skills) != 1 {
-		t.Fatalf("新建后清单里应有 1 条：%+v", made.Skills)
+	if len(made.Skills) != baseCount+1 {
+		t.Fatalf("新建后清单应多 1 条：%+v", made.Skills)
 	}
-	if made.Skills[0].Slug != "triage" || made.Skills[0].Name != "测试技能" {
-		t.Fatalf("slug 应是 triage、展示名应是 测试技能：%+v", made.Skills[0])
+	tri := findSkill(made.Skills, "triage")
+	if tri == nil || tri.Name != "测试技能" {
+		t.Fatalf("slug 应是 triage、展示名应是 测试技能：%+v", made.Skills)
 	}
-	if made.Skills[0].Description != "用来验证技能接口" {
-		t.Fatalf("description 应来自 front-matter：%+v", made.Skills[0])
+	if tri.Description != "用来验证技能接口" {
+		t.Fatalf("description 应来自 front-matter：%+v", tri)
 	}
 
 	// save：已存在 → 改写（不能报"已存在"，界面上只有一个「保存」按钮）
@@ -160,7 +180,7 @@ func TestSkillsCRUD(t *testing.T) {
 		map[string]any{"action": "save", "name": "测试技能", "content": edited}, true, &again); code != 200 {
 		t.Fatalf("按展示名改写期望 200，实际 %d", code)
 	}
-	if len(again.Skills) != 1 || again.Skills[0].Description != "改过的描述" {
+	if tri := findSkill(again.Skills, "triage"); tri == nil || tri.Description != "改过的描述" {
 		t.Fatalf("按展示名改写没生效（名字归一有问题）：%+v", again.Skills)
 	}
 
@@ -170,8 +190,8 @@ func TestSkillsCRUD(t *testing.T) {
 		map[string]any{"action": "patch", "name": "triage", "oldString": "只做 A", "newString": "只做 B"}, true, &pat); code != 200 {
 		t.Fatalf("patch 期望 200，实际 %d", code)
 	}
-	if !strings.Contains(pat.Skills[0].Body, "只做 B") {
-		t.Fatalf("patch 没生效：%+v", pat.Skills[0].Body)
+	if tri := findSkill(pat.Skills, "triage"); tri == nil || !strings.Contains(tri.Body, "只做 B") {
+		t.Fatalf("patch 没生效：%+v", pat.Skills)
 	}
 
 	// 未知 action
@@ -186,8 +206,11 @@ func TestSkillsCRUD(t *testing.T) {
 		map[string]any{"action": "delete", "name": "triage"}, true, &gone); code != 200 {
 		t.Fatalf("删除技能期望 200，实际 %d", code)
 	}
-	if len(gone.Skills) != 0 {
-		t.Fatalf("归档后清单应为空：%+v", gone.Skills)
+	if findSkill(gone.Skills, "triage") != nil {
+		t.Fatalf("归档后不该还能看到 triage：%+v", gone.Skills)
+	}
+	if len(gone.Skills) != baseCount {
+		t.Fatalf("归档后清单应回到 %d 条：%+v", baseCount, gone.Skills)
 	}
 }
 

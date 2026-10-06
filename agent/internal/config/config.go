@@ -145,6 +145,23 @@ type ChannelConfig struct {
 	BotPrefix   string   `json:"botPrefix,omitempty"`   // 回复前缀
 }
 
+// Search 联网搜索通道（web_search 工具用）。
+//
+// 刻意不设"默认可用"：白泽是私有部署，跑在用户自己的机器上，没有一个通用且合法的
+// 免密钥搜索接口能被无条件依赖。所以这里只认显式配置：
+//
+//	searxng    —— 自建/公共 SearXNG 实例的 JSON 接口（推荐，不依赖第三方账号）
+//	duckduckgo —— 抓 DuckDuckGo 的 HTML 结果页（无需密钥，但可能被限流/被墙）
+//
+// provider 留空 = 没配，web_search 会明确告诉用户去哪儿配，而不是返回空结果或伪造结果。
+type Search struct {
+	Provider   string `json:"provider,omitempty"` // searxng | duckduckgo；空 = 没配
+	BaseURL    string `json:"baseUrl,omitempty"`  // searxng 实例地址，如 http://192.168.1.10:8080
+	APIKey     string `json:"apiKey,omitempty"`   // searxng 可选（实例开了鉴权时用）
+	TimeoutSec int    `json:"timeoutSec,omitempty"`
+	MaxResults int    `json:"maxResults,omitempty"`
+}
+
 // Config 后端 Agent 配置
 type Config struct {
 	AllowRemote        bool       `json:"allowRemote"` // 是否允许非本机模型地址 / 远端 MCP 服务
@@ -170,6 +187,7 @@ type Config struct {
 	Heartbeat      HeartbeatConfig    `json:"heartbeat"`      // 心跳任务（定期运行 agent）
 	Channels       []ChannelConfig    `json:"channels"`       // 频道（IM / webhook 接入）
 	Browser        Browser            `json:"browser"`        // 浏览器工具（打开网页 / 跑 JS / 截图）
+	Search         Search             `json:"search"`         // 联网搜索通道（web_search 工具）
 }
 
 // 记忆检索的权重档位（非法值一律回落到 balanced）
@@ -209,6 +227,7 @@ func Default() Config {
 			TimeoutSec: 30,
 			MaxBytes:   256 * 1024,
 		},
+		Search: Search{TimeoutSec: 20, MaxResults: 8},
 	}
 }
 
@@ -295,6 +314,16 @@ func (c *Config) normalize() {
 	}
 	if c.Browser.MaxBytes <= 0 {
 		c.Browser.MaxBytes = 256 * 1024
+	}
+	// 搜索通道：只做清理与兜底。provider 非法值**不静默改成别的**——
+	// 静默改会让人以为配好了；留给 web_search 在调用时明确报"不支持的通道"。
+	c.Search.Provider = strings.ToLower(strings.TrimSpace(c.Search.Provider))
+	c.Search.BaseURL = strings.TrimRight(strings.TrimSpace(c.Search.BaseURL), "/")
+	if c.Search.TimeoutSec <= 0 {
+		c.Search.TimeoutSec = 20
+	}
+	if c.Search.MaxResults <= 0 {
+		c.Search.MaxResults = 8
 	}
 	// 记忆术设置：缺项补齐，档位写错就直接回落，别让手改 JSON 的人踩空
 	if strings.TrimSpace(c.Memory.Namespace) == "" {

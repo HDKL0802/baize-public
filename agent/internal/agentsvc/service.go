@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"baize/internal/backup"
 	"baize/internal/channels"
 	"baize/internal/config"
+	"baize/internal/cron"
 	"baize/internal/hooks"
 	"baize/internal/kb"
 	"baize/internal/llm"
@@ -203,6 +205,13 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 	if strings.TrimSpace(skillsDir) == "" {
 		skillsDir = filepath.Join(dataDir, "skills")
 	}
+	// 内置技能（读文件/文档/造技能/定时任务/笔记）：只在"该技能还不存在"时落盘，
+	// 绝不覆盖用户改过的版本（详见 skills.SeedBuiltin）。
+	if n, err := skills.SeedBuiltin(skillsDir); err != nil {
+		lg.Warn("内置技能落盘失败（不影响运行）", "err", err)
+	} else if n > 0 {
+		lg.Info("已写入内置技能", "count", n, "dir", skillsDir)
+	}
 	lib, err := skills.Load(skillsDir)
 	if err != nil {
 		// 兜底成"指向该目录的空库"：加载失败不影响运行，技能管理也还能用
@@ -312,6 +321,134 @@ func (s *Service) SkillManager() *skills.Manager {
 
 // Jobs 定时任务状态（含下次触发时间与表达式解析错误），供 /api/agent/cron 用
 func (s *Service) Jobs() []JobState { return s.jobStates() }
+
+/* ---------- 定时任务管理（控制台接口与 Agent 的 cron 工具共用同一套语义） ---------- */
+
+// CronAdd 新增一个定时任务。表达式先用 cron.Parse 校验：
+// 坏表达式当场报错，而不是留一条 parseError 在列表里假装加上了。
+func (s *Service) CronAdd(expr, goal, recipe string, autoApprove bool) (tools.CronJobInfo, error) {
+	expr = strings.TrimSpace(expr)
+	goal = strings.TrimSpace(goal)
+	if expr == "" || goal == "" {
+		return tools.CronJobInfo{}, errors.New("需要 expr（cron 表达式）与 goal（到点要做的事）")
+	}
+	if _, err := cron.Parse(expr); err != nil {
+		return tools.CronJobInfo{}, errors.New("cron 表达式不合法：" + err.Error())
+	}
+	cfg := s.Config()
+	rc := strings.TrimSpace(recipe)
+	if rc == "" {
+		rc = "chat" // 与 /api/agent/cron 的默认口径一致
+	}
+	job := config.CronJob{
+		ID: "job" + strconv.FormatInt(time.Now().UnixMilli(), 36),
+		// 默认启用、默认不免审批（危险操作照旧走人工审批队列）
+		Expr: expr, Goal: goal, Recipe: rc,
+		Enabled: true, AutoApprove: autoApprove,
+	}
+	cfg.Cron = append(cfg.Cron, job)
+	if err := s.SaveConfig(cfg); err != nil {
+		return tools.CronJobInfo{}, err
+	}
+	return s.cronJobInfoByID(job.ID), nil
+}
+
+// CronUpdate 改一条定时任务；传空字符串的字段表示"不改"。enabled 为 nil 表示不改启停。
+func (s *Service) CronUpdate(id, expr, goal, recipe string, enabled *bool) (tools.CronJobInfo, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return tools.CronJobInfo{}, errors.New("需要 id")
+	}
+	cfg := s.Config()
+	idx := -1
+	for i := range cfg.Cron {
+		if cfg.Cron[i].ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return tools.CronJobInfo{}, errors.New("没有这个定时任务：" + id)
+	}
+	if e := strings.TrimSpace(expr); e != "" {
+		if _, err := cron.Parse(e); err != nil {
+			return tools.CronJobInfo{}, errors.New("cron 表达式不合法：" + err.Error())
+		}
+		cfg.Cron[idx].Expr = e
+	}
+	if g := strings.TrimSpace(goal); g != "" {
+		cfg.Cron[idx].Goal = g
+	}
+	if rc := strings.TrimSpace(recipe); rc != "" {
+		cfg.Cron[idx].Recipe = rc
+	}
+	if enabled != nil {
+		cfg.Cron[idx].Enabled = *enabled
+	}
+	if err := s.SaveConfig(cfg); err != nil {
+		return tools.CronJobInfo{}, err
+	}
+	return s.cronJobInfoByID(id), nil
+}
+
+// CronRemove 删一条定时任务
+func (s *Service) CronRemove(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("需要 id")
+	}
+	cfg := s.Config()
+	idx := -1
+	for i := range cfg.Cron {
+		if cfg.Cron[i].ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return errors.New("没有这个定时任务：" + id)
+	}
+	cfg.Cron = append(cfg.Cron[:idx], cfg.Cron[idx+1:]...)
+	return s.SaveConfig(cfg)
+}
+
+// cronJobInfoByID 取某个任务的最新状态（含下次触发时间）；找不到返回零值（不报错，
+// 因为"刚加完立刻读回来"的竞态下宁可少一个字段，也不要让调用方以为加失败了）。
+func (s *Service) cronJobInfoByID(id string) tools.CronJobInfo {
+	for _, js := range s.Jobs() {
+		if js.ID == id {
+			return tools.CronJobInfo{
+				ID: js.ID, Expr: js.Expr, Goal: js.Goal, Recipe: js.Recipe,
+				Enabled: js.Enabled, AutoApprove: js.AutoApprove, NextAt: js.NextAt,
+				ParseErr: js.ParseErr, LastRunAt: js.LastRunAt, LastStatus: js.LastStatus,
+				LastError: js.LastError, Runs: js.Runs,
+			}
+		}
+	}
+	return tools.CronJobInfo{ID: id}
+}
+
+// cronHooks 把定时任务能力交给 Agent 的 cron / cron_remove 工具
+func (s *Service) cronHooks() tools.CronHooks {
+	return tools.CronHooks{
+		List: func() []tools.CronJobInfo {
+			jobs := s.Jobs()
+			out := make([]tools.CronJobInfo, 0, len(jobs))
+			for _, js := range jobs {
+				out = append(out, tools.CronJobInfo{
+					ID: js.ID, Expr: js.Expr, Goal: js.Goal, Recipe: js.Recipe,
+					Enabled: js.Enabled, AutoApprove: js.AutoApprove, NextAt: js.NextAt,
+					ParseErr: js.ParseErr, LastRunAt: js.LastRunAt, LastStatus: js.LastStatus,
+					LastError: js.LastError, Runs: js.Runs,
+				})
+			}
+			return out
+		},
+		Add:    s.CronAdd,
+		Update: s.CronUpdate,
+		Remove: s.CronRemove,
+	}
+}
 
 // Persona 人设库（控制台/桌面端管理人设文件用）
 func (s *Service) Persona() *persona.Library {
@@ -770,8 +907,15 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 	// 每次运行都用一个独立的工具注册表：派发子 Agent 时要带上正确的深度
 	reg := tools.NewRegistry()
 	tools.RegisterFS(reg, s.ws)
+	// 在工作目录内按文件名/内容搜索（纯 Go，不依赖平台有没有 grep/find）
+	tools.RegisterFileSearch(reg, s.ws)
 	reg.Register(tools.NewShellRun(s.ws, cfg.AllowShell))
 	reg.Register(tools.NewWebFetch())
+	// 联网搜索：只认显式配置的通道（searxng / duckduckgo）；没配就明确报错，不伪造结果
+	tools.RegisterWebSearch(reg, tools.WebSearchConfig{
+		Provider: cfg.Search.Provider, BaseURL: cfg.Search.BaseURL, APIKey: cfg.Search.APIKey,
+		TimeoutSec: cfg.Search.TimeoutSec, MaxResults: cfg.Search.MaxResults,
+	})
 	// 浏览器工具：打开动态页面 / 跑 JS / 截图。没配浏览器时工具仍注册，调用会明确报"没有可用浏览器"，不静默
 	if cfg.Browser.Enabled && browser != nil {
 		reg.Register(&tools.BrowserTool{Sess: browser, WS: s.ws})
@@ -785,6 +929,8 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 	tools.RegisterDevices(reg, s.devices, s.recordDeviceResult)
 	// 技能管理：Agent 自己把做法沉淀成技能（新建/改写免审批但要快照，删除走审批）
 	skills.RegisterTools(reg, skillMgr)
+	// 定时任务：Agent 自己安排按点自动跑的活（删除单独成 cron_remove，走审批）
+	tools.RegisterCron(reg, s.cronHooks())
 	// MCP 外部工具：每次运行前重新注册，配置一改立刻生效（热插拔）
 	if n := s.mcp.RegisterInto(reg); n > 0 {
 		s.lg.Debug("已注册 MCP 外部工具", "count", n)
@@ -805,6 +951,10 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 	if s.runs != nil {
 		reg.Register(agentrt.NewContextRecall(s.runs))
 	}
+
+	// 批量调用：**最后注册**，这样它能看见上面所有工具；
+	// 它内部会拒绝危险/会改现场的工具（避免绕过审批与快照）。
+	tools.RegisterRunToolBatch(reg)
 
 	approver := func(tool string, args map[string]any) bool {
 		if autoApprove {

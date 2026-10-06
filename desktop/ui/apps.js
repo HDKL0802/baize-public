@@ -160,7 +160,7 @@ window.APPS.forEach(a => { window.APP_BY_ID[a.id] = a; });
 /* ---------------- 占位（D2 接入） ---------------- */
 function renderSoon(app, root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <h3>${esc(app.name)}</h3>
       <div class="sub">这一块排在 D2：先跑通外壳 + 对话/设备/设置，再逐个接上控制台的功能。</div>
       <div class="empty">接口已经就绪（Go 侧统一代理 /api/be/*），接上去只是画界面的事。</div>
@@ -170,7 +170,7 @@ function renderSoon(app, root) {
 /* ---------------- 设置 ---------------- */
 async function renderSettings(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <div class="sect">
         <h3>连接</h3>
         <div class="sub">桌面端直连 NAS 后端；令牌只存在本机（%APPDATA%\\白泽\\desktop.json），不下发给网页。</div>
@@ -269,10 +269,13 @@ async function renderSettings(root) {
           <button class="btn" id="upApply" hidden>下载并重启</button>
           <span class="sub" id="upMsg" style="margin:0"></span>
         </div>
-        <div style="display:flex;gap:12px;align-items:center;margin-top:12px;flex-wrap:wrap">
+        <div class="bar">
           <label class="sub" style="margin:0"><input type="checkbox" id="upAuto" style="margin-right:6px">自动更新（后台定时检查，有新版就自动下载并重启）</label>
-          <label class="sub" style="margin:0">检查间隔
-            <input id="upAutoMin" type="number" min="10" step="10" style="width:88px;display:inline-block;margin:0 4px"> 分钟</label>
+        </div>
+        <div class="bar tight">
+          <label class="sub" style="margin:0">检查间隔</label>
+          <input id="upAutoMin" type="number" min="10" step="10" style="width:96px;flex:none">
+          <span class="sub" style="margin:0">分钟</span>
           <button class="btn ghost sm" id="upAutoSave">保存</button>
           <span class="sub" id="upAutoMsg" style="margin:0"></span>
         </div>
@@ -549,7 +552,7 @@ async function renderSettings(root) {
 /* ---------------- 设备 ---------------- */
 async function renderDevices(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <h3>接入的设备</h3>
       <div class="sub">电脑 / 手机 / NAS 注册上来的执行端。点「派活」把任务发到某台设备。</div>
       <div id="devList"><div class="empty">读取中…</div></div>
@@ -642,7 +645,7 @@ async function renderDevices(root) {
    右侧「最近运行」是常驻的，聊天/工作两种模式都看得到最近跑了什么、什么状态。 */
 async function renderChat(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <div class="chat-wrap">
         <div class="chat-main">
           <div class="tabs" id="chTabs">

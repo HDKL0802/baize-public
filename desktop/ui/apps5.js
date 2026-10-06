@@ -13,7 +13,7 @@ async function renderObserve(root) {
   let win = '24h';
 
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <h3>可观测性</h3>
       <div class="sub">
         白泽最近干得怎么样：跑了多少活、慢在哪、哪里在报错、有什么还没配。
@@ -120,7 +120,7 @@ async function renderObserve(root) {
       <div class="sect">
         <h3>健康（先看这里）</h3>
         <div class="sub">error = 配了但用不了（真问题）；warn = 没配或配置不稳妥（还能用，但建议看一眼）；ok = 本来就该这样。</div>
-        ${(rep.health || []).map(healthRow).join('')}
+        ${(rep.health || []).map(healthRow).join('') || '<div class="empty">还没有可体检的通道 —— 先去「模型通道」配一条。</div>'}
       </div>
 
       <div class="sect">

@@ -18,7 +18,7 @@ function b64ToText(b64) {
 /* ================= 10. 账号与共享 ================= */
 async function renderAccounts(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <div class="tabs">
         <button data-tab="me" class="on">身份</button>
         <button data-tab="users">用户</button>
@@ -138,7 +138,7 @@ async function renderAccounts(root) {
           <span class="mono">${esc(u.id)} · 建于 ${fmtTime(u.createdAt)}</span></div>
         <div class="tags">
           <button class="btn ghost sm" data-pwd="${esc(u.id)}">改口令</button>
-          <button class="btn ghost sm" data-del="${esc(u.id)}">删除</button>
+          <button class="btn ghost sm danger" data-del="${esc(u.id)}">删除</button>
         </div>
       </div>`).join('') : '<div class="empty">还没有用户</div>';
 
@@ -205,7 +205,7 @@ async function renderAccounts(root) {
           <span class="mono">${esc(g.id)} · ${g.memberCount || 0} 人 · 建于 ${fmtTime(g.createdAt)}</span></div>
         <div class="tags">
           <button class="btn ghost sm" data-mem="${esc(g.id)}" data-name="${esc(g.name)}">成员</button>
-          <button class="btn ghost sm" data-del="${esc(g.id)}">删除</button>
+          <button class="btn ghost sm danger" data-del="${esc(g.id)}">删除</button>
         </div>
       </div>`).join('') : '<div class="empty">还没有用户组</div>';
 
@@ -220,7 +220,7 @@ async function renderAccounts(root) {
         <div class="row">
           <div class="who"><b>${esc(m.userName || m.userId)}</b>
             <span class="mono">${esc(m.userId)} · ${esc(m.role)} · 加入 ${fmtTime(m.joinedAt)}</span></div>
-          <div class="tags"><button class="btn ghost sm" data-rm="${esc(m.userId)}">移出</button></div>
+          <div class="tags"><button class="btn ghost sm danger" data-rm="${esc(m.userId)}">移出</button></div>
         </div>`).join('') : '<div class="empty">组里还没有人</div>';
       $i('grMembers').querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
         const rr2 = await API.post('/api/agent/groups/' + encodeURIComponent(gid) + '/members',
@@ -272,15 +272,17 @@ async function renderAccounts(root) {
       <h3>共享文档</h3>
       <div class="sub">组内成员互相可见：谁上传，别人刷新就能看到并下载。
         <b>同名不同内容 = 两版并存（分叉）</b>，会被标出来，去「冲突协商」里定稿。</div>
-      <div class="fields" style="grid-template-columns:240px 1fr 160px">
+      <div class="fields" style="grid-template-columns:240px 1fr">
         <div><label>用户组</label><select id="dcGroup">
           ${mine.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select></div>
         <div><label>上传（选中文件后点右边按钮）</label><input type="file" id="dcFile"></div>
-        <div style="display:flex;align-items:flex-end"><button class="btn" id="dcUp">上传到该组</button></div>
       </div>
-      <div class="sub" id="dcMsg" style="margin:0 0 10px"></div>
-      <div id="dcList"></div>
-      <div class="sect"><button class="btn ghost" id="dcReload">刷新</button></div>`;
+      <div class="sub" id="dcMsg" style="margin:6px 0 0"></div>
+      <div class="bar tight">
+        <button class="btn" id="dcUp">上传到该组</button>
+        <button class="btn ghost" id="dcReload">刷新</button>
+      </div>
+      <div id="dcList"></div>`;
 
     const gid = () => $i('dcGroup').value;
     const load = async () => {
@@ -291,7 +293,7 @@ async function renderAccounts(root) {
       const groups = d.versions || [];
       $i('dcList').innerHTML = groups.length ? groups.map(grp => `
         <div class="sect" style="margin-top:14px">
-          <h3 style="font-size:13px">${esc(grp.name)}
+          <h3 class="h-sub">${esc(grp.name)}
             ${grp.forked ? '<span class="tag warn">分叉 · ' + grp.versions.length + ' 版</span>' : ''}</h3>
           ${(grp.versions || []).map(v => `
             <div class="row">
@@ -299,7 +301,7 @@ async function renderAccounts(root) {
                 <span class="mono">${bytes(v.size)} · ${fmtTime(v.at)} · ${esc(v.id)}${v.mime ? ' · ' + esc(v.mime) : ''}</span></div>
               <div class="tags">
                 <button class="btn ghost sm" data-get="${esc(v.id)}" data-nm="${esc(grp.name)}">下载</button>
-                <button class="btn ghost sm" data-rm="${esc(v.id)}">删除</button>
+                <button class="btn ghost sm danger" data-rm="${esc(v.id)}">删除</button>
               </div>
             </div>`).join('')}
         </div>`).join('')
@@ -350,7 +352,7 @@ async function renderAccounts(root) {
    两版内容各自 GET /api/agent/groups/{gid}/docs/{docId}（只读）。 */
 async function renderConflicts(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <h3>冲突协商</h3>
       <div class="sub">同一份文档被两个人各改了一版 → 系统自动开一次协商。
         两版<b>左右对照、都只能看</b>（这里没有任何"改对方那版"的操作）；用聊天把话说清，

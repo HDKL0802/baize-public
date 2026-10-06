@@ -11,7 +11,7 @@ async function renderExternal(root) {
   let data = { agents: [], types: [], allowRemote: false, recent: [] };
 
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <h3>外部 Agent（委托执行）</h3>
       <div class="sub">
         白泽可以把一段独立的活<b>委托给别的 Agent</b>去做，只把结论拿回来（适合把长过程外包出去）。
@@ -81,9 +81,9 @@ async function renderExternal(root) {
           <span class="tag ${a.enabled ? 'on' : 'off'}">${a.enabled ? '启用' : '停用'}</span>
           <span class="tag ${a.local ? '' : 'warn'}">${a.local ? '本机' : '远端'}</span>
           ${a.hasToken ? '<span class="tag on">有令牌</span>' : '<span class="tag">无令牌</span>'}
-          <button class="btn sm ghost" data-test="${esc(a.id)}">探活</button>
-          <button class="btn sm ghost" data-edit="${esc(a.id)}">编辑</button>
-          <button class="btn sm ghost" data-rm="${esc(a.id)}">删除</button>
+          <button class="btn ghost sm" data-test="${esc(a.id)}">探活</button>
+          <button class="btn ghost sm" data-edit="${esc(a.id)}">编辑</button>
+          <button class="btn ghost sm danger" data-rm="${esc(a.id)}">删除</button>
         </div>
       </div>`).join('') : '<div class="empty">还没有配置外部 Agent。白泽现在派不出去活。</div>';
 

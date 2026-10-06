@@ -41,39 +41,39 @@ async function renderChannels(root) {
   let editing = '';
 
   root.innerHTML = `
-    <div style="padding:14px 16px">
-      <h3>频道（你和白泽在「哪里」对话）</h3>
+    <div class="page">
+      <h3>频道（你和白泽在「对话」之外还能在哪说话）</h3>
       <div class="sub">
         一个频道 = 一个接入点：把外部消息变成一条「又来了一条 goal」交给白泽，白泽跑完把结论按平台方式发回去。
         心跳的 <span class="mono">last</span> / <span class="mono">inbox</span> 分发也走这里。
         <b>密钥 / 令牌一律「留空 = 不改」</b>，界面不回显。
       </div>
 
-      <div class="sect" style="margin-top:10px">
-        <h3>已配置 <span class="tag" id="chCount">0</span></h3>
+      <div class="sect">
+        <h3>已配置 <span class="count" id="chCount">0</span></h3>
         <div id="chList"></div>
       </div>
 
       <div class="sect">
-        <div class="fields" style="grid-template-columns:1fr 220px 120px">
+        <h3>加 / 改一条</h3>
+        <div class="fields" style="grid-template-columns:1fr 220px">
           <div><label>频道 id（字母 / 数字 / - / _）</label><input id="chId" placeholder="如 dingtalk-ops"></div>
           <div><label>类型</label><select id="chKind"></select></div>
-          <div style="display:flex;align-items:flex-end"><button class="btn" id="chSave">保存</button></div>
         </div>
-        <div id="chHint" class="sub" style="margin:2px 0 8px"></div>
+        <div id="chHint" class="sub" style="margin:0 0 var(--sp-3)"></div>
 
         <div id="chFields"></div>
 
-        <div style="display:flex;gap:16px;align-items:center;margin:6px 0 4px">
+        <div class="bar tight">
           <label class="sub" style="margin:0"><input type="checkbox" id="chEnabled" style="margin-right:6px" checked>启用</label>
         </div>
-        <div class="fields" style="grid-template-columns:1fr 1fr">
+        <div class="fields" style="grid-template-columns:1fr">
           <div><label>回复前缀（可选）</label><input id="chPrefix" placeholder="如 [白泽] "></div>
-          <div style="display:flex;align-items:flex-end;gap:10px">
-            <button class="btn" id="chSave2">保存</button>
-            <button class="btn ghost" id="chClear">清空表单</button>
-            <span class="sub" id="chMsg" style="margin:0"></span>
-          </div>
+        </div>
+        <div class="bar">
+          <button class="btn" id="chSave">保存</button>
+          <button class="btn ghost" id="chClear">清空表单</button>
+          <span class="sub" id="chMsg" style="margin:0"></span>
         </div>
       </div>
     </div>`;
@@ -121,10 +121,10 @@ async function renderChannels(root) {
         <div class="tags">
           <span class="tag ${c.enabled ? 'on' : 'off'}">${c.enabled ? '启用' : '停用'}</span>
           ${c.hasToken ? '<span class="tag on">有令牌</span>' : '<span class="tag">无令牌</span>'}
-          <button class="btn sm ghost" data-test="${esc(c.id)}">测试发送</button>
-          <button class="btn sm ghost" data-toggle="${esc(c.id)}">${c.enabled ? '停用' : '启用'}</button>
-          <button class="btn sm ghost" data-edit="${esc(c.id)}">编辑</button>
-          <button class="btn sm ghost" data-rm="${esc(c.id)}">删除</button>
+          <button class="btn ghost sm" data-test="${esc(c.id)}">测试发送</button>
+          <button class="btn ghost sm" data-toggle="${esc(c.id)}">${c.enabled ? '停用' : '启用'}</button>
+          <button class="btn ghost sm" data-edit="${esc(c.id)}">编辑</button>
+          <button class="btn ghost sm danger" data-rm="${esc(c.id)}">删除</button>
         </div>
       </div>`;
     }).join('') : '<div class="empty">还没有频道。白泽现在只能在控制台/应用里跟你说话，不在任何 IM 里。</div>';
@@ -222,7 +222,6 @@ async function renderChannels(root) {
 
   $i('chKind').onchange = buildFields;
   $i('chSave').onclick = save;
-  $i('chSave2').onclick = save;
   $i('chClear').onclick = clearForm;
 
   await load();

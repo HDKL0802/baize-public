@@ -19,8 +19,7 @@ function bytes(n) {
 }
 
 function tile(label, value, cls) {
-  return `<div class="tag ${cls || ''}" style="display:inline-block;padding:4px 10px;margin:0 6px 6px 0">
-    <span style="color:var(--text-3)">${esc(label)}</span> <b style="color:var(--text)">${esc(value)}</b></div>`;
+  return `<span class="stat ${cls || ''}"><i>${esc(label)}</i><b>${esc(value)}</b></span>`;
 }
 
 function stateTag(s) {
@@ -53,7 +52,7 @@ function showErr(node, r) {
    动作：POST /api/tasks {deviceId,action,args,origin}；POST /api/tasks/{id}/approve|reject */
 async function renderTasks(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <div class="sect" id="tkPendingWrap" hidden style="margin-top:0">
         <h3>待审批 <span class="tag warn" id="tkPendingN">0</span></h3>
         <div class="sub">危险动作（删除 / 执行命令等）必须人工放行，才会下发给设备。</div>
@@ -117,7 +116,7 @@ async function renderTasks(root) {
           <span class="mono">${esc(t.deviceId)} · ${esc(JSON.stringify(t.args || {}))}</span></div>
         <div class="tags">
           <button class="btn sm" data-ok="${esc(t.id)}">批准</button>
-          <button class="btn sm ghost" data-no="${esc(t.id)}">驳回</button>
+          <button class="btn ghost sm" data-no="${esc(t.id)}">驳回</button>
         </div>
       </div>`).join('');
     $i('tkPending').querySelectorAll('[data-ok]').forEach(b => b.onclick = () => act('/api/tasks/' + b.dataset.ok + '/approve'));
@@ -161,20 +160,20 @@ async function renderTasks(root) {
         POST /api/kb/import {todos,vault} */
 async function renderKB(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <div class="sect" style="margin-top:0">
         <h3>概览</h3>
         <div id="kbTiles" class="sub" style="margin-bottom:6px">读取中…</div>
       </div>
 
       <div class="sect">
-        <h3>待办 <span class="sub" id="kbTodoN" style="margin:0"></span></h3>
+        <h3>待办 <span class="count" id="kbTodoN"></span></h3>
         <div class="sub">正本在 NAS；手机上只是缓存。勾选 = 完成，✕ = 删除。</div>
         <div id="kbTodos"></div>
       </div>
 
       <div class="sect">
-        <h3>附件 <span class="sub" id="kbFileN" style="margin:0"></span></h3>
+        <h3>附件 <span class="count" id="kbFileN"></span></h3>
         <div class="sub">手机上不留文件，附件统一存在后端。</div>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
           <input type="file" id="kbFile" style="font-size:12px">
@@ -216,7 +215,7 @@ async function renderKB(root) {
           <span class="mono">${esc(t.category || '')}${t.due ? ' · 截止 ' + esc(t.due) : ''} · ${esc(t.owner === 'agent' ? '白泽派的' : '我的')} · ${esc(t.status || '')}</span></div>
         <div class="tags">
           ${t.priority ? `<span class="tag">${esc(t.priority)}</span>` : ''}
-          <button class="btn sm ghost" data-del title="删除">✕</button>
+          <button class="btn ghost sm" data-del title="删除">✕</button>
         </div>
       </div>`).join('') : '<div class="empty">知识库里还没有待办</div>';
 
@@ -236,8 +235,8 @@ async function renderKB(root) {
         <div class="who"><b>${esc(f.name)}</b>
           <span class="mono">${esc(f.mime || '')} · ${bytes(f.size)} · ${fmtTime(f.at)}${f.refs ? ' · 被引 ' + f.refs + ' 次' : ''}</span></div>
         <div class="tags">
-          <button class="btn sm ghost" data-get="${esc(f.id)}">下载</button>
-          <button class="btn sm ghost" data-rm="${esc(f.id)}">删除</button>
+          <button class="btn ghost sm" data-get="${esc(f.id)}">下载</button>
+          <button class="btn ghost sm danger" data-rm="${esc(f.id)}">删除</button>
         </div>
       </div>`).join('') : '<div class="empty">还没有附件</div>';
 
@@ -292,7 +291,7 @@ async function renderKB(root) {
    动作：POST /api/agent/memory/tree/rebuild、/compact、/write {content,title,kind,importance} */
 async function renderMemory(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <div class="tabs" id="mmTabs">
         <button data-tab="search" class="on">检索</button>
         <button data-tab="graph">星图</button>
@@ -387,7 +386,7 @@ async function renderMemory(root) {
               <textarea id="ntContent" style="min-height:220px"></textarea></div>
             <div style="display:flex;gap:10px;align-items:center">
               <button class="btn" id="ntSave">保存</button>
-              <button class="btn ghost" id="ntDelete">删除</button>
+              <button class="btn ghost danger" id="ntDelete">删除</button>
               <span class="sub" id="ntMsg" style="margin:0"></span>
             </div>
             <div class="sect"><h3>出链（指向别人）</h3><div id="ntOut"></div></div>
@@ -438,7 +437,7 @@ async function renderMemory(root) {
         </div>
         <div class="tags">
           <span class="tag on">分 ${(Number(h.score) || 0).toFixed(3)}</span>
-          <span class="tag">${esc(h.why || '')}</span>
+          ${h.why ? `<span class="tag wrap">${esc(h.why)}</span>` : ''}
           <span class="tag">图 ${(p.graph || 0).toFixed(2)}</span>
           <span class="tag">语义 ${(p.vector || 0).toFixed(2)}</span>
           <span class="tag">词 ${(p.keyword || 0).toFixed(2)}</span>
@@ -855,7 +854,7 @@ async function renderMemory(root) {
         POST /api/agent/embedding/test、/api/agent/embedding/reindex */
 async function renderProviders(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <div class="sect" style="margin-top:0">
         <h3>对话模型通道</h3>
         <div class="sub">密钥只存在后端，这里只显示「配没配」。</div>
@@ -864,31 +863,35 @@ async function renderProviders(root) {
 
       <div class="sect">
         <h3>加 / 改一条</h3>
-        <div class="fields" style="grid-template-columns:1fr 130px">
-          <div><label>从模板新建（选一个自动填地址与示例模型）</label><select id="pvPreset"><option value="">（自己填）</option></select></div>
-          <div><label>&nbsp;</label><button class="btn sm ghost" id="pvDiscover">模型发现</button></div>
+        <label>从模板新建（选一个自动填地址与示例模型）</label>
+        <div class="bar tight">
+          <select id="pvPreset" style="flex:1;min-width:180px"><option value="">（自己填）</option></select>
+          <button class="btn ghost sm" id="pvDiscover">模型发现</button>
         </div>
-        <div id="pvPresetNote" class="sub" style="margin:2px 0 6px"></div>
-        <div class="fields" style="grid-template-columns:130px 120px 1fr 150px">
+        <div id="pvPresetNote" class="sub" style="margin:6px 0 0"></div>
+        <div class="fields" style="grid-template-columns:1fr 140px">
           <div><label>名字</label><input id="pvName" placeholder="deepseek"></div>
           <div><label>协议</label><select id="pvProto"><option value="openai">openai</option><option value="anthropic">anthropic</option></select></div>
+        </div>
+        <div class="fields">
           <div><label>Base URL</label><input id="pvBase" placeholder="https://api.deepseek.com/v1"></div>
           <div><label>模型</label><input id="pvModel" placeholder="deepseek-chat" list="pvModelList"><datalist id="pvModelList"></datalist></div>
         </div>
-        <div class="fields" style="grid-template-columns:1fr 150px">
+        <div class="fields" style="grid-template-columns:1fr">
           <div><label>API Key（留空 = 保留原 key）</label><input id="pvKey" type="password"></div>
-          <div><label>&nbsp;</label>
-            <label class="sub" style="margin:0"><input type="checkbox" id="pvRemote" style="margin-right:6px">允许远程</label></div>
+        </div>
+        <div class="bar tight">
+          <label class="sub" style="margin:0"><input type="checkbox" id="pvRemote" style="margin-right:6px">允许远程</label>
         </div>
         <div class="fields" style="grid-template-columns:1fr 1fr 1fr">
           <div><label>任务类型（逗号分隔，空 = 通吃）</label><input id="pvKinds" placeholder="chat, summarize"></div>
           <div><label>成本标注（人话）</label><input id="pvCost" placeholder="免费（本地）/ 按量计费"></div>
           <div><label>隐私标注</label><input id="pvPrivacy" placeholder="本地，不出机器 / 公网云端"></div>
         </div>
-        <div class="fields" style="grid-template-columns:1fr">
-          <div><label class="sub" style="margin:0"><input type="checkbox" id="pvFallback" style="margin-right:6px">作为回退通道（主通道失败时按顺序兜底）</label></div>
+        <div class="bar tight">
+          <label class="sub" style="margin:0"><input type="checkbox" id="pvFallback" style="margin-right:6px">作为回退通道（主通道失败时按顺序兜底）</label>
         </div>
-        <div style="display:flex;gap:10px;align-items:center">
+        <div class="bar">
           <button class="btn" id="pvSave">保存</button>
           <button class="btn ghost" id="pvClear">清空</button>
           <span class="sub" id="pvMsg" style="margin:0"></span>
@@ -899,8 +902,8 @@ async function renderProviders(root) {
         <h3>向量化通道（记忆语义检索用）</h3>
         <div id="pvEmb" class="pre">读取中…</div>
         <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
-          <button class="btn sm ghost" id="pvEmbTest">探活</button>
-          <button class="btn sm ghost" id="pvEmbReindex">给旧记忆补向量</button>
+          <button class="btn ghost sm" id="pvEmbTest">探活</button>
+          <button class="btn ghost sm" id="pvEmbReindex">给旧记忆补向量</button>
           <span class="sub" id="pvEmbMsg" style="margin:0"></span>
         </div>
       </div>
@@ -927,12 +930,12 @@ async function renderProviders(root) {
           ${p.hasApiKey ? '<span class="tag on">有 key</span>' : '<span class="tag warn">无 key</span>'}
           ${p.usable ? '<span class="tag on">可用</span>' : '<span class="tag off">不可用</span>'}
           ${p.local ? '<span class="tag">本地</span>' : ''}
-          ${p.privacy ? `<span class="tag">${esc(p.privacy)}</span>` : ''}
-          ${p.cost ? `<span class="tag">${esc(p.cost)}</span>` : ''}
-          ${(p.kinds || []).length ? `<span class="tag">管 ${esc(p.kinds.join('/'))}</span>` : ''}
+          ${p.privacy ? `<span class="tag wrap">${esc(p.privacy)}</span>` : ''}
+          ${p.cost ? `<span class="tag wrap">${esc(p.cost)}</span>` : ''}
+          ${(p.kinds || []).length ? `<span class="tag wrap">管 ${esc(p.kinds.join('/'))}</span>` : ''}
           ${p.fallback ? '<span class="tag">兜底</span>' : ''}
-          <button class="btn sm ghost" data-test="${esc(p.name)}">探活</button>
-          <button class="btn sm ghost" data-rm="${esc(p.name)}">删除</button>
+          <button class="btn ghost sm" data-test="${esc(p.name)}">探活</button>
+          <button class="btn ghost sm danger" data-rm="${esc(p.name)}">删除</button>
         </div>
       </div>`).join('') : '<div class="empty">还没有配置模型通道</div>';
 
@@ -1034,7 +1037,7 @@ async function renderProviders(root) {
    动作：POST /api/agent/mcp {action:upsert|remove|reload|call, server, config, tool, args} */
 async function renderMCP(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <div class="sect" style="margin-top:0">
         <h3>MCP 服务</h3>
         <div class="sub">MCP 工具默认走人工审批；只有你显式信任（或列进 safeTools）的才免批。</div>
@@ -1044,17 +1047,20 @@ async function renderMCP(root) {
 
       <div class="sect">
         <h3>加 / 改一条</h3>
-        <div class="fields" style="grid-template-columns:130px 110px 1fr">
+        <div class="fields" style="grid-template-columns:1fr 140px">
           <div><label>名字</label><input id="mcName" placeholder="filesystem"></div>
           <div><label>传输</label><select id="mcTr"><option value="stdio">stdio</option><option value="http">http</option></select></div>
-          <div><label>命令（stdio）</label><input id="mcCmd" placeholder="npx -y @modelcontextprotocol/server-filesystem /data"></div>
         </div>
-        <div class="fields" style="grid-template-columns:1fr 140px">
-          <div><label>URL（http）</label><input id="mcURL" placeholder="https://.../mcp"></div>
-          <div><label>&nbsp;</label>
-            <label class="sub" style="margin:0"><input type="checkbox" id="mcOn" checked style="margin-right:6px">启用</label></div>
+        <div class="fields" style="grid-template-columns:1fr">
+          <div><label>命令（stdio）</label><input id="mcCmd" class="mono" placeholder="npx -y @modelcontextprotocol/server-filesystem /data"></div>
         </div>
-        <div style="display:flex;gap:10px;align-items:center">
+        <div class="fields" style="grid-template-columns:1fr">
+          <div><label>URL（http）</label><input id="mcURL" class="mono" placeholder="https://.../mcp"></div>
+        </div>
+        <div class="bar tight">
+          <label class="sub" style="margin:0"><input type="checkbox" id="mcOn" checked style="margin-right:6px">启用</label>
+        </div>
+        <div class="bar">
           <button class="btn" id="mcSave">保存</button>
           <span class="sub" id="mcMsg" style="margin:0"></span>
         </div>
@@ -1062,16 +1068,18 @@ async function renderMCP(root) {
 
       <div class="sect">
         <h3>手动调一个工具</h3>
-        <div class="fields" style="grid-template-columns:170px 200px 1fr">
+        <div class="fields" style="grid-template-columns:1fr 1fr">
           <div><label>服务</label><input id="mcCallServer" placeholder="filesystem"></div>
           <div><label>工具名</label><input id="mcCallTool" placeholder="list_directory"></div>
+        </div>
+        <div class="fields" style="grid-template-columns:1fr">
           <div><label>参数（JSON）</label><input id="mcCallArgs" class="mono" placeholder='{"path":"/data"}'></div>
         </div>
-        <div style="display:flex;gap:10px;align-items:center">
-          <button class="btn sm ghost" id="mcCall">调用</button>
+        <div class="bar tight">
+          <button class="btn ghost sm" id="mcCall">调用</button>
           <span class="sub" id="mcCallMsg" style="margin:0"></span>
         </div>
-        <div id="mcCallOut"></div>
+        <div id="mcCallOut"><div class="empty">还没调用过</div></div>
       </div>
     </div>`;
 
@@ -1089,8 +1097,8 @@ async function renderMCP(root) {
         <div class="tags">
           <span class="tag ${s.enabled ? 'on' : 'off'}">${s.enabled ? '启用' : '停用'}</span>
           ${s.autoApprove ? '<span class="tag warn">免审批</span>' : '<span class="tag">需审批</span>'}
-          <button class="btn sm ghost" data-reload="${esc(s.name)}">重连</button>
-          <button class="btn sm ghost" data-rm="${esc(s.name)}">删除</button>
+          <button class="btn ghost sm" data-reload="${esc(s.name)}">重连</button>
+          <button class="btn ghost sm danger" data-rm="${esc(s.name)}">删除</button>
         </div>
       </div>`).join('') : '<div class="empty">还没有接 MCP 服务</div>';
 
@@ -1150,9 +1158,9 @@ async function renderMCP(root) {
    说明：与白泽自己的 skill_manage 是同一套实现，所以这里建的技能它立刻能用；删除是归档不是硬删。 */
 async function renderSkills(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <div class="sect" style="margin-top:0">
-        <h3>技能库 <span class="sub" id="skN" style="margin:0"></span></h3>
+        <h3>技能库 <span class="count" id="skN"></span></h3>
         <div class="sub">技能是白泽自己攒的「操作手册」。这里也能建 / 改 / 删 —— 用的是和它自己同一套实现。</div>
         <div id="skList"></div>
       </div>
@@ -1202,8 +1210,8 @@ async function renderSkills(root) {
             <div class="pre" style="max-height:220px;overflow:auto">${esc(s.body || '')}</div></details>
         </div>
         <div class="tags">
-          <button class="btn sm ghost" data-edit="${esc(s.slug)}">编辑</button>
-          <button class="btn sm ghost" data-del="${esc(s.slug)}">删除</button>
+          <button class="btn ghost sm" data-edit="${esc(s.slug)}">编辑</button>
+          <button class="btn ghost sm danger" data-del="${esc(s.slug)}">删除</button>
         </div>
       </div>`).join('') : '<div class="empty">还没有技能（可以让白泽自己攒，也可以在这里建）</div>';
 
@@ -1260,7 +1268,7 @@ async function renderSkills(root) {
    说明：人设每次运行现读（热重载），保存后下一句话就生效，不用重启。 */
 async function renderPersona(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <div class="sect" style="margin-top:0">
         <h3>人设 <span class="sub" id="peMaster" style="margin:0"></span></h3>
         <div class="sub">决定白泽「是谁、按什么规矩办事」的一组 Markdown 文件，按顺序整篇拼进系统提示（顺序 = 由上到下）。
@@ -1334,12 +1342,12 @@ async function renderPersona(root) {
           <div class="sub" style="margin:4px 0 0">${esc(f.preview || '')}</div>
         </div>
         <div class="tags">
-          <button class="btn sm ghost" data-edit="${esc(f.name)}">编辑</button>
-          <button class="btn sm ghost" data-toggle="${esc(f.name)}">${f.enabled ? '停用' : '启用'}</button>
-          <button class="btn sm ghost" data-up="${esc(f.name)}" ${f.enabled ? '' : 'disabled'}>↑</button>
-          <button class="btn sm ghost" data-down="${esc(f.name)}" ${f.enabled ? '' : 'disabled'}>↓</button>
-          ${f.builtin ? `<button class="btn sm ghost" data-reset="${esc(f.name)}">恢复默认</button>` : ''}
-          <button class="btn sm ghost" data-arch="${esc(f.name)}">归档</button>
+          <button class="btn ghost sm" data-edit="${esc(f.name)}">编辑</button>
+          <button class="btn ghost sm" data-toggle="${esc(f.name)}">${f.enabled ? '停用' : '启用'}</button>
+          <button class="btn ghost sm" data-up="${esc(f.name)}" ${f.enabled ? '' : 'disabled'}>↑</button>
+          <button class="btn ghost sm" data-down="${esc(f.name)}" ${f.enabled ? '' : 'disabled'}>↓</button>
+          ${f.builtin ? `<button class="btn ghost sm" data-reset="${esc(f.name)}">恢复默认</button>` : ''}
+          <button class="btn ghost sm" data-arch="${esc(f.name)}">归档</button>
         </div>
       </div>`).join('') + '<div class="sub" style="margin-top:8px">未启用的文件不会进系统提示；「归档」会移进 .archive，不硬删。</div>'
       : '<div class="empty">还没有人设文件</div>';
@@ -1423,9 +1431,9 @@ async function renderPersona(root) {
    说明：调度器每 20 秒重读一次配置，所以改完最多 20 秒生效。 */
 async function renderCron(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <div class="sect" style="margin-top:0">
-        <h3>定时任务 <span class="sub" id="crN" style="margin:0"></span></h3>
+        <h3>定时任务 <span class="count" id="crN"></span></h3>
         <div class="sub">到点让白泽自动干一件事。表达式是标准 5 段 cron（分 时 日 月 周），例如 <span class="mono">0 8 * * *</span>；改完最多 20 秒生效。</div>
         <div id="crList"></div>
       </div>
@@ -1470,9 +1478,9 @@ async function renderCron(root) {
           ${j.lastError ? `<span class="mono" style="color:var(--danger)">上次错误：${esc(j.lastError)}</span>` : ''}</div>
         <div class="tags">
           <span class="tag ${j.enabled ? 'on' : 'off'}">${j.enabled ? '启用中' : '已停用'}</span>
-          <button class="btn sm ghost" data-toggle="${esc(j.id)}" data-on="${j.enabled ? '1' : '0'}">${j.enabled ? '停用' : '启用'}</button>
-          <button class="btn sm ghost" data-edit="${esc(j.id)}">编辑</button>
-          <button class="btn sm ghost" data-del="${esc(j.id)}">删除</button>
+          <button class="btn ghost sm" data-toggle="${esc(j.id)}" data-on="${j.enabled ? '1' : '0'}">${j.enabled ? '停用' : '启用'}</button>
+          <button class="btn ghost sm" data-edit="${esc(j.id)}">编辑</button>
+          <button class="btn ghost sm danger" data-del="${esc(j.id)}">删除</button>
         </div>
       </div>`).join('') : '<div class="empty">还没有定时任务</div>';
 
@@ -1530,23 +1538,25 @@ async function renderBackup(root) {
     ['runs', '运行记录'], ['skills', '技能库'], ['checkpoints', '变更快照'],
     ['workspace', '工作目录'], ['vault', '密码本']];
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <div class="sect" style="margin-top:0">
         <h3>新建备份</h3>
         <div class="sub">勾选要备份的内容；恢复前后端会自动做一次安全点。</div>
-        <div class="fields" style="grid-template-columns:repeat(4,1fr)">
+        <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
           ${SEL.map(([k, label]) => `<div style="display:flex;align-items:center;gap:6px">
             <input type="checkbox" data-sel="${k}" checked><span class="sub" style="margin:0">${esc(label)}</span></div>`).join('')}
         </div>
-        <div class="fields" style="grid-template-columns:1fr 140px">
+        <div class="fields" style="grid-template-columns:1fr">
           <div><label>备注</label><input id="bkNote" placeholder="例如：换手机前"></div>
-          <div><label>&nbsp;</label><button class="btn" id="bkNew">立刻备份</button></div>
         </div>
-        <span class="sub" id="bkMsg" style="margin:0"></span>
+        <div class="bar">
+          <button class="btn" id="bkNew">立刻备份</button>
+          <span class="sub" id="bkMsg" style="margin:0"></span>
+        </div>
       </div>
 
       <div class="sect">
-        <h3>已有备份 <span class="sub" id="bkN" style="margin:0"></span></h3>
+        <h3>已有备份 <span class="count" id="bkN"></span></h3>
         <div id="bkDir" class="sub"></div>
         <div id="bkList"></div>
       </div>
@@ -1568,9 +1578,9 @@ async function renderBackup(root) {
           <span class="mono">${bytes(b.size)} · ${m.entries ? m.entries.length + ' 个文件' : ''} · ${fmtTime(m.createdAt)}${m.note ? ' · ' + esc(m.note) : ''}</span>
           <span class="mono" style="color:var(--text-3)">含：${esc(selKeys.join(', ') || '（默认）')}</span></div>
         <div class="tags">
-          <button class="btn sm ghost" data-verify="${esc(b.path)}">校验</button>
-          <button class="btn sm ghost" data-dry="${esc(b.path)}">预演恢复</button>
-          <button class="btn sm ghost" data-del="${esc(b.path)}">删除</button>
+          <button class="btn ghost sm" data-verify="${esc(b.path)}">校验</button>
+          <button class="btn ghost sm" data-dry="${esc(b.path)}">预演恢复</button>
+          <button class="btn ghost sm danger" data-del="${esc(b.path)}">删除</button>
         </div>
       </div>`;
     }).join('') : '<div class="empty">还没有备份</div>';
@@ -1626,7 +1636,7 @@ async function renderBackup(root) {
            stats{runs,toolCalls,blocked,errors,startedAtMs,lastRunAtMs}} */
 async function renderActivity(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <div class="sect" style="margin-top:0">
         <h3>白泽现在在干什么</h3>
         <div class="sub">始终开启（AlwaysOn），3 秒刷新一次。</div>

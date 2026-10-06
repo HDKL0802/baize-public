@@ -7,7 +7,7 @@
 
 async function renderPlugins(root) {
   root.innerHTML = `
-    <div style="padding:14px 16px">
+    <div class="page">
       <h3>插件市场</h3>
       <div class="sub">
         插件就是一堆静态文件：源的 <span class="mono">index.json</span> + 若干 <span class="mono">.zip</span>。

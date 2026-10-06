@@ -14,6 +14,8 @@
   --accent:#38bdf8; --accent-soft:rgba(56,189,248,.14); --accent-ink:#06121b;
   --ok:#4ade80; --warn:#fbbf24; --danger:#f87171;
   --scroll-thumb:rgba(255,255,255,.2); --scroll-thumb-hover:rgba(255,255,255,.32);
+  /* 间距标尺：内边距/间距一律从这里取，别再就地编数值（4/8/12/16/20/28） */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:28px;
   --radius:2px;
   --font:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
   --mono:Consolas,"Cascadia Mono",monospace;
@@ -39,7 +41,7 @@ body{
   color:var(--text);background:var(--bg);font:14px/1.6 var(--font);
   overflow:hidden;user-select:none;
 }
-.mono{font-family:var(--mono);font-size:12px}
+.mono{font-family:var(--mono);font-size:12px;word-break:break-word}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:var(--scroll-thumb);border-radius:6px}
 ::-webkit-scrollbar-thumb:hover{background:var(--scroll-thumb-hover)}
@@ -90,15 +92,20 @@ body{
    审美基准：8px 间距栅格 · 三档字色（正文/次/弱）· 2px 直角 · 1px 描边。
    「卡片化」是这里的主要手法：每个 .sect 是一个有底有边的分组，靠留白与分组替掉一堆分割线。 */
 h3{margin:0 0 3px;font-size:15px;font-weight:600;letter-spacing:.01em}
+/* 卡片内的次级标题：比 h3 小一档（原来是各处内联 font-size:13px 覆盖） */
+.h-sub{margin:0 0 3px;font-size:13px;font-weight:600}
+/* 页面介绍（h3 + .sub）不包卡片 —— 介绍贴近、章节拉开，节奏就出来了 */
+.page>h3:first-child{margin-top:var(--sp-1)}
+.page>h3:first-child+.sub{margin-bottom:var(--sp-2)}
 .sub{color:var(--text-3);font-size:12px;line-height:1.7;margin-bottom:10px}
-.sect{margin-top:16px;padding:14px 16px;background:var(--surface);border:1px solid var(--border)}
+.sect{margin-top:var(--sp-5);padding:var(--sp-4);background:var(--surface);border:1px solid var(--border)}
 .sect>h3:first-child{margin-top:0}
 .sect>.sub:last-child{margin-bottom:0}
-.row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)}
+.row{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) 0;border-top:1px solid var(--border)}
 .row:first-of-type{border-top:0}
 .row .who{min-width:0;flex:1}
 .row .who b{display:block;font-size:13px;font-weight:600}
-.row .who span{display:block;color:var(--text-3);font-size:11px}
+.row .who span{display:block;color:var(--text-3);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row .tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .tag{font-size:11px;padding:1px 7px;border:1px solid var(--border);color:var(--text-2);background:var(--surface-2);white-space:nowrap}
 .tag.on{border-color:var(--accent);color:var(--accent)}
@@ -123,6 +130,32 @@ textarea{resize:vertical;min-height:64px}
 .ok{color:var(--ok);font-size:12px}
 .pre{white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:12px;line-height:1.7;
   background:var(--surface-2);border:1px solid var(--border);padding:10px;max-height:220px;overflow:auto}
+
+/* ---------- 页面外壳 / 动作条 / 小徽标（统一书写，别再内联） ----------
+   这三样原来是每个应用各写各的：20 处 style="padding:14px 16px"、37 处内联 flex+gap、
+   计数徽标三种写法。收成共享类，间距一律走 --sp-* 标尺。 */
+.page{padding:var(--sp-4) var(--sp-4) var(--sp-6);max-width:1120px}
+.page>.sect:first-child,.page>.bar:first-child{margin-top:0}
+.bar{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin-top:var(--sp-3)}
+.bar.tight{margin-top:0}
+.bar.tall{align-items:flex-end}
+.count{font-size:11px;font-weight:500;color:var(--text-3);border:1px solid var(--border);
+  padding:0 6px;border-radius:999px;white-space:nowrap}
+/* 长中文说明用可换行标签；.tag 默认 nowrap，别拿它装句子 */
+.tag.wrap{white-space:normal;line-height:1.5;text-align:left}
+/* 列表里的小胶囊（apps2 的 tile() 原来内联仿造过一份） */
+.tile{display:inline-block;font-size:11px;padding:1px 7px;border:1px solid var(--border);
+  background:var(--surface-2);color:var(--text-2);white-space:nowrap}
+/* 小块统计（标签 + 数值）：知识库/记忆这类"概览胶囊"，原来是各处内联仿造 */
+.stat{display:inline-flex;align-items:baseline;gap:6px;font-size:12px;padding:4px 10px;
+  border:1px solid var(--border);background:var(--surface-2);margin:0 6px 6px 0}
+.stat>i{font-style:normal;color:var(--text-3)}
+.stat>b{color:var(--text);font-weight:600}
+.stat.warn{border-color:var(--warn)}
+.stat.warn>b{color:var(--warn)}
+/* 危险操作（删除/移除）：与普通次要按钮区分开 */
+.btn.danger{background:transparent;border-color:var(--danger);color:var(--danger);font-weight:500}
+.btn.danger:hover{background:color-mix(in srgb,var(--danger) 12%,transparent);border-color:var(--danger);color:var(--danger)}
 
 /* ---------- 提示 ---------- */
 .toasts{position:fixed;right:16px;bottom:16px;z-index:90;display:grid;gap:8px;justify-items:end}

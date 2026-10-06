@@ -331,9 +331,20 @@ func TestChannelsNewKinds(t *testing.T) {
 	if code := e.do("GET", "/api/agent/channels", nil, true, &base); code != 200 {
 		t.Fatalf("GET /api/agent/channels 期望 200，实际 %d", code)
 	}
-	for _, k := range []string{"dingtalk", "qq", "xiaoyi", "yuanbao", "wechat"} {
+	for _, k := range []string{"dingtalk", "yuanbao", "wechat"} {
 		if !hasStr(base.Kinds, k) {
 			t.Fatalf("类型清单缺 %s：%+v", k, base.Kinds)
+		}
+	}
+	// qq / xiaoyi：源码保留但「有源码打不开」——类型不进清单，接口一律拒
+	for _, k := range []string{"qq", "xiaoyi"} {
+		if hasStr(base.Kinds, k) {
+			t.Fatalf("隐藏类型 %s 不该出现在清单里：%+v", k, base.Kinds)
+		}
+		if code := e.do("POST", "/api/agent/channels", map[string]any{
+			"action": "save", "id": "hidden-" + k, "kind": k, "enabled": false,
+			"appId": "a", "appSecret": "s", "agentId": "ag"}, true, nil); code != 400 {
+			t.Fatalf("隐藏类型 %s 必须被拒（400），实际 %d", k, code)
 		}
 	}
 
@@ -361,18 +372,6 @@ func TestChannelsNewKinds(t *testing.T) {
 		t.Fatalf("dingtalk 不该有入站令牌：%+v", got)
 	}
 
-	// xiaoyi：缺 agentId 400；填全 200
-	if code := e.do("POST", "/api/agent/channels", map[string]any{
-		"action": "save", "id": "xy", "kind": "xiaoyi", "enabled": false,
-		"appId": "ak", "appSecret": "sk"}, true, nil); code != 400 {
-		t.Fatalf("xiaoyi 缺 agentId 应 400，实际 %d", code)
-	}
-	if code := e.do("POST", "/api/agent/channels", map[string]any{
-		"action": "save", "id": "xy", "kind": "xiaoyi", "enabled": false,
-		"appId": "ak", "appSecret": "sk", "agentId": "ag1"}, true, nil); code != 200 {
-		t.Fatalf("xiaoyi 保存失败：%d", code)
-	}
-
 	// yuanbao：缺凭证 400；outboundUrl 非 ws 400；正常 200
 	if code := e.do("POST", "/api/agent/channels", map[string]any{
 		"action": "save", "id": "yb", "kind": "yuanbao", "enabled": false}, true, nil); code != 400 {
@@ -387,17 +386,6 @@ func TestChannelsNewKinds(t *testing.T) {
 		"action": "save", "id": "yb", "kind": "yuanbao", "enabled": false,
 		"appId": "a", "appSecret": "s", "outboundUrl": "ws://127.0.0.1:1"}, true, nil); code != 200 {
 		t.Fatalf("yuanbao 保存失败：%d", code)
-	}
-
-	// qq：缺凭证 400；填了 200
-	if code := e.do("POST", "/api/agent/channels", map[string]any{
-		"action": "save", "id": "q1", "kind": "qq", "enabled": false}, true, nil); code != 400 {
-		t.Fatalf("qq 缺凭证应 400，实际 %d", code)
-	}
-	if code := e.do("POST", "/api/agent/channels", map[string]any{
-		"action": "save", "id": "q1", "kind": "qq", "enabled": false,
-		"appId": "a", "appSecret": "s"}, true, nil); code != 200 {
-		t.Fatalf("qq 保存失败：%d", code)
 	}
 
 	// wechat：首次需扫码登录，故不强制凭证，无凭证也允许保存

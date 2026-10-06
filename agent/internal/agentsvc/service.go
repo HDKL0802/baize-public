@@ -580,10 +580,6 @@ func (s *Service) rebuildChannels() {
 			mgr.Register(ch, channels.NewFeishu(ch, s.lg))
 		case "dingtalk":
 			mgr.Register(ch, channels.NewDingTalk(ch, s.lg))
-		case "qq":
-			mgr.Register(ch, channels.NewQQ(ch, s.lg))
-		case "xiaoyi":
-			mgr.Register(ch, channels.NewXiaoYi(ch, s.lg))
 		case "yuanbao":
 			mgr.Register(ch, channels.NewYuanbao(ch, s.lg))
 		case "wechat":

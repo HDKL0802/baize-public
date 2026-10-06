@@ -196,18 +196,6 @@ func (s *Server) handleChannelAdmin(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-		case "qq":
-			// QQ 官方机器人：换 AccessToken 要 appId / clientSecret
-			if strings.TrimSpace(cur.AppID) == "" || strings.TrimSpace(cur.AppSecret) == "" {
-				writeErr(w, http.StatusBadRequest, "qq 频道必须配 appId / appSecret（QQ 机器人的 AppID / ClientSecret）")
-				return
-			}
-		case "xiaoyi":
-			// 小艺：AK/SK 签名 + Agent ID
-			if strings.TrimSpace(cur.AppID) == "" || strings.TrimSpace(cur.AppSecret) == "" || strings.TrimSpace(cur.AgentID) == "" {
-				writeErr(w, http.StatusBadRequest, "xiaoyi 频道必须配 appId(=AK) / appSecret(=SK) / agentId（小艺开放平台的 Agent ID）")
-				return
-			}
 		case "yuanbao":
 			// 元宝：sign-token 要 app_id / app_secret
 			if strings.TrimSpace(cur.AppID) == "" || strings.TrimSpace(cur.AppSecret) == "" {

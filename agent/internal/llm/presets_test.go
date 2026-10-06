@@ -37,15 +37,26 @@ func TestPresetsValid(t *testing.T) {
 			t.Fatalf("云端模板 %s 应标 needsKey：%+v", p.ID, p)
 		}
 	}
-	// Agnes 那条必须"端点留空 + 有说明"（不替它编地址）
-	for _, p := range list {
-		if p.ID == "agnes" {
-			if p.BaseURL != "" {
-				t.Fatal("Agnes 端点未经核实，不应预填 baseUrl")
+	// Agnes：国内 + 国际两条，端点用用户给的（.cn 国内；apihub.agnes-ai.com 国际）
+	wantAgnes := map[string]string{
+		"agnes":      "https://api.agnes-ai.cn/v1",
+		"agnes-intl": "https://apihub.agnes-ai.com/v1",
+	}
+	for id, base := range wantAgnes {
+		var hit *Preset
+		for i := range list {
+			if list[i].ID == id {
+				hit = &list[i]
 			}
-			if !strings.Contains(p.Note, "自行") && !strings.Contains(p.Note, "以 agnes-ai.com") {
-				t.Fatalf("Agnes 应给出「端点自行确认」的说明：%s", p.Note)
-			}
+		}
+		if hit == nil {
+			t.Fatalf("预置模板缺 %s", id)
+		}
+		if hit.BaseURL != base {
+			t.Fatalf("%s 端点应为 %s，实际 %s", id, base, hit.BaseURL)
+		}
+		if !strings.Contains(hit.Note, "文档") && !strings.Contains(hit.Note, "模型名") {
+			t.Fatalf("%s 应提示模型名 / 文档：%s", id, hit.Note)
 		}
 	}
 }

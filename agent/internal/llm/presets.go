@@ -82,10 +82,14 @@ func Presets() []Preset {
 			Region: "intl", Cost: "有免费额度 / 按量计费", Privacy: "公网云端", NeedsKey: true,
 			DocURL: "https://ai.google.dev", Note: "用 Google 的 OpenAI 兼容入口。"},
 
-		/* ---- 需自行确认端点（不替它编地址） ---- */
-		{ID: "agnes", Name: "Agnes AI（端点自行确认）", Protocol: "openai", BaseURL: "",
-			Model: "", Region: "cn", Cost: "自称免费（以 agnes-ai.com 为准）", Privacy: "公网云端", NeedsKey: true,
+		/* ---- Agnes AI（端点由用户提供；正常走国内那条就够） ---- */
+		{ID: "agnes", Name: "Agnes AI（国内）", Protocol: "openai", BaseURL: "https://api.agnes-ai.cn/v1",
+			Model: "", Region: "cn", Cost: "以 agnes-ai.cn 为准", Privacy: "公网云端", NeedsKey: true,
+			DocURL: "https://agnes-ai.cn",
+			Note:   "端点 https://api.agnes-ai.cn/v1（用户提供）。模型名请填 agnes 控制台里的那个；开发者文档在总站（agnes-ai.cn / agnes-ai.com）跳转。"},
+		{ID: "agnes-intl", Name: "Agnes AI（国际）", Protocol: "openai", BaseURL: "https://apihub.agnes-ai.com/v1",
+			Model: "", Region: "intl", Cost: "以 agnes-ai.com 为准", Privacy: "公网云端", NeedsKey: true,
 			DocURL: "https://agnes-ai.com",
-			Note:   "⚠️ Agnes AI 的接口**与 OpenAI 不完全兼容**（公开资料如此），直连可能不通；端点与模型名请以 agnes-ai.com 控制台为准自行填入，必要时先做一层协议转换。"},
+			Note:   "端点 https://apihub.agnes-ai.com/v1（用户提供）。模型名填 agnes 控制台里那个；一般走国内那条即可，这条留给国际站。"},
 	}
 }

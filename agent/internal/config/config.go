@@ -619,7 +619,7 @@ func normalizeHeartbeatTarget(v string) string {
 	return "main"
 }
 
-var channelKinds = []string{"webhook", "onebot", "feishu", "dingtalk", "qq", "xiaoyi", "yuanbao", "wechat"}
+var channelKinds = []string{"webhook", "onebot", "feishu", "dingtalk", "yuanbao", "wechat"}
 var channelFormats = []string{"generic", "feishu", "dingtalk", "slack"}
 
 // ChannelKinds 支持的频道类型（界面下拉用）：
@@ -627,10 +627,13 @@ var channelFormats = []string{"generic", "feishu", "dingtalk", "slack"}
 //   - onebot：QQ OneBot V11 反向 WebSocket（实现端连进来）
 //   - feishu：飞书事件回调 / 轮询入站，出站走 OpenAPI
 //   - dingtalk：钉钉 Stream 长连接（白泽主动连出去，免公网），回复走消息里的 sessionWebhook
-//   - qq：QQ 官方机器人（AccessToken + WebSocket 网关收事件 + OpenAPI 发消息）
-//   - xiaoyi：华为小艺（A2A over WebSocket，AK/SK 签名 + Agent ID）
 //   - yuanbao：腾讯元宝（protobuf over WebSocket + sign-token）
 //   - wechat：个人微信（官方 iLink Bot HTTP：二维码登录 + 长轮询收信 + HTTP 发信）
+//
+// ⚠️ 另有 `qq`（QQ 官方机器人，入驻要实名）与 `xiaoyi`（华为小艺，要华为开发者账号）两个适配器：
+// **源码保留**（`internal/channels/qq.go` / `xiaoyi.go`，单测也在），但**刻意不列在这里**——
+// 它们需要实名/开发者账号才能用，按用户要求「有源码但打不开」：界面与接口都不给入口，
+// 装配（rebuildChannels）也不认。要用得先自己把类型加回这里、并接上装配。
 func ChannelKinds() []string { return append([]string{}, channelKinds...) }
 
 // ChannelFormats webhook 出站请求体的形状（对接不同 IM 群机器人用）

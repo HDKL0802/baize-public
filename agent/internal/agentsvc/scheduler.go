@@ -25,10 +25,10 @@ type scheduler struct {
 	next   map[string]time.Time
 	errs   map[string]string
 
-	hbExpr    string
-	hbParsed  *cron.Schedule
-	hbNext    time.Time
-	hbErr     string
+	hbExpr   string
+	hbParsed *cron.Schedule
+	hbNext   time.Time
+	hbErr    string
 }
 
 func newScheduler(s *Service) *scheduler {

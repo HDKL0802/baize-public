@@ -119,8 +119,13 @@ func (r *Runner) Run(ctx context.Context, goal string) (RunResult, error) {
 		r.cfg.Hooks.Emit(ctx, hooks.EventRunStart, hooks.Payload{"runId": res.RunID, "goal": goal})
 	}
 
-	system := r.buildSystemPrompt(ctx, goal)
+	baseSystem := r.buildSystemPrompt(ctx, goal)
 	messages := []llm.Message{{Role: llm.RoleUser, Content: goal}}
+	// Scroll：被滚出上下文窗口的原文区间。
+	// 原文一直躺在 messages 表里，只是移出窗口 —— 需要时模型可以用 context_recall
+	// 按区间把原文取回来。所以这里是「不丢、可回放」，而不是旧的「压成摘要就没了」。
+	scrollNotes := []string{}
+	scrolledUpto := 0
 	msgIdx := 0
 	persist := func(m llm.Message) {
 		if err := r.cfg.Store.AppendMessage(res.RunID, msgIdx, m); err != nil {
@@ -158,19 +163,38 @@ func (r *Runner) Run(ctx context.Context, goal string) (RunResult, error) {
 	for step := 1; step <= r.cfg.MaxSteps; step++ {
 		res.Steps = step
 
-		// 1) 上下文压缩
-		compressed, changed, err := r.compressor.Compress(ctx, messages, system)
+		// 1) 上下文：超出预算就把较早的对话「滚出窗口」。
+		// 注意不是销毁：原文仍在 messages 表里，摘要里带着区间，模型可 context_recall 回放。
+		cr, err := r.compressor.Compress(ctx, messages, baseSystem+strings.Join(scrollNotes, ""))
 		if err != nil {
 			r.cfg.Logger.Warn("上下文压缩失败，继续用原文", "err", err)
 		}
-		if changed {
-			messages = compressed
+		if cr.Changed {
+			messages = cr.Messages
+			chunk := ScrollChunk{
+				RunID:    res.RunID,
+				StartIdx: scrolledUpto,
+				EndIdx:   scrolledUpto + cr.Scrolled,
+				Summary:  cr.Summary,
+				Tokens:   cr.Tokens,
+				At:       time.Now().UnixMilli(),
+			}
+			scrolledUpto = chunk.EndIdx
+			if r.cfg.Store != nil {
+				if err := r.cfg.Store.SaveScrollChunk(chunk); err != nil {
+					r.cfg.Logger.Warn("滚出记录落库失败", "err", err)
+				}
+			}
+			scrollNotes = append(scrollNotes, chunk.Note())
 			if r.cfg.Hooks != nil {
 				r.cfg.Hooks.Emit(ctx, hooks.EventCompress, hooks.Payload{
 					"runId": res.RunID, "step": step, "messages": len(messages),
+					"scrolled": chunk.EndIdx - chunk.StartIdx,
+					"from":     chunk.StartIdx, "to": chunk.EndIdx,
 				})
 			}
 		}
+		system := baseSystem + strings.Join(scrollNotes, "")
 
 		// 2) 问模型（带重试与回退）
 		resp, retries, err := r.chat(ctx, system, messages)
@@ -267,19 +291,26 @@ func (r *Runner) executeTool(ctx context.Context, call llm.ToolCall, res *RunRes
 		}
 	}
 	// 会改工作目录的工具：动手之前先打快照（写文件不需要审批，但必须留退路）
+	//
+	// 用 CreateOnce 按运行去重：一次运行里连续改好几个文件时，"变更前"的状态其实是
+	// 同一个（都是这次运行开始前的样子）。老实现每写一个文件就全量拷一遍工作目录，
+	// 跑 10 步就是 10 份完整拷贝；现在一次运行只打一个变更前快照。
 	if r.cfg.CheckpointBeforeWrite && r.cfg.Checkpoints != nil && r.cfg.Tools.IsMutating(call.Name) {
-		info, err := r.cfg.Checkpoints.Create(call.Name)
+		info, created, err := r.cfg.Checkpoints.CreateOnce("prewrite:"+res.RunID, call.Name, 0)
 		if err != nil {
 			return nil, fmt.Errorf("变更前快照失败，已中止该工具调用：%w", err)
 		}
-		res.Checkpoints = append(res.Checkpoints, info.ID)
-		if r.cfg.Hooks != nil {
-			r.cfg.Hooks.Emit(ctx, hooks.EventCheckpoint, hooks.Payload{
-				"runId": res.RunID, "id": info.ID, "tool": call.Name, "files": info.Files,
-			})
+		if created {
+			res.Checkpoints = append(res.Checkpoints, info.ID)
+			if r.cfg.Hooks != nil {
+				r.cfg.Hooks.Emit(ctx, hooks.EventCheckpoint, hooks.Payload{
+					"runId": res.RunID, "id": info.ID, "tool": call.Name, "files": info.Files,
+				})
+			}
 		}
 	}
-	return r.cfg.Tools.Call(ctx, call.Name, call.Args)
+	// 把 runID 通过 ctx 交给工具：context_recall 这类工具要知道自己在哪次运行里
+	return r.cfg.Tools.Call(tools.WithRunID(ctx, res.RunID), call.Name, call.Args)
 }
 
 // chat 调模型：主通道失败重试，再逐个回退通道

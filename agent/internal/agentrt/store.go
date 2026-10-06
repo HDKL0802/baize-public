@@ -68,6 +68,16 @@ CREATE TABLE IF NOT EXISTS messages(
   at INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_messages_run ON messages(run_id, idx);
+CREATE TABLE IF NOT EXISTS scroll_chunks(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL DEFAULT '',
+  start_idx INTEGER NOT NULL DEFAULT 0,
+  end_idx INTEGER NOT NULL DEFAULT 0,
+  summary TEXT NOT NULL DEFAULT '',
+  tokens INTEGER NOT NULL DEFAULT 0,
+  at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_scroll_run ON scroll_chunks(run_id, start_idx);
 `
 
 // OpenStore 打开运行记录库
@@ -202,6 +212,81 @@ func (s *Store) Messages(runID string) ([]llm.Message, error) {
 		var m llm.Message
 		var tc string
 		if err := rows.Scan(&m.Role, &m.Content, &tc, &m.ToolCallID, &m.Name); err != nil {
+			return nil, err
+		}
+		if tc != "" && tc != "null" {
+			_ = json.Unmarshal([]byte(tc), &m.ToolCalls)
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// SaveScrollChunk 记录一批"被滚出上下文"的原文区间（原文本身还在 messages 表里）
+func (s *Store) SaveScrollChunk(c ScrollChunk) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.Exec(`INSERT INTO scroll_chunks(run_id,start_idx,end_idx,summary,tokens,at)
+		VALUES(?,?,?,?,?,?)`,
+		c.RunID, c.StartIdx, c.EndIdx, c.Summary, c.Tokens, time.Now().UnixMilli())
+	return err
+}
+
+// ScrollChunks 某次运行的滚出记录（按区间从前到后）
+func (s *Store) ScrollChunks(runID string) ([]ScrollChunk, error) {
+	if s == nil {
+		return []ScrollChunk{}, nil
+	}
+	rows, err := s.db.Query(`SELECT run_id,start_idx,end_idx,summary,tokens,at FROM scroll_chunks
+		WHERE run_id=? ORDER BY start_idx`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ScrollChunk{}
+	for rows.Next() {
+		var c ScrollChunk
+		if err := rows.Scan(&c.RunID, &c.StartIdx, &c.EndIdx, &c.Summary, &c.Tokens, &c.At); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// MessagesRange 按原始下标区间取回对话消息（Scroll 回放用）。
+// from/to 是 messages 表里的 idx；to < 0 表示到末尾；limit <= 0 用默认值。
+func (s *Store) MessagesRange(runID string, from, to, limit int) ([]llm.Message, error) {
+	if s == nil {
+		return []llm.Message{}, nil
+	}
+	if limit <= 0 {
+		limit = 40
+	}
+	if from < 0 {
+		from = 0
+	}
+	q := `SELECT idx,role,content,tool_calls,tool_call_id,name FROM messages WHERE run_id=? AND idx>=?`
+	args := []any{runID, from}
+	if to >= 0 {
+		q += ` AND idx<?`
+		args = append(args, to)
+	}
+	q += ` ORDER BY idx LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []llm.Message{}
+	for rows.Next() {
+		var m llm.Message
+		var idx int
+		var tc string
+		if err := rows.Scan(&idx, &m.Role, &m.Content, &tc, &m.ToolCallID, &m.Name); err != nil {
 			return nil, err
 		}
 		if tc != "" && tc != "null" {

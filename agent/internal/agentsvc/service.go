@@ -798,6 +798,12 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 		},
 	}, lib)
 
+	// 上下文回放（Scroll 的"取回原文"那一半）：较早的对话被滚出上下文窗口后，
+	// 原文仍在 runs.db 的 messages 表里，模型可以用 context_recall 按区间取回来。
+	if s.runs != nil {
+		reg.Register(agentrt.NewContextRecall(s.runs))
+	}
+
 	approver := func(tool string, args map[string]any) bool {
 		if autoApprove {
 			s.lg.Warn("审批闸门：按请求自动放行危险操作", "tool", tool)

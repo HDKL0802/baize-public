@@ -403,7 +403,7 @@ func TestMaxStepsStopsRun(t *testing.T) {
 	}
 }
 
-// 上下文压缩：超预算时把旧对话压成摘要
+// 上下文压缩：超预算时把较早的对话"滚出窗口"（原文不销毁，摘要单独交回）
 func TestCompressorShrinksContext(t *testing.T) {
 	c := NewCompressor(50, nil, nil)
 	long := strings.Repeat("这是一段很长的历史消息。", 30)
@@ -415,26 +415,31 @@ func TestCompressorShrinksContext(t *testing.T) {
 		{Role: llm.RoleUser, Content: "最近的问题"},
 		{Role: llm.RoleAssistant, Content: "最近的回答"},
 	}
-	out, changed, err := c.Compress(context.Background(), msgs, "系统提示")
+	cr, err := c.Compress(context.Background(), msgs, "系统提示")
 	if err != nil {
 		t.Fatalf("压缩失败：%v", err)
 	}
-	if !changed {
+	if !cr.Changed {
 		t.Fatal("超预算时应发生压缩")
 	}
-	if len(out) >= len(msgs) {
-		t.Fatalf("压缩后消息数应减少：%d → %d", len(msgs), len(out))
+	if len(cr.Messages) >= len(msgs) {
+		t.Fatalf("压缩后消息数应减少：%d → %d", len(msgs), len(cr.Messages))
 	}
-	if !strings.Contains(out[0].Content, "压缩摘要") {
-		t.Fatalf("首条应是压缩摘要：%+v", out[0])
+	if cr.Scrolled <= 0 || cr.Tokens <= 0 {
+		t.Fatalf("应报出滚出的条数与 token：%+v", cr)
 	}
-	if out[len(out)-1].Content != "最近的回答" {
+	if strings.TrimSpace(cr.Summary) == "" {
+		t.Fatal("应给出被滚出部分的摘要")
+	}
+	// 关键：摘要不再挤进消息列表（原文靠 messages 表 + context_recall 回放）
+	// 切点两侧的消息数应当减少，且最近的消息必须原样保留
+	if cr.Messages[len(cr.Messages)-1].Content != "最近的回答" {
 		t.Fatal("最近的消息应原样保留")
 	}
 
 	// 预算充足时不动
 	short := []llm.Message{{Role: llm.RoleUser, Content: "短"}}
-	if out2, changed2, _ := c.Compress(context.Background(), short, "系统"); changed2 || len(out2) != 1 {
+	if cr2, _ := c.Compress(context.Background(), short, "系统"); cr2.Changed || len(cr2.Messages) != 1 {
 		t.Fatal("预算充足时不该改上下文")
 	}
 }

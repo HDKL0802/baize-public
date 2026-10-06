@@ -66,8 +66,3 @@ powershell -ExecutionPolicy Bypass -File android-app\build.ps1
 - **例外**：`agent/internal/memory/` 与 `agent/internal/voice/` 是基于 **GPL-3.0** 项目
   [OpenHuman](https://github.com/tinyhumansai/openhuman) 的实现用 Go 重写而来的衍生作品，
   这两处按 **GPL-3.0** 授权（原文见 [LICENSE-GPL-3.0.txt](LICENSE-GPL-3.0.txt)）。
-
-## 安全
-
-本仓库**不含任何密钥**。运行所需的 NAS 地址 / SSH 密码 / 配对令牌放在本地 `deploy.local.env`
-（已被 `.gitignore` 排除），或写入各端自己的配置目录。

@@ -137,6 +137,18 @@ func buildHandler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "device": deviceSnapshot()})
 	})
 
+	// 界面主题：亮 / 暗 / 跟随系统（存档在本地配置，浮窗与手机端同源）
+	mux.HandleFunc("/api/local/theme", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req struct {
+				Theme string `json:"theme"`
+			}
+			_ = json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&req)
+			setTheme(req.Theme)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "theme": themeNow()})
+	})
+
 	// 开机自启（写 HKCU 的 Run 键；不需要管理员）
 	mux.HandleFunc("/api/local/autostart", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {

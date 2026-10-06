@@ -6,10 +6,20 @@
 <title>白泽浮窗</title>
 <style>
   :root{
-    --bg:#0e1218; --surface:#141a23; --surface-2:#1a222d;
-    --border:#222c38; --border-strong:#2c3846;
-    --text:#e6ecf4; --muted:#8b98a8; --faint:#5c6878;
-    --accent:#38bdf8; --ok:#34d399; --err:#f87171; --warn:#fbbf24;
+    color-scheme:dark;
+    --bg:#141414; --surface:#1f1f1f; --surface-2:#262626;
+    --border:rgba(255,255,255,.12); --border-strong:rgba(255,255,255,.18);
+    --text:rgba(255,255,255,.86); --text-2:rgba(255,255,255,.62); --text-3:rgba(255,255,255,.42);
+    --accent:#38bdf8; --accent-soft:rgba(56,189,248,.14); --accent-ink:#06121b;
+    --ok:#4ade80; --warn:#fbbf24; --err:#f87171;
+  }
+  html[data-theme=light]{
+    color-scheme:light;
+    --bg:#f7f6f2; --surface:#ffffff; --surface-2:#f2f1ec;
+    --border:#e6e3de; --border-strong:#d3cfc8;
+    --text:rgba(20,20,19,.88); --text-2:rgba(20,20,19,.58); --text-3:rgba(20,20,19,.46);
+    --accent:#0284c7; --accent-soft:rgba(2,132,199,.10); --accent-ink:#ffffff;
+    --ok:#16a34a; --warn:#d97706; --err:#dc2626;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -20,69 +30,62 @@
   }
   .wrap{display:flex;flex-direction:column;height:100vh}
 
-  /* 顶部标题栏：高 40px，右侧 132px 留给按钮（原生拖动区与 float_windows.go 对齐） */
+  /* 顶部标题栏：全条可拖（按钮除外）；高度要和浮窗右上角按钮区对齐 */
   .fhead{
     height:40px;flex:0 0 40px;display:flex;align-items:center;gap:8px;
-    padding:0 8px 0 12px;background:var(--surface);border-bottom:1px solid var(--border);
-    user-select:none;
+    padding:0 6px 0 14px;background:var(--surface);border-bottom:1px solid var(--border);
+    user-select:none;cursor:default;
   }
-  .ftitle{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:var(--muted);
+  body.dragging{cursor:move}
+  .ftitle{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:var(--text-2);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .fbtns{flex:0 0 132px;display:flex;justify-content:flex-end;align-items:center;gap:4px}
+  .fbtns{flex:0 0 auto;display:flex;align-items:center;gap:2px}
   .ibtn{
-    width:30px;height:30px;display:grid;place-items:center;border:0;border-radius:4px;
-    background:transparent;color:var(--muted);cursor:pointer;font-size:13px;line-height:1;
+    width:30px;height:30px;display:grid;place-items:center;border:0;border-radius:5px;
+    background:transparent;color:var(--text-2);cursor:pointer;font-size:12px;line-height:1;
     transition:background .12s,color .12s;
   }
   .ibtn:hover{background:var(--surface-2);color:var(--text)}
-  .ibtn.on{background:rgba(56,189,248,.14);color:var(--accent)}
+  .ibtn.txt{width:auto;padding:0 8px;font-weight:600;font-size:11.5px}
+  .ibtn svg{width:15px;height:15px;display:block;transition:transform .16s ease}
+  /* 未钉住 = 图钉斜着；钉住 = 图钉竖直 */
+  #pin svg{transform:rotate(42deg)}
+  #pin.on svg{transform:rotate(0deg)}
 
   .body{flex:1;min-height:0;display:flex;flex-direction:column}
 
-  /* 提取 / 翻译：正文占满，操作固定在底部一条 */
-  .pane{padding:12px;overflow:auto;flex:1;min-height:0}
+  /* 提取文字 / 翻译：正文占满整屏，不再挂一排「正在处理/重试/复制」 */
+  .pane{padding:12px;flex:1;min-height:0;display:flex}
   .result{
-    white-space:pre-wrap;word-break:break-word;background:var(--surface);
-    border:1px solid var(--border);border-radius:5px;padding:11px 12px;
-    font-size:13.5px;line-height:1.75;min-height:100%;
+    flex:1;white-space:pre-wrap;word-break:break-word;background:var(--surface);
+    border:1px solid var(--border);border-radius:6px;padding:12px 13px;
+    font-size:13.5px;line-height:1.8;overflow:auto;user-select:text;
   }
-  .result:empty::before{content:attr(data-ph);color:var(--faint)}
-  .bar{
-    flex:0 0 auto;display:flex;align-items:center;gap:6px;
-    padding:9px 10px;border-top:1px solid var(--border);background:var(--surface);
-  }
-  .sp{flex:1}
-  .hint{color:var(--faint);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  select{
-    background:var(--bg);color:var(--text);border:1px solid var(--border-strong);
-    border-radius:4px;padding:3px 6px;font:inherit;font-size:12px;outline:none;
-  }
-
-  button.btn{
-    border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text);
-    border-radius:4px;padding:5px 11px;font:inherit;font-size:12.5px;cursor:pointer;
-    white-space:nowrap;transition:background .12s,border-color .12s,opacity .12s;
-  }
-  button.btn:hover{background:#22303e}
-  button.btn:disabled{opacity:.45;cursor:not-allowed}
-  button.btn.primary{background:var(--accent);border-color:var(--accent);color:#08131b;font-weight:600}
-  button.btn.primary:hover{background:#4cc6fa}
+  .result:empty::before{content:attr(data-ph);color:var(--text-3)}
 
   /* 对话 */
   .msgs{flex:1;min-height:0;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:9px}
-  .msg{max-width:88%;border-radius:6px;padding:8px 11px;font-size:13px;line-height:1.6;word-break:break-word}
-  .msg.me{align-self:flex-end;background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.28)}
+  .msg{max-width:88%;border-radius:8px;padding:8px 11px;font-size:13px;line-height:1.65;word-break:break-word;user-select:text}
+  .msg.me{align-self:flex-end;background:var(--accent-soft);border:1px solid var(--border-strong)}
   .msg.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--border)}
-  .msg.ai .meta{display:block;margin-top:5px;color:var(--faint);font-size:11px}
+  .msg.ai .meta{display:block;margin-top:5px;color:var(--text-3);font-size:11px}
   .composer{flex:0 0 auto;padding:10px 12px 12px;border-top:1px solid var(--border);background:var(--surface)}
   .composer textarea{
     width:100%;resize:none;height:58px;background:var(--bg);color:var(--text);
-    border:1px solid var(--border-strong);border-radius:5px;padding:9px 10px;font:inherit;
+    border:1px solid var(--border-strong);border-radius:6px;padding:9px 10px;font:inherit;
     font-size:13px;outline:none;line-height:1.55;
   }
   .composer textarea:focus{border-color:var(--accent)}
   .send{display:flex;justify-content:flex-end;margin-top:8px}
-  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--faint);margin-right:5px;vertical-align:1px}
+  button.btn{
+    border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text);
+    border-radius:6px;padding:5px 12px;font:inherit;font-size:12.5px;cursor:pointer;
+    white-space:nowrap;transition:background .12s,opacity .12s;
+  }
+  button.btn:hover{background:var(--surface-3,var(--surface-2))}
+  button.btn:disabled{opacity:.45;cursor:not-allowed}
+  button.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--text-3);margin-right:5px;vertical-align:1px}
   .dot.busy{background:var(--warn);animation:pulse 1s infinite}
   .dot.ok{background:var(--ok)}
   .dot.err{background:var(--err)}
@@ -91,11 +94,20 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="fhead">
+  <div class="fhead" id="head">
     <div class="ftitle" id="title">白泽</div>
     <div class="fbtns">
-      <button class="ibtn" id="pin" title="钉住（锁死位置并置顶）">📌</button>
-      <button class="ibtn" id="close" title="关闭">✕</button>
+      <button class="ibtn txt" id="lang" hidden>中</button>
+      <button class="ibtn" id="pin" title="钉住（锁死位置并置顶）">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/>
+        </svg>
+      </button>
+      <button class="ibtn" id="close" title="关闭">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
     </div>
   </div>
 
@@ -113,15 +125,6 @@
   <!-- 提取文字 / 翻译 -->
   <div class="body" id="vText" hidden>
     <div class="pane"><div class="result" id="result" data-ph="正在处理…"></div></div>
-    <div class="bar">
-      <span class="hint" id="stat"></span>
-      <label class="hint" id="langWrap" hidden>译文
-        <select id="lang"><option value="zh">中文</option><option value="en">英文</option></select>
-      </label>
-      <span class="sp"></span>
-      <button class="btn" id="again">重试</button>
-      <button class="btn primary" id="copy">复制</button>
-    </div>
   </div>
 </div>
 
@@ -158,14 +161,78 @@ const local = async (p, body) => {
 let MODE = 'chat';
 let REV = 0;
 let pinned = false;
+let lang = 'zh';
+
+/* ---------- 主题：亮 / 暗 / 跟随系统（跟主程序同一份配置） ---------- */
+function applyTheme(theme) {
+  const sysLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  const t = theme === 'light' || theme === 'dark' ? theme : (sysLight ? 'light' : 'dark');
+  document.documentElement.setAttribute('data-theme', t);
+}
+(async () => {
+  const c = await local('/config');
+  const th = (c && c.config && c.config.theme) || (c && c.theme) || 'system';
+  applyTheme(th);
+  if (window.matchMedia) {
+    try { window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => applyTheme(th)); } catch (e) { /* 老 Edge 忽略 */ }
+  }
+})();
 
 /* ---------- 顶部按钮 ---------- */
-function paintPin() { $('pin').classList.toggle('on', pinned); }
+function paintPin() {
+  $('pin').classList.toggle('on', pinned);
+  $('pin').title = pinned ? '取消钉住（可以拖动）' : '钉住（锁死位置并置顶）';
+}
 $('pin').onclick = async () => {
   const r = await local('/float/pin', { on: !pinned });
   pinned = !!(r && r.pinned); paintPin();
 };
 $('close').onclick = () => local('/float/close', {});
+$('lang').onclick = () => {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  $('lang').textContent = lang === 'zh' ? '中' : 'EN';
+  if (MODE === 'translate') runVision();
+};
+
+/* ---------- 拖动窗口 ----------
+   WebView2 的客户区是子窗口，鼠标命中测试由它接管，顶层根本收不到 WM_NCHITTEST，
+   所以只能用「JS 按住 → 把位移发给原生 SetWindowPos」这条路。 */
+(function wireDrag() {
+  const head = $('head');
+  let drag = null, raf = 0, accX = 0, accY = 0;
+
+  const flush = () => {
+    raf = 0;
+    if (!accX && !accY) return;
+    const dx = accX, dy = accY; accX = accY = 0;
+    local('/float/move', { dx, dy });
+  };
+  head.addEventListener('pointerdown', e => {
+    if (e.target.closest('button') || pinned) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    try { head.setPointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
+    document.body.classList.add('dragging');
+    e.preventDefault();
+  });
+  head.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    accX += e.clientX - drag.x;
+    accY += e.clientY - drag.y;
+    drag.x = e.clientX; drag.y = e.clientY;
+    if (!raf) raf = requestAnimationFrame(flush); // 合并到每帧一次，别一个像素发一个请求
+  });
+  const end = async e => {
+    if (!drag || (e && e.pointerId !== drag.id)) return;
+    drag = null;
+    document.body.classList.remove('dragging');
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
+    if (accX || accY) { local('/float/move', { dx: accX, dy: accY }); accX = accY = 0; }
+    await local('/float/snap', {}); // 松手吸到最近的屏幕边
+  };
+  head.addEventListener('pointerup', end);
+  head.addEventListener('pointercancel', end);
+  window.addEventListener('blur', () => end());
+})();
 
 /* ---------- 读图 + 走多模态 ---------- */
 async function imageBase64() {
@@ -176,13 +243,11 @@ async function imageBase64() {
   for (let i = 0; i < buf.length; i += CH) s += String.fromCharCode.apply(null, buf.subarray(i, i + CH));
   return btoa(s);
 }
-
-// visionText 把当前图交给多模态模型，返回文字（失败返回 null）
-async function visionText(action, lang) {
+async function visionText(action) {
   const b64 = await imageBase64();
   if (!b64) return null;
   const body = { action: action, imageBase64: b64 };
-  if (action === 'translate') body.lang = lang || $('lang').value;
+  if (action === 'translate') body.lang = lang;
   const r = await api('/api/agent/vision', 'POST', body);
   if (!r.ok) return { error: r.error || '未知错误' };
   const d = r.data || {};
@@ -192,27 +257,15 @@ async function visionText(action, lang) {
 
 /* ---------- 提取文字 / 翻译 ---------- */
 async function runVision() {
-  const res = $('result'), stat = $('stat');
-  $('again').disabled = true; $('copy').disabled = true;
-  res.dataset.ph = MODE === 'translate' ? '翻译中…（可能几秒）' : '识别中…（可能几秒）';
-  res.textContent = ''; stat.textContent = '';
+  const res = $('result');
+  res.dataset.ph = MODE === 'translate' ? (lang === 'zh' ? '翻译成中文…（可能几秒）' : 'Translating…') : '识别中…（可能几秒）';
+  res.textContent = '';
   const v = await visionText(MODE === 'translate' ? 'translate' : 'extract');
-  $('again').disabled = false;
   if (v == null) { res.dataset.ph = '没拿到截图'; return; }
   if (v.error) { res.dataset.ph = '失败：' + v.error; return; }
   res.dataset.ph = '（没有识别到内容）';
   res.textContent = v.text;
-  $('copy').disabled = !v.text;
-  stat.textContent = v.model ? (v.model + ' · ' + v.ms + ' ms') : '';
 }
-$('again').onclick = () => runVision();
-$('lang').onchange = () => runVision();
-$('copy').onclick = async () => {
-  const t = $('result').textContent || '';
-  if (!t) return;
-  try { await navigator.clipboard.writeText(t); $('stat').textContent = '已复制'; }
-  catch (e) { $('stat').textContent = '复制失败'; }
-};
 
 /* ---------- 对话 ---------- */
 function addMsg(cls, text) {
@@ -298,7 +351,7 @@ async function askPrefill() {
   if (MODE === 'extract' || MODE === 'translate') {
     $('vText').hidden = false;
     $('title').textContent = MODE === 'translate' ? '白泽 · 翻译' : '白泽 · 提取文字';
-    if (MODE === 'translate') $('langWrap').hidden = false;
+    if (MODE === 'translate') { $('lang').hidden = false; $('lang').textContent = lang === 'zh' ? '中' : 'EN'; }
     if (m && m.hasImage) await runVision();
     else $('result').dataset.ph = '正在等截图…';
   } else {

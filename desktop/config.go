@@ -32,6 +32,9 @@ type Config struct {
 
 	// BallHidden 是否隐藏悬浮球（默认 false = 显示）。关掉后能随时在设置里再打开。
 	BallHidden bool `json:"ballHidden,omitempty"`
+
+	// Theme 界面主题：light / dark / system（默认 system = 跟随系统）
+	Theme string `json:"theme,omitempty"`
 }
 
 var (
@@ -110,7 +113,32 @@ func localConfigSnapshot() map[string]any {
 		"configPath": cfgPath,
 		"autoUpdate": cfg.AutoUpdate, "autoUpdateMin": autoUpdateMinLocked(),
 		"ballVisible": !cfg.BallHidden,
+		"theme":       themeNow(),
 	}
+}
+
+// themeNow 当前主题偏好："light" / "dark" / "system"
+func themeNow() string {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	switch cfg.Theme {
+	case "light", "dark":
+		return cfg.Theme
+	default:
+		return "system"
+	}
+}
+
+// setTheme 改主题偏好（非法值一律退回 system）；返回落定后的值
+func setTheme(t string) string {
+	if t != "light" && t != "dark" && t != "system" {
+		t = "system"
+	}
+	cfgMu.Lock()
+	cfg.Theme = t
+	saveConfigLocked()
+	cfgMu.Unlock()
+	return t
 }
 
 // ballVisible 悬浮球是否显示（默认显示）

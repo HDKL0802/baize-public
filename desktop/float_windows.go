@@ -42,34 +42,37 @@ const (
 	floatModeExtract   = "extract"
 	floatModeTranslate = "translate"
 
-	floatHeaderH = 40  // 顶部标题栏高度（原生拖动区，和 float.html 的 .fhead 对齐）
-	floatBtnZone = 132 // 标题栏右侧留给按钮的宽度：这块不参与拖动，不然按钮点不到
-	floatEdgeGap = 12  // 浮窗靠边时离屏幕边缘留的缝
+	floatEdgeGap = 12       // 浮窗靠边时离屏幕边缘留的缝
+	floatImgMax  = 64 << 20 // 推图上限（一张截图远到不了）
 
-	floatImgMax = 64 << 20 // 推图上限（一张截图远到不了）
-
-	gwlStyle        = ^uintptr(15) // GWL_STYLE   = -16
-	gwlExStyle      = ^uintptr(19) // GWL_EXSTYLE = -20
-	swpFrameChanged = 0x0020
-	wsClipChildren  = 0x02000000
-	htCaption       = 2
-	wmNCHitTest     = 0x0084
-	wmExitSizeMove  = 0x0232
+	wsClipChildren = 0x02000000 // 创建窗口时就带上：别让父窗口把 WebView2 子窗口画花
 )
 
 var (
 	fpUser32 = syscall.NewLazyDLL("user32.dll")
 
-	pGetWindowLongPtrWF = fpUser32.NewProc("GetWindowLongPtrW")
 	pGetWindowRectF     = fpUser32.NewProc("GetWindowRect")
 	pPostMessageWF      = fpUser32.NewProc("PostMessageW")
+	pSetWindowsHookExWF = fpUser32.NewProc("SetWindowsHookExW")
+	pUnhookWinHookF     = fpUser32.NewProc("UnhookWindowsHookEx")
+	pCallNextHookExF    = fpUser32.NewProc("CallNextHookEx")
 
-	floatHWND      uintptr
-	floatOldProc   uintptr
-	floatModeNow   string // 本浮窗进程的模式（chat/extract/translate）
-	floatWndProcCb = syscall.NewCallback(floatWndProc)
+	pGetCurrentThreadIdF = shKernel32.NewProc("GetCurrentThreadId")
 
-	// floatPinned 钉住：锁死不可拖。窗口线程（WM_NCHITTEST）与 HTTP 线程都会碰，用原子量。
+	floatCbtCb = syscall.NewCallback(floatCbtProc)
+
+	// CBT 钩子要拦截的目标位置（一次性：命中我们那个窗口后自动失效）
+	floatCbtMu sync.Mutex
+	floatCbtOn bool
+	floatCbtW  int32
+	floatCbtH  int32
+	floatCbtX  int32
+	floatCbtY  int32
+
+	floatHWND    uintptr
+	floatModeNow string // 本浮窗进程的模式（chat/extract/translate）
+
+	// floatPinned 钉住：锁死不可拖（页面拖动时先问它）
 	floatPinned atomic.Bool
 	// floatRev 图片版本号：主进程推来新图就 +1，页面靠它判断「该重跑了」。
 	floatRev atomic.Int64
@@ -77,6 +80,105 @@ var (
 	floatImgMu  sync.Mutex
 	floatImgPNG []byte
 )
+
+/* ---------- 「创建即在位」：CBT 钩子改 CREATESTRUCT ----------
+   go-webview2 建窗固定用 CW_USEDEFAULT，之后我们才 SetWindowPos —— 于是会先在默认位置
+   闪出一个白框、再跳到目标位置（用户一眼就看到这一跳）。用线程级 WH_CBT 钩子拦
+   HCBT_CREATEWND，在窗口真正创建前把 x/y 与样式改掉，就完全没有这一跳。
+   必须是**线程级**（dwThreadId = 当前线程）：全局钩子会被注入别的进程，Go 回调会崩。 */
+
+const (
+	whCbt         = 5
+	hcbtCreateWnd = 3
+)
+
+type cbtCreateWnd struct {
+	Lpcs            uintptr // CREATESTRUCT*
+	HwndInsertAfter uintptr
+}
+
+type createStructW struct {
+	LpCreateParams uintptr
+	HInstance      uintptr
+	HMenu          uintptr
+	HwndParent     uintptr
+	Cy             int32
+	Cx             int32
+	Y              int32
+	X              int32
+	Style          uint32
+	LpszName       uintptr
+	LpszClass      uintptr
+	DwExStyle      uint32
+}
+
+// floatCbtInstall 在当前线程装 CBT 钩子，并记下目标位置；返回钩子句柄（0 = 没装上）。
+func floatCbtInstall(w, h, x, y int) uintptr {
+	floatCbtMu.Lock()
+	floatCbtW, floatCbtH, floatCbtX, floatCbtY = int32(w), int32(h), int32(x), int32(y)
+	floatCbtOn = true
+	floatCbtMu.Unlock()
+	tid, _, _ := pGetCurrentThreadIdF.Call()
+	hk, _, _ := pSetWindowsHookExWF.Call(whCbt, floatCbtCb, 0, tid)
+	if hk == 0 {
+		log.Printf("[浮窗] CBT 钩子没装上：窗口可能先闪一下再归位（功能不受影响）")
+		floatCbtMu.Lock()
+		floatCbtOn = false
+		floatCbtMu.Unlock()
+	}
+	return hk
+}
+
+func floatCbtUninstall(hk uintptr) {
+	if hk != 0 {
+		pUnhookWinHookF.Call(hk)
+	}
+}
+
+func floatCbtProc(nCode int32, wparam, lparam uintptr) uintptr {
+	if nCode == hcbtCreateWnd {
+		floatCbtMu.Lock()
+		on, w, h, x, y := floatCbtOn, floatCbtW, floatCbtH, floatCbtX, floatCbtY
+		floatCbtMu.Unlock()
+		if on && lparam != 0 {
+			// ⚠️ uintptr→unsafe.Pointer 会被 go vet 判成 unsafeptr，所以用 RtlMoveMemory 逐块搬
+			// （和 clip_windows.go 一个套路）：把结构拷进来改，再拷回去。
+			var cc cbtCreateWnd
+			pRtlMoveMemory.Call(uintptr(unsafe.Pointer(&cc)), lparam, unsafe.Sizeof(cc))
+			if cc.Lpcs != 0 {
+				var cs createStructW
+				pRtlMoveMemory.Call(uintptr(unsafe.Pointer(&cs)), cc.Lpcs, unsafe.Sizeof(cs))
+				// 只认我们那一个：顶层窗口，且尺寸正好是请求的 w×h
+				if cs.HwndParent == 0 && cs.Cx == w && cs.Cy == h {
+					cs.X, cs.Y = x, y
+					cs.Style = wsPopup | wsClipChildren
+					cs.DwExStyle |= wsExToolWindow | wsExTopmost
+					pRtlMoveMemory.Call(cc.Lpcs, uintptr(unsafe.Pointer(&cs)), unsafe.Sizeof(cs))
+					floatCbtMu.Lock()
+					floatCbtOn = false // 一次性，命中即失效
+					floatCbtMu.Unlock()
+				}
+			}
+		}
+	}
+	r, _, _ := pCallNextHookExF.Call(0, uintptr(int(nCode)), wparam, lparam)
+	return r
+}
+
+// floatInitialPos 浮窗的初始位置：贴屏幕右边、垂直居中。
+func floatInitialPos(w, h int) (int32, int32) {
+	sw, _, _ := pGetSystemMetrics.Call(smCxScreen)
+	sh, _, _ := pGetSystemMetrics.Call(smCyScreen)
+	x := int32(sw) - int32(w) - floatEdgeGap
+	y := int32(sh)/2 - int32(h)/2
+	if x < floatEdgeGap {
+		x = floatEdgeGap
+	}
+	if y < floatEdgeGap {
+		y = floatEdgeGap
+	}
+	return x, y
+}
 
 // floatWindowTitle 各模式浮窗的窗口标题（也当去重用的标识）
 func floatWindowTitle(mode string) string {
@@ -259,6 +361,8 @@ func runFloatMode(mode, imgPath string) {
 	go func() { _ = http.Serve(ln, buildHandler()) }()
 
 	w, h := floatSize(mode)
+	ix, iy := floatInitialPos(w, h)
+	hk := floatCbtInstall(w, h, int(ix), int(iy))
 	wv := webview2.NewWithOptions(webview2.WebViewOptions{
 		AutoFocus: true,
 		// 一模式一个固定 profile：复用开得快，也不攒磁盘
@@ -269,6 +373,7 @@ func runFloatMode(mode, imgPath string) {
 			Height: uint(h),
 		},
 	})
+	floatCbtUninstall(hk)
 	if wv == nil {
 		log.Printf("[浮窗] WebView2 初始化失败（系统缺 WebView2 运行时？）")
 		return
@@ -279,35 +384,18 @@ func runFloatMode(mode, imgPath string) {
 	hwnd := uintptr(wv.Window())
 	floatHWND = hwnd
 	mainHWND = hwnd
-	styleFloatWindow(hwnd, w, h)
+	floatPlace(hwnd, w, h, ix, iy)
 
 	wv.Navigate(localBaseURL + "/float.html#mode=" + mode)
 	wv.Run()
 	log.Printf("[浮窗] 已关闭：mode=%s", mode)
 }
 
-// styleFloatWindow 把 WebView2 那个默认窗口改成「无边框 + 置顶 + 不进任务栏」，并挂上拖动用的子类。
-func styleFloatWindow(hwnd uintptr, w, h int) {
-	// 无边框（WS_POPUP｜WS_CLIPCHILDREN）；工具窗口（不进任务栏 / Alt-Tab）；置顶
-	pSetWindowLongPtrW.Call(hwnd, gwlStyle, wsPopup|wsClipChildren)
-	es, _, _ := pGetWindowLongPtrWF.Call(hwnd, gwlExStyle)
-	pSetWindowLongPtrW.Call(hwnd, gwlExStyle, es|uintptr(wsExToolWindow)|uintptr(wsExTopmost))
-
-	sw, _, _ := pGetSystemMetrics.Call(smCxScreen)
-	sh, _, _ := pGetSystemMetrics.Call(smCyScreen)
-	// 默认贴着屏幕右边（临时窗口就该靠边待着，不在桌面中间乱飘）
-	x := int32(sw) - int32(w) - floatEdgeGap
-	y := int32(sh)/2 - int32(h)/2
-	if x < floatEdgeGap {
-		x = floatEdgeGap
-	}
-	if y < floatEdgeGap {
-		y = floatEdgeGap
-	}
+// floatPlace 兜底摆位 + 显示：正常情况下 CBT 钩子在窗口创建时就定好了位置与样式，
+// 这里再确认一次（也顺带保证置顶）。
+func floatPlace(hwnd uintptr, w, h int, x, y int32) {
 	pSetWindowPos.Call(hwnd, hwndTopmost, uintptr(x), uintptr(y),
-		uintptr(w), uintptr(h), swpFrameChanged|swpShowWindow)
-
-	floatOldProc, _, _ = pSetWindowLongPtrW.Call(hwnd, gwlpWndProc, floatWndProcCb)
+		uintptr(w), uintptr(h), swpShowWindow)
 }
 
 // floatSnapToEdge 把浮窗吸到离它最近的那条屏幕边（用户要求：必须挨着某一条边）。
@@ -369,29 +457,6 @@ func floatSnapToEdge(hwnd uintptr) {
 		pSetWindowPos.Call(hwnd, hwndTopmost, uintptr(x), uintptr(y),
 			uintptr(w), uintptr(h), swpNoActivate|swpNoSize)
 	}
-}
-
-// floatWndProc 子类化：顶部标题栏返回 HTCAPTION → Windows 自己就把窗口拖起来了（不用 JS 拖）。
-// 右侧按钮区留给页面点；钉住之后整条都不给拖。
-func floatWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
-	if uint32(msg) == wmNCHitTest && !floatPinned.Load() {
-		var rc struct{ L, T, R, B int32 }
-		pGetWindowRectF.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
-		x := int32(int16(lparam & 0xffff))
-		y := int32(int16((lparam >> 16) & 0xffff))
-		localX, localY := x-rc.L, y-rc.T
-		if localY >= 0 && localY < floatHeaderH && localX < (rc.R-rc.L)-floatBtnZone {
-			return htCaption
-		}
-	}
-	if uint32(msg) == wmExitSizeMove {
-		floatSnapToEdge(hwnd) // 拖完松手 → 吸到最近的那条屏幕边
-	}
-	if floatOldProc == 0 {
-		return 0
-	}
-	r, _, _ := pCallWindowProcW.Call(floatOldProc, hwnd, msg, wparam, lparam)
-	return r
 }
 
 /* ---------------- 浮窗自己的本机接口（页面调自己这个进程） ---------------- */
@@ -463,6 +528,35 @@ func registerFloatRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("/api/local/float/state", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "pinned": floatPinned.Load()})
+	})
+
+	// 拖动：页面按住标题栏 → 每次 pointermove 把增量发过来（本机回环，够跟手）。
+	// 为什么不用原生 WM_NCHITTEST/HTCAPTION：WebView2 的客户区是**子窗口**，
+	// 鼠标命中测试由子窗口接管，顶层窗口根本收不到 WM_NCHITTEST —— 那条路走不通。
+	mux.HandleFunc("/api/local/float/move", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Dx int `json:"dx"`
+			Dy int `json:"dy"`
+		}
+		if r.Body != nil {
+			_ = json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&req)
+		}
+		if floatHWND != 0 && (req.Dx != 0 || req.Dy != 0) {
+			var rc struct{ L, T, R, B int32 }
+			pGetWindowRectF.Call(floatHWND, uintptr(unsafe.Pointer(&rc)))
+			pSetWindowPos.Call(floatHWND, hwndTopmost,
+				uintptr(rc.L+int32(req.Dx)), uintptr(rc.T+int32(req.Dy)), 0, 0,
+				swpNoSize|swpNoActivate)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	})
+
+	// 松开鼠标：吸到最近的那条屏幕边
+	mux.HandleFunc("/api/local/float/snap", func(w http.ResponseWriter, r *http.Request) {
+		if floatHWND != 0 {
+			floatSnapToEdge(floatHWND)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
 
 	// 关掉这个浮窗（＝销毁窗口 → 消息循环结束 → 本进程退出）

@@ -33,8 +33,8 @@ import (
 )
 
 const (
-	ballSize   = 60 // 直径（像素）
-	ballMargin = 26 // 默认离屏幕右下角的间距
+	ballSize   = 40 // 直径（像素）——比鼠标箭头略大，贴近豆包那种小圆球
+	ballMargin = 24 // 默认离屏幕边缘的间距
 
 	wsPopup         = 0x80000000
 	wsExTopmost     = 0x00000008
@@ -48,10 +48,24 @@ const (
 	smCxScreen      = 0
 	smCyScreen      = 1
 	wmPaint         = 0x000F
+	wmNCHitTest     = 0x0084
 	wmMouseMove     = 0x0200
 	wmLButtonDown   = 0x0201
 	ballDoubleClick = 350 * time.Millisecond
+
+	// 分层窗口：用 UpdateLayeredWindow 逐像素上屏（这样圆边才能抗锯齿，SetWindowRgn 是硬边会出锯齿）
+	ulwAlpha = 0x00000002
+	// WM_NCHITTEST 的返回值（补码表示 -1）：圆外让点击穿过去，别用方角挡住底下的窗口
+	htTransparent = ^uintptr(0)
 )
+
+// blendFunction 是 Win32 的 BLENDFUNCTION（4 字节）
+type blendFunction struct {
+	BlendOp             byte
+	BlendFlags          byte
+	SourceConstantAlpha byte
+	AlphaFormat         byte
+}
 
 // 悬浮球菜单项（menuOpen / menuQuit 复用托盘那两个 id）
 const menuTasks = 1003
@@ -99,14 +113,14 @@ var (
 	pGetWindowRectBall = ballUser32.NewProc("GetWindowRect")
 	pRegisterHotKey    = ballUser32.NewProc("RegisterHotKey")
 	pUnregisterHotKey  = ballUser32.NewProc("UnregisterHotKey")
-	pSetWindowRgn      = ballUser32.NewProc("SetWindowRgn")
+	pUpdateLayeredWin  = ballUser32.NewProc("UpdateLayeredWindow")
 
 	pCreateSolidBrush  = ballGdi32.NewProc("CreateSolidBrush")
 	pCreatePen         = ballGdi32.NewProc("CreatePen")
 	pSelectObject      = ballGdi32.NewProc("SelectObject")
 	pEllipse           = ballGdi32.NewProc("Ellipse")
 	pDeleteObject      = ballGdi32.NewProc("DeleteObject")
-	pCreateEllipticRgn = ballGdi32.NewProc("CreateEllipticRgn")
+	pCreateDIBSection  = ballGdi32.NewProc("CreateDIBSection")
 	pSetDIBitsToDevice = ballGdi32.NewProc("SetDIBitsToDevice")
 )
 
@@ -212,13 +226,8 @@ func ballCreate() error {
 		return callErr
 	}
 	ballHWND = hwnd
-	// 圆形：把 60×60 的方窗口裁成一个圆（不裁的话四个角会露出来，看着就是个方块）
-	if hrgn, _, _ := pCreateEllipticRgn.Call(0, 0, ballSize, ballSize); hrgn != 0 {
-		pSetWindowRgn.Call(hwnd, hrgn, 1)
-	}
-	// WS_EX_LAYERED 的窗口不显式设 alpha 就完全不显示 —— 这里设成不透明（球本身自带底色）
-	pSetLayeredWinAttr.Call(hwnd, 0, 255, lwaAlpha)
-	ballLoadIcon() // 预解码界面图标，画到球里
+	ballLoadIcon()     // 预解码界面图标，画到球里
+	ballPaintNow(hwnd) // 分层窗口不上屏就是全透明，先画一帧
 	// 按配置决定显不显示（隐藏状态也要把窗口建出来，设置页才能一键叫回来）
 	if ballVisible() {
 		pShowWindow.Call(hwnd, 4) // SW_SHOWNOACTIVATE：别抢焦点
@@ -354,6 +363,12 @@ func ballMessageLoop() {
 
 func ballWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 	switch uint32(msg) {
+	case wmNCHitTest:
+		// 圆外算「透明」：点击穿过去。不然方形四角会把底下窗口的点击吃掉。
+		if ballHitOutside(hwnd, lparam) {
+			return htTransparent
+		}
+		// 圆内 → 落到下面的 DefWindowProc
 	case wmPaint:
 		ballPaintNow(hwnd)
 		return 0
@@ -414,58 +429,114 @@ func ballWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 	return r
 }
 
-// ballPaintNow 画球：圆形窗口（已被 SetWindowRgn 裁成圆）里画界面图标，右下角叠一个状态点。
-// 取不到图标就退回画一个渐变圆 —— 总之必须是个「圆」，不能是个方块。
+// ballPaintNow 把球面画上屏：渲染成带 alpha 的 BGRA → UpdateLayeredWindow。
+// 用逐像素 alpha（而不是 SetWindowRgn 裁形状）才能做出**抗锯齿的圆边**，不然一圈全是台阶。
 func ballPaintNow(hwnd uintptr) {
-	var ps ballPaint
-	pBeginPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
-	defer pEndPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
-	hdc := ps.Hdc
-
-	if !ballDrawIcon(hdc) {
-		ballPaintGradient(hdc)
+	n := ballSize
+	pix := ballRender(n)
+	if len(pix) == 0 {
+		return
 	}
-	ballPaintStatusDot(hdc)
+	screen, _, _ := pGetDC.Call(0)
+	if screen == 0 {
+		return
+	}
+	defer pReleaseDC.Call(0, screen)
+	mem, _, _ := pCreateCompatibleDC.Call(screen)
+	if mem == 0 {
+		return
+	}
+	defer pDeleteDC.Call(mem)
+
+	var bih struct {
+		Size          uint32
+		Width         int32
+		Height        int32
+		Planes        uint16
+		BitCount      uint16
+		Compression   uint32
+		SizeImage     uint32
+		XPelsPerMeter int32
+		YPelsPerMeter int32
+		ClrUsed       uint32
+		ClrImportant  uint32
+	}
+	bih.Size = 40
+	bih.Width = int32(n)
+	bih.Height = -int32(n) // 负 = top-down
+	bih.Planes = 1
+	bih.BitCount = 32
+	bih.Compression = 0
+	bih.SizeImage = uint32(n * n * 4)
+
+	var bits unsafe.Pointer
+	hbm, _, _ := pCreateDIBSection.Call(screen, uintptr(unsafe.Pointer(&bih)), 0,
+		uintptr(unsafe.Pointer(&bits)), 0, 0)
+	if hbm == 0 || bits == nil {
+		return
+	}
+	defer pDeleteObject.Call(hbm)
+	old, _, _ := pSelectObject.Call(mem, hbm)
+	defer pSelectObject.Call(mem, old)
+	copy(unsafe.Slice((*byte)(bits), n*n*4), pix)
+
+	var size struct{ Cx, Cy int32 }
+	size.Cx, size.Cy = int32(n), int32(n)
+	var src struct{ X, Y int32 }
+	blend := blendFunction{SourceConstantAlpha: 255, AlphaFormat: 1} // AC_SRC_ALPHA
+	pUpdateLayeredWin.Call(hwnd, screen, 0, uintptr(unsafe.Pointer(&size)),
+		mem, uintptr(unsafe.Pointer(&src)), 0, uintptr(unsafe.Pointer(&blend)), ulwAlpha)
 }
 
-// ballPaintGradient 兜底：一圈圈同心圆近似「径向渐变」
-func ballPaintGradient(hdc uintptr) {
-	cx, cy := int32(ballSize/2), int32(ballSize/2)
-	rad := int32(ballSize/2 - 1)
-	for r := rad; r >= 0; r-- {
-		t := float64(rad-r) / float64(rad)
-		br, _, _ := pCreateSolidBrush.Call(ballRGB(int(30-16*t), int(37-19*t), int(48-24*t)))
-		ob, _, _ := pSelectObject.Call(hdc, br)
-		pEllipse.Call(hdc, uintptr(cx-r), uintptr(cy-r), uintptr(cx+r), uintptr(cy+r))
-		pSelectObject.Call(hdc, ob)
-		pDeleteObject.Call(br)
+// ballRender 画球面：把图标缩到 n×n，再按圆做抗锯齿遮罩，输出**预乘 alpha** 的 BGRA
+// （UpdateLayeredWindow 配 AC_SRC_ALPHA 要求预乘）。
+func ballRender(n int) []byte {
+	ballIconMu.Lock()
+	src := ballIconPix
+	ballIconMu.Unlock()
+
+	out := make([]byte, n*n*4)
+	if len(src) == n*n*4 {
+		copy(out, src)
+	} else {
+		// 没取到图标：铺一层中性深灰，至少是个干净的圆
+		for i := 0; i < n*n; i++ {
+			o := i * 4
+			out[o], out[o+1], out[o+2], out[o+3] = 28, 28, 28, 255
+		}
 	}
+
+	cx, cy := float64(n)/2-0.5, float64(n)/2-0.5
+	rad := float64(n)/2 - 0.5
+	for y := 0; y < n; y++ {
+		for x := 0; x < n; x++ {
+			d := math.Hypot(float64(x)-cx, float64(y)-cy)
+			a := rad - d + 0.5 // 边缘 1px 线性过渡 = 抗锯齿
+			if a <= 0 {
+				a = 0
+			} else if a > 1 {
+				a = 1
+			}
+			o := (y*n + x) * 4
+			af := float64(out[o+3]) / 255 * a
+			out[o] = byte(float64(out[o])*af + 0.5)
+			out[o+1] = byte(float64(out[o+1])*af + 0.5)
+			out[o+2] = byte(float64(out[o+2])*af + 0.5)
+			out[o+3] = byte(af*255 + 0.5)
+		}
+	}
+	return out
 }
 
-// ballPaintStatusDot 右下角的状态点（先描一圈深色再画点，压在图标上也看得清）。
-// 位置贴着圆的内侧对角：既在圆内，又不挡中间的图标。
-func ballPaintStatusDot(hdc uintptr) {
-	dot := ballRGB(56, 189, 248) // 空闲：天青
-	r := int32(7)
-	switch ballCursor {
-	case 1:
-		dot = ballRGB(245, 158, 11) // 有待审批：黄
-		r = 8
-	case 2:
-		dot = ballRGB(130, 144, 162) // 连不上：灰
-	}
-	cx, cy := int32(ballSize/2+13), int32(ballSize/2+13)
-	ring, _, _ := pCreateSolidBrush.Call(ballRGB(10, 13, 18))
-	orng, _, _ := pSelectObject.Call(hdc, ring)
-	pEllipse.Call(hdc, uintptr(cx-r-2), uintptr(cy-r-2), uintptr(cx+r+2), uintptr(cy+r+2))
-	pSelectObject.Call(hdc, orng)
-	pDeleteObject.Call(ring)
-
-	db, _, _ := pCreateSolidBrush.Call(dot)
-	odb, _, _ := pSelectObject.Call(hdc, db)
-	pEllipse.Call(hdc, uintptr(cx-r), uintptr(cy-r), uintptr(cx+r), uintptr(cy+r))
-	pSelectObject.Call(hdc, odb)
-	pDeleteObject.Call(db)
+// ballHitOutside 判断这次命中的点是不是落在圆外（圆外要放行给底下的窗口）
+func ballHitOutside(hwnd uintptr, lparam uintptr) bool {
+	x := int32(int16(lparam & 0xffff))
+	y := int32(int16((lparam >> 16) & 0xffff))
+	var rc struct{ Left, Top, Right, Bottom int32 }
+	pGetWindowRectBall.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+	dx := float64(rc.Left+rc.Right)/2 - float64(x)
+	dy := float64(rc.Top+rc.Bottom)/2 - float64(y)
+	return math.Hypot(dx, dy) > float64(ballSize)/2-1
 }
 
 /* ---------------- 球里的图标（界面那张 icon.png，缩到球尺寸） ---------------- */
@@ -498,37 +569,6 @@ func ballLoadIcon() {
 	ballIconPix = pix
 	ballIconMu.Unlock()
 	log.Printf("[悬浮球] 已载入球面图标 icon.png")
-}
-
-func ballDrawIcon(hdc uintptr) bool {
-	ballIconMu.Lock()
-	pix := ballIconPix
-	ballIconMu.Unlock()
-	if len(pix) == 0 {
-		return false
-	}
-	var bih struct {
-		Size          uint32
-		Width         int32
-		Height        int32
-		Planes        uint16
-		BitCount      uint16
-		Compression   uint32
-		SizeImage     uint32
-		XPelsPerMeter int32
-		YPelsPerMeter int32
-		ClrUsed       uint32
-		ClrImportant  uint32
-	}
-	bih.Size = 40
-	bih.Width = int32(ballSize)
-	bih.Height = -int32(ballSize) // 负 = top-down
-	bih.Planes = 1
-	bih.BitCount = 32
-	bih.SizeImage = uint32(ballSize * ballSize * 4)
-	r, _, _ := pSetDIBitsToDevice.Call(hdc, 0, 0, ballSize, ballSize, 0, 0, 0, ballSize,
-		uintptr(unsafe.Pointer(&pix[0])), uintptr(unsafe.Pointer(&bih)), 0)
-	return r != 0
 }
 
 // scaleToBGRA 双线性缩放到 size×size，输出 BGRA（top-down，GDI 直接吃）。

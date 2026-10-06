@@ -171,16 +171,18 @@ function renderSoon(app, root) {
 async function renderSettings(root) {
   root.innerHTML = `
     <div style="padding:14px 16px">
-      <h3>连接</h3>
-      <div class="sub">桌面端直连 NAS 后端；令牌只存在本机（%APPDATA%\\白泽\\desktop.json），不下发给网页。</div>
-      <div class="fields" style="grid-template-columns:1fr 1fr">
-        <div><label>后端地址</label><input id="setServer" placeholder="http://192.168.1.100:8787"></div>
-        <div><label>配对令牌（留空 = 不改）</label><input id="setToken" type="password" placeholder="留空则保留已保存的"></div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn" id="setSave">保存</button>
-        <button class="btn ghost" id="setTest">连接测试</button>
-        <span id="setState" class="sub" style="margin:0"></span>
+      <div class="sect">
+        <h3>连接</h3>
+        <div class="sub">桌面端直连 NAS 后端；令牌只存在本机（%APPDATA%\\白泽\\desktop.json），不下发给网页。</div>
+        <div class="fields" style="grid-template-columns:1fr 1fr">
+          <div><label>后端地址</label><input id="setServer" placeholder="http://192.168.1.100:8787"></div>
+          <div><label>配对令牌（留空 = 不改）</label><input id="setToken" type="password" placeholder="留空则保留已保存的"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn" id="setSave">保存</button>
+          <button class="btn ghost" id="setTest">连接测试</button>
+          <span id="setState" class="sub" style="margin:0"></span>
+        </div>
       </div>
 
       <div class="sect">
@@ -228,6 +230,17 @@ async function renderSettings(root) {
         <div style="display:flex;gap:8px;align-items:center">
           <button class="btn" id="ddSave">保存并迁移</button>
           <span class="sub" id="ddMsg" style="margin:0"></span>
+        </div>
+      </div>
+
+      <div class="sect">
+        <h3>外观</h3>
+        <div class="sub">主题作用于整个控制台与临时浮窗。「跟随系统」跟 Windows 的浅色/深色设置走。</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn ghost sm" data-theme-set="light">亮色</button>
+          <button class="btn ghost sm" data-theme-set="dark">暗色</button>
+          <button class="btn ghost sm" data-theme-set="system">跟随系统</button>
+          <span class="sub" id="themeMsg" style="margin:0"></span>
         </div>
       </div>
 
@@ -455,6 +468,26 @@ async function renderSettings(root) {
       $i('setAutoMsg').innerHTML = `<span class="err">${esc((r && r.error) || '改不了')}</span>`;
     }
   };
+  /* ---------- 外观（亮 / 暗 / 跟随系统） ---------- */
+  const paintTheme = () => {
+    const cur = (Shell.themePref && Shell.themePref()) || 'system';
+    // 选中态 = 去掉 ghost（.btn 本身是主色按钮，.btn.ghost 是次要按钮）
+    root.querySelectorAll('[data-theme-set]').forEach(b => {
+      b.classList.toggle('ghost', b.dataset.themeSet !== cur);
+    });
+  };
+  root.querySelectorAll('[data-theme-set]').forEach(b => {
+    b.onclick = async () => {
+      const t = b.dataset.themeSet;
+      Shell.setThemePref(t); // 先立刻换，不等网络
+      paintTheme();
+      const r = await API.localPost('/theme', { theme: t });
+      if (!r || !r.ok) { $i('themeMsg').innerHTML = `<span class="err">${esc((r && r.error) || '存不上')}</span>`; return; }
+      $i('themeMsg').innerHTML = `<span class="ok">已切换（${esc({ light: '亮色', dark: '暗色', system: '跟随系统' }[r.theme] || r.theme)}）</span>`;
+    };
+  });
+  paintTheme();
+
   $i('setBall').onchange = async () => {
     const want = $i('setBall').checked;
     const r = await (await fetch('/api/local/ball/visible', {

@@ -256,7 +256,8 @@ func shotGrab() (*shotWindow, error) {
 
 func (s *shotWindow) openOverlay() error {
 	hInst, _, _ := pGetModuleHandleW.Call(0)
-	cursor, _, _ := pLoadCursorW.Call(0, 32514) // IDC_CROSS
+	// IDC_CROSS = 32515（十字）；⚠️ 别写成 32514 —— 那是 IDC_WAIT，会让整段截图过程一直转圈
+	cursor, _, _ := pLoadCursorW.Call(0, 32515)
 	cls, _ := syscall.UTF16PtrFromString(shotOverlayClass)
 	wc := ballWndClassEx{
 		Style:         0x0001 | 0x0002,

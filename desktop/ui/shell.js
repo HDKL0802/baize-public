@@ -7,6 +7,35 @@ window.Shell = (function () {
   const $ = id => document.getElementById(id);
   const view = $('view');
 
+  /* ---------------- 主题：亮 / 暗 / 跟随系统 ----------------
+     先按本地缓存同步打上 data-theme（避免亮色用户看到一瞬黑底），再向原生确认一次。 */
+  const THEME_KEY = 'bz_theme';
+  let themePref = 'system';
+  try { themePref = localStorage.getItem(THEME_KEY) || 'system'; } catch (e) { /* 隐私模式忽略 */ }
+
+  function applyTheme() {
+    const sysLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    const t = (themePref === 'light' || themePref === 'dark') ? themePref : (sysLight ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', t);
+  }
+  applyTheme();
+
+  function setThemePref(t) {
+    themePref = (t === 'light' || t === 'dark') ? t : 'system';
+    try { localStorage.setItem(THEME_KEY, themePref); } catch (e) { /* 忽略 */ }
+    applyTheme();
+  }
+  async function loadTheme() {
+    try {
+      const r = await (await fetch('/api/local/theme')).json();
+      if (r && r.theme) setThemePref(r.theme);
+    } catch (e) { /* 读不到就用本地缓存 */ }
+  }
+  if (window.matchMedia) {
+    try { window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', applyTheme); }
+    catch (e) { /* 老 Edge 不支持 addEventListener，忽略 */ }
+  }
+
   let current = null;      // 当前应用 id
   let cleanup = null;      // 当前应用返回的清理函数（可选）
 
@@ -338,6 +367,7 @@ window.Shell = (function () {
 
   /* ---------------- 启动 ---------------- */
   function boot() {
+    loadTheme();
     buildNav(); clock(); conn(); pollPending(); pollApprovals(); pollMini();
     setInterval(clock, 20000);
     setInterval(conn, 8000);
@@ -356,5 +386,5 @@ window.Shell = (function () {
     if (want && want !== current && window.APP_BY_ID[want]) openApp(want);
   });
 
-  return { openApp, toast, conn };
+  return { openApp, toast, conn, setThemePref, themePref: () => themePref };
 })();

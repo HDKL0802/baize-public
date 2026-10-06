@@ -1,15 +1,33 @@
 /* 白泽桌面端 · 外壳样式（正常智能体界面：左侧导航 + 单视图）
-   冷色暗色 + 细 1px 描边 + 2px 直角 + 天青点缀。 */
+   主题：亮 / 暗 / 跟随系统（由 shell.js 在 <html> 上打 data-theme="light|dark"）。
+   配色口径借 QwenPaw 的中性表面阶（surface / surface-2 / border / text 三档），
+   主色仍是白泽自己的天青 —— 中性底 + 一个彩色点缀，是"克制精密"的关键。 */
 
 :root{
-  --bg:#0b0e13; --surface:#12161d; --surface-2:#171c25; --surface-3:#1d2430;
-  --border:#232a35; --border-strong:#313b4a;
-  --text:#dbe4ee; --text-2:#94a3b4; --text-3:#64748b;
-  --accent:#38bdf8; --accent-soft:rgba(56,189,248,.12); --accent-ink:#06121b;
-  --ok:#34d399; --warn:#fbbf24; --danger:#f87171;
+  color-scheme:dark;
+  /* 表面阶（暗色为默认） */
+  --bg:#141414; --surface:#1f1f1f; --surface-2:#262626; --surface-3:#303030;
+  --border:rgba(255,255,255,.12); --border-strong:rgba(255,255,255,.18);
+  /* 三档字色：正文 / 次要 / 更弱 */
+  --text:rgba(255,255,255,.86); --text-2:rgba(255,255,255,.62); --text-3:rgba(255,255,255,.42);
+  /* 主色（天青）+ 状态色 */
+  --accent:#38bdf8; --accent-soft:rgba(56,189,248,.14); --accent-ink:#06121b;
+  --ok:#4ade80; --warn:#fbbf24; --danger:#f87171;
+  --scroll-thumb:rgba(255,255,255,.2); --scroll-thumb-hover:rgba(255,255,255,.32);
   --radius:2px;
   --font:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
   --mono:Consolas,"Cascadia Mono",monospace;
+}
+
+/* 亮色：白底为主，文字用近黑的中性色，描边走暖灰 */
+html[data-theme=light]{
+  color-scheme:light;
+  --bg:#f7f6f2; --surface:#ffffff; --surface-2:#f2f1ec; --surface-3:#e6e4de;
+  --border:#e6e3de; --border-strong:#d3cfc8;
+  --text:rgba(20,20,19,.88); --text-2:rgba(20,20,19,.58); --text-3:rgba(20,20,19,.46);
+  --accent:#0284c7; --accent-soft:rgba(2,132,199,.10); --accent-ink:#ffffff;
+  --ok:#16a34a; --warn:#d97706; --danger:#dc2626;
+  --scroll-thumb:rgba(0,0,0,.18); --scroll-thumb-hover:rgba(0,0,0,.3);
 }
 
 *{box-sizing:border-box;border-radius:var(--radius)}
@@ -22,8 +40,9 @@ body{
   overflow:hidden;user-select:none;
 }
 .mono{font-family:var(--mono);font-size:12px}
-::-webkit-scrollbar{width:9px;height:9px}
-::-webkit-scrollbar-thumb{background:var(--surface-3);border:1px solid var(--border)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--scroll-thumb);border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:var(--scroll-thumb-hover)}
 ::-webkit-scrollbar-track{background:transparent}
 
 /* ---------- 整体骨架 ---------- */

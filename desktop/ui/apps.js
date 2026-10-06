@@ -340,7 +340,8 @@ async function renderSettings(root) {
     const r = await API.localGet('/perm');
     if (!r || !r.ok) { $i('permLevels').innerHTML = `<span class="err">${esc((r && r.error) || '读不到')}</span>`; return; }
     permState = { perm: r.perm | 0, scopes: r.scopes || [], levels: r.levels || [], volumes: r.volumes || [], disclaimerAck: !!r.disclaimerAck };
-    $i('permLevels').innerHTML = permState.levels.map(permLevelEl).join('');
+    $i('permLevels').innerHTML = permState.levels.map(permLevelEl).join('')
+      || '<div class="empty">没读到权限档位（非 Windows 或接口异常）</div>';
     root.querySelectorAll('input[name=permLv]').forEach(el => {
       el.checked = Number(el.value) === permState.perm;
       el.onchange = permDirty;
@@ -363,7 +364,7 @@ async function renderSettings(root) {
     if (root.querySelector('#discBox')) return;
     const box = el(`<div id="discBox" style="position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:120;display:grid;place-items:center">
       <div style="width:min(620px,92vw);background:var(--surface);border:1px solid var(--border-strong);padding:20px">
-        <h3 style="margin:0 0 8px">风险与免责声明</h3>
+        <h3 style="margin-bottom:var(--sp-3)">风险与免责声明</h3>
         <div class="sub" style="line-height:1.7">
           白泽的「桌面控制」允许你把这个智能体接到本机上执行操作。放开权限前请清楚：
           <br>1. 高权限（<b>只读指定盘</b> / <b>完全访问</b>）意味着智能体可以读取、甚至删除本机文件；
@@ -592,7 +593,7 @@ async function renderDevices(root) {
     sel.innerHTML = devs.filter(x => x.online).map(x => `<option value="${esc(x.id)}">${esc(x.name || x.id)}（${esc(x.os || '')}）</option>`).join('')
       || '<option value="">（没有在线设备）</option>';
 
-    $i('devList').innerHTML = devs.length ? devs.map(x => `
+    $i('devList').innerHTML = devs.length ? '<div class="row-head"><span>设备</span><span>状态 · 能力</span></div>' + devs.map(x => `
       <div class="row">
         <div class="who"><b>${esc(x.name || x.id)}</b><span class="mono">${esc(x.id)} · ${esc(x.os || '')}/${esc(x.arch || '')} · v${esc(x.version || '?')}</span></div>
         <div class="tags">
@@ -604,14 +605,14 @@ async function renderDevices(root) {
 
     const tasks = Array.isArray(d.tasks) ? d.tasks : [];
     const pend = tasks.filter(t => t.status === 'pending_approval');
-    $i('devPending').innerHTML = pend.length ? pend.map(t => `
+    $i('devPending').innerHTML = pend.length ? '<div class="row-head"><span>动作 · 目标设备</span><span>操作</span></div>' + pend.map(t => `
       <div class="row">
         <div class="who"><b>${esc(t.action)}</b><span class="mono">${esc(t.id)} · → ${esc(t.deviceId)} · ${fmtTime(t.createdAt)}</span></div>
         <div class="tags">
           <button class="btn sm" data-ok="${esc(t.id)}">批准</button>
           <button class="btn ghost sm" data-no="${esc(t.id)}">拒绝</button>
         </div>
-      </div>`).join('') : '<div class="empty">没有在等人工放行的任务</div>';
+      </div>`).join('') : '<div class="empty">还没有待人工放行的任务</div>';
 
     $i('devPending').querySelectorAll('[data-ok]').forEach(b => b.onclick = async () => {
       const r2 = await API.post('/api/tasks/' + encodeURIComponent(b.dataset.ok) + '/approve', {});

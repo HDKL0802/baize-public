@@ -127,7 +127,7 @@ async function renderExternal(root) {
         <td>${d.latencyMs || 0} ms</td>
         <td class="mono">${esc(d.error || '—')}</td>
       </tr>`).join('') + '</tbody></table>'
-      : '<div class="empty">本次启动以来还没委托过。</div>';
+      : '<div class="empty">本次启动以来还没委托过</div>';
   };
 
   const fillTargets = () => {

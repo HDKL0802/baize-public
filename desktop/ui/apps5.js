@@ -52,7 +52,7 @@ async function renderObserve(root) {
 
   const bars = buckets => {
     const list = (buckets || []).slice(-60);
-    if (!list.length) return '<div class="empty">这段时间没有运行记录。</div>';
+    if (!list.length) return '<div class="empty">这段时间还没有运行记录</div>';
     const max = Math.max(1, ...list.map(b => b.runs));
     return `<div class="ob-bars">` + list.map(b => {
       const h = Math.max(2, Math.round(b.runs / max * 100));
@@ -65,7 +65,7 @@ async function renderObserve(root) {
   };
 
   const toolTable = tools => {
-    if (!tools || !tools.length) return '<div class="empty">本次启动以来还没调过工具。</div>';
+    if (!tools || !tools.length) return '<div class="empty">本次启动以来还没调过工具</div>';
     return `<table class="ob-table"><thead><tr>
       <th>工具</th><th>调用</th><th>失败</th><th>被拦</th><th>平均耗时</th><th>最近出错</th></tr></thead><tbody>` +
       tools.map(t => `<tr>
@@ -79,7 +79,7 @@ async function renderObserve(root) {
   };
 
   const provTable = provs => {
-    if (!provs || !provs.length) return '<div class="empty">本次启动以来还没问过模型。</div>';
+    if (!provs || !provs.length) return '<div class="empty">本次启动以来还没问过模型</div>';
     return `<table class="ob-table"><thead><tr>
       <th>通道</th><th>请求</th><th>回复</th><th>重试</th><th>token</th><th>平均等待</th><th>最近出错</th></tr></thead><tbody>` +
       provs.map(p => `<tr>
@@ -153,7 +153,7 @@ async function renderObserve(root) {
             <span class="mono">${fmtTime(l.at)}</span>
             <span class="lv ${l.level === 'ERROR' ? 'err' : 'warn'}">${esc(l.level)}</span>
             <span>${esc(l.text)}</span>
-          </div>`).join('') : '<div class="empty">没有匹配的告警/错误。</div>'}
+          </div>`).join('') : '<div class="empty">没有匹配的告警 / 错误</div>'}
       </div>`;
 
     const f = $i('obFilterGo');

@@ -110,7 +110,7 @@ async function renderTasks(root) {
     const pending = tasks.filter(t => t.status === 'pending_approval');
     $i('tkPendingWrap').hidden = pending.length === 0;
     $i('tkPendingN').textContent = String(pending.length);
-    $i('tkPending').innerHTML = pending.map(t => `
+    $i('tkPending').innerHTML = '<div class="row-head"><span>动作 · 目标设备</span><span>操作</span></div>' + pending.map(t => `
       <div class="row">
         <div class="who"><b>${esc(t.action)}</b>
           <span class="mono">${esc(t.deviceId)} · ${esc(JSON.stringify(t.args || {}))}</span></div>
@@ -123,13 +123,14 @@ async function renderTasks(root) {
     $i('tkPending').querySelectorAll('[data-no]').forEach(b => b.onclick = () => act('/api/tasks/' + b.dataset.no + '/reject', { reason: '控制台驳回' }));
 
     const recent = tasks.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 40);
-    $i('tkList').innerHTML = recent.length ? recent.map(t => {
+    $i('tkList').innerHTML = recent.length ? '<div class="row-head"><span>动作 · 目标设备 · 来源</span><span>状态</span></div>' + recent.map(t => {
       const res = t.result == null ? '' : (typeof t.result === 'string' ? t.result : JSON.stringify(t.result));
       return `<div class="row">
-        <div class="who"><b>${esc(t.action)} <span class="tag ${stateTag(t.status)}">${esc(t.status)}</span></b>
+        <div class="who"><b>${esc(t.action)}</b>
           <span class="mono">${esc(t.deviceId)} · ${esc(t.origin || '')} · ${fmtTime(t.createdAt)}${t.finishedAt ? ' → ' + fmtTime(t.finishedAt) : ''}</span>
           ${res ? `<span class="mono" style="color:var(--text-3)">${esc(res.slice(0, 180))}</span>` : ''}
         </div>
+        <div class="tags"><span class="tag ${stateTag(t.status)}">${esc(t.status)}</span></div>
       </div>`;
     }).join('') : '<div class="empty">还没有任务</div>';
   };
@@ -426,7 +427,7 @@ async function renderMemory(root) {
     const head = `<div class="sub">档位 <b>${esc(d.profile || '-')}</b> · 候选 ${esc(d.candidates || 0)} → 留下 ${esc(hits.length)}` +
       (d.vectorUsed ? ' · 语义通道已用' : ' · 未用语义通道') +
       (d.vectorNote ? `（${esc(d.vectorNote)}）` : '') + '</div>';
-    if (!hits.length) { $i('mmOut').innerHTML = head + '<div class="empty">没有命中</div>'; return; }
+    if (!hits.length) { $i('mmOut').innerHTML = head + '<div class="empty">还没有命中</div>'; return; }
     $i('mmOut').innerHTML = head + hits.map(h => {
       const c = h.chunk || {}, p = h.parts || {};
       return `<div class="row" style="align-items:flex-start">
@@ -1671,7 +1672,7 @@ async function renderActivity(root) {
       tile('被拦', s.blocked, s.blocked ? 'warn' : '') + tile('错误', s.errors, s.errors ? 'warn' : '');
 
     const steps = d.steps || [];
-    $i('acSteps').innerHTML = steps.length ? steps.map(st => `
+    $i('acSteps').innerHTML = steps.length ? '<div class="row-head"><span>阶段 · 时间 · 详情</span></div>' + steps.map(st => `
       <div class="row">
         <div class="who"><b>${esc(st.stage || '')}</b>
           <span class="mono">${fmtTime(st.at)}${st.runId ? ' · ' + esc(st.runId) : ''}</span>

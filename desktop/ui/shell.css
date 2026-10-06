@@ -107,6 +107,11 @@ h3{margin:0 0 3px;font-size:15px;font-weight:600;letter-spacing:.01em}
 .row .who b{display:block;font-size:13px;font-weight:600}
 .row .who span{display:block;color:var(--text-3);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row .tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+/* 列表当表格用（任务 / 轨迹 / 设备）时的列头：给多列固定义的表加一行淡色的头 */
+.row-head{display:flex;align-items:center;gap:var(--sp-3);padding:0 0 var(--sp-2);
+  color:var(--text-3);font-size:11px;border-bottom:1px solid var(--border-strong);margin-bottom:var(--sp-1)}
+.row-head>span:first-child{flex:1}
+.row-head>span:last-child{flex:none}
 .tag{font-size:11px;padding:1px 7px;border:1px solid var(--border);color:var(--text-2);background:var(--surface-2);white-space:nowrap}
 .tag.on{border-color:var(--accent);color:var(--accent)}
 .tag.off{color:var(--text-3)}
@@ -130,6 +135,10 @@ textarea{resize:vertical;min-height:64px}
 .ok{color:var(--ok);font-size:12px}
 .pre{white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:12px;line-height:1.7;
   background:var(--surface-2);border:1px solid var(--border);padding:10px;max-height:220px;overflow:auto}
+
+/* 页签正文容器（账号页的 #uaBody）：介绍节奏与 .page 保持一致 */
+#uaBody>h3:first-child{margin-top:var(--sp-1)}
+#uaBody>h3:first-child+.sub{margin-bottom:var(--sp-2)}
 
 /* ---------- 页面外壳 / 动作条 / 小徽标（统一书写，别再内联） ----------
    这三样原来是每个应用各写各的：20 处 style="padding:14px 16px"、37 处内联 flex+gap、

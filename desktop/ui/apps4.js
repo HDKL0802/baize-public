@@ -150,7 +150,7 @@ async function renderPlugins(root) {
           <button class="btn ghost sm" data-addsrc="${esc(s.url)}" data-name="${esc(s.name)}" data-on="${s.enabled ? '0' : '1'}">${s.enabled ? '停用' : '启用'}</button>
           <button class="btn ghost sm" data-rmsrc="${esc(s.url)}">删除</button>`}
         </div>
-      </div>`).join('') : '<div class="empty">还没有插件源。</div>';
+      </div>`).join('') : '<div class="empty">还没有插件源</div>';
 
     return `
       <div class="sect" style="margin-top:0">

@@ -387,7 +387,7 @@ async function renderConflicts(root) {
           <span class="mono">${esc(x.groupName || x.group)} · ${c.messageCount || 0} 条消息 · ${fmtTime(c.updatedAt)}</span></div>
         <div class="tags"><button class="btn sm" data-open="1" data-g="${esc(x.group)}" data-s="${esc(c.id)}">去协商</button></div>
       </div>`;
-    }).join('') : '<div class="empty">现在没有待处理的冲突</div>';
+    }).join('') : '<div class="empty">还没有待处理的冲突</div>';
     $i('cfList').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openDetail(b.dataset.g, b.dataset.s));
   };
 
@@ -466,7 +466,7 @@ async function renderConflicts(root) {
         <span class="sub" id="cfAct" style="margin:0"></span>
       </div>
       <div class="sect">
-        <h3 style="font-size:13px">聊天</h3>
+        <h3 class="h-sub">聊天</h3>
         <div class="chat-box" id="cfMsgs"></div>
         <div style="display:flex;gap:8px;margin-top:8px">
           <input id="cfInput" placeholder="说点什么（例如：我用的是新预算，你在旧表上改的）">
@@ -474,7 +474,7 @@ async function renderConflicts(root) {
         </div>
       </div>
       <div class="sect">
-        <h3 style="font-size:13px">音视频</h3>
+        <h3 class="h-sub">音视频</h3>
         <div id="cfRtc" class="sub">检测设备中…</div>
       </div>`;
   };

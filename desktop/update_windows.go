@@ -34,10 +34,11 @@ type updateManifest struct {
 }
 
 func init() {
-	// 平台专属路由：自动更新 + 截图提问（截图那组见 shot_windows.go）
+	// 平台专属路由：自动更新 + 截图提问（截图那组见 shot_windows.go）+ 悬浮球迷你小窗
 	registerPlatformRoutes = func(mux *http.ServeMux) {
 		registerUpdateRoutes(mux)
 		registerShotRoutes(mux)
+		registerBallRoutes(mux)
 	}
 }
 

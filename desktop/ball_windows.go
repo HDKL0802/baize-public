@@ -53,6 +53,12 @@ const (
 const menuTasks = 1003
 const menuShot = 1004
 
+// SetWindowPos 的插入位序（HWND_TOPMOST = -1 / HWND_NOTOPMOST = -2，用补码表示）
+const (
+	hwndTopmost    = ^uintptr(0)
+	hwndNotTopmost = ^uintptr(1)
+)
+
 var (
 	ballUser32 = syscall.NewLazyDLL("user32.dll")
 	ballGdi32  = syscall.NewLazyDLL("gdi32.dll")
@@ -133,6 +139,12 @@ var (
 	ballLastClick  time.Time
 	ballPending    int
 	ballWndProcCb  = syscall.NewCallback(ballWndProc)
+
+	// 迷你对话小窗（左键单击悬浮球 = 开关；「工作模式」= 还原）
+	ballMini     bool
+	ballMiniRect struct{ Left, Top, Right, Bottom int32 } // 进入 mini 前的主窗口位置（还原用）
+	ballClickMu  sync.Mutex
+	ballClickGen int // 单击/双击区分用的世代号
 )
 
 // localBaseURL 本机回环服务的基址（main 里设置），悬浮球用它读状态。
@@ -272,15 +284,8 @@ func ballWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 				pGetWindowRectBall.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
 				ballSavePos(rc.Left, rc.Top)
 			} else {
-				// 没拖动 = 点了一下：双击直接打开，单击弹菜单
-				now := time.Now()
-				if !ballLastClick.IsZero() && now.Sub(ballLastClick) < ballDoubleClick {
-					ballLastClick = time.Time{}
-					ballOpenMain(false)
-				} else {
-					ballLastClick = now
-					ballShowMenu(hwnd)
-				}
+				// 没拖动 = 点了一下
+				ballClick(hwnd)
 			}
 		}
 		return 0
@@ -381,6 +386,113 @@ func ballOpenMain(toTasks bool) {
 			mainWebView.Eval(`location.hash = '#tasks'`)
 		})
 	}
+}
+
+// ballClick 悬浮球左键单击：单击 = 迷你对话小窗（开关）、双击 = 打开完整窗口。
+// 用 350ms 的双击窗口区分：第一下先挂个定时器，窗口内来了第二下就取消、当双击。
+func ballClick(hwnd uintptr) {
+	ballClickMu.Lock()
+	ballClickGen++
+	gen := ballClickGen
+	ballClickMu.Unlock()
+
+	if !ballLastClick.IsZero() && time.Since(ballLastClick) < ballDoubleClick {
+		ballLastClick = time.Time{}
+		ballClickMu.Lock()
+		ballClickGen++ // 让挂起的单击失效
+		ballClickMu.Unlock()
+		ballOpenMain(false) // 双击：完整窗口
+		return
+	}
+	ballLastClick = time.Now()
+	time.AfterFunc(ballDoubleClick, func() {
+		ballClickMu.Lock()
+		still := ballClickGen == gen
+		ballClickMu.Unlock()
+		if still { // 没等来第二下 → 当单击
+			toggleMiniChat()
+		}
+	})
+}
+
+// toggleMiniChat 在「迷你对话小窗」与「工作模式」之间切换。
+func toggleMiniChat() {
+	if mainHWND == 0 {
+		return
+	}
+	if ballMini {
+		exitMiniChat()
+	} else {
+		enterMiniChat()
+	}
+}
+
+// enterMiniChat 把主窗口变成贴右下角的**置顶小窗**并跳到对话（= 豆包的「小窗」）。
+func enterMiniChat() {
+	var rc struct{ Left, Top, Right, Bottom int32 }
+	pGetWindowRectBall.Call(mainHWND, uintptr(unsafe.Pointer(&rc)))
+	ballMiniRect = rc
+	sw, _, _ := pGetSystemMetrics.Call(smCxScreen)
+	sh, _, _ := pGetSystemMetrics.Call(smCyScreen)
+	const w, h = 400, 600
+	x := int32(sw) - w - 24
+	y := int32(sh) - h - 24
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	pSetWindowPos.Call(mainHWND, hwndTopmost, uintptr(x), uintptr(y), w, h, swpShowWindow)
+	ballMini = true
+	if mainWebView != nil {
+		mainWebView.Dispatch(func() {
+			mainWebView.Eval(`location.hash = '#chat'`)
+		})
+	}
+	log.Printf("[悬浮球] 进入迷你对话小窗 %dx%d", w, h)
+}
+
+// exitMiniChat 还原成普通窗口（去掉置顶、恢复进入前的位置与大小）= 豆包的「工作模式」。
+func exitMiniChat() {
+	rc := ballMiniRect
+	if rc.Right-rc.Left <= 0 || rc.Bottom-rc.Top <= 0 { // 没记住过就别乱设，保底给个常规尺寸
+		rc = struct{ Left, Top, Right, Bottom int32 }{Left: 120, Top: 90, Right: 1400, Bottom: 890}
+	}
+	pSetWindowPos.Call(mainHWND, hwndNotTopmost,
+		uintptr(rc.Left), uintptr(rc.Top), uintptr(rc.Right-rc.Left), uintptr(rc.Bottom-rc.Top), swpShowWindow)
+	ballMini = false
+	log.Printf("[悬浮球] 已切回工作模式")
+}
+
+// miniNow 供界面查询当前是否在迷你小窗
+func miniNow() bool { return ballMini }
+
+// registerBallRoutes 给界面用的本机接口：迷你小窗状态查询 / 切换。
+func registerBallRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/local/ball/mini", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req struct {
+				On *bool `json:"on"`
+			}
+			if r.Body != nil {
+				_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req)
+			}
+			switch {
+			case req.On == nil:
+				toggleMiniChat()
+			case *req.On:
+				if !ballMini {
+					enterMiniChat()
+				}
+			default:
+				if ballMini {
+					exitMiniChat()
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mini": miniNow()})
+	})
 }
 
 // ballPollLoop 每 10 秒问一次本机回环服务：有多少条待审批（工具审批 + 跨端任务）。

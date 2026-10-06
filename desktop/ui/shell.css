@@ -201,3 +201,17 @@ textarea{resize:vertical;min-height:64px}
 .am-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
 .am-actions .btn{min-width:104px}
 .am-foot{margin-top:9px;font-size:11px;color:var(--text-3);border-top:1px dashed var(--border);padding-top:7px}
+
+/* ---------- 迷你对话小窗（左键点悬浮球） ----------
+   原生侧把主窗口缩成置顶小窗并跳到 #chat；这里只留对话区，藏掉侧栏 / 顶栏 / 大板块。 */
+#miniBar{display:none}
+body.mini .app{grid-template-columns:1fr;height:calc(100vh - 40px);margin-top:40px}
+body.mini .sidebar{display:none!important}
+body.mini .topbar{display:none!important}
+body.mini #miniBar{display:flex;position:fixed;top:0;left:0;right:0;height:40px;z-index:60;
+  align-items:center;justify-content:space-between;gap:8px;padding:0 12px;
+  background:var(--surface);border-bottom:1px solid var(--border-strong)}
+body.mini #miniBar .mb-t{font-size:13px;color:var(--text-2)}
+/* 小窗里只留「跟白泽说话」那一块：藏掉当前状态 / 最近运行等大板块 */
+body.mini #view .sect{display:none!important}
+body.mini .toasts{right:12px;bottom:12px}

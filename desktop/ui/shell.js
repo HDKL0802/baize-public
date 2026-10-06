@@ -157,6 +157,42 @@ window.Shell = (function () {
     }
   }
 
+  /* ---------------- 迷你对话小窗（左键点悬浮球） ----------------
+     原生侧把主窗口变成置顶小窗并跳到 #chat；这里按原生状态给 body 加 .mini、
+     藏掉侧栏与顶栏（CSS 在 shell.css），并挂一个「工作模式」按钮切回去。 */
+  let miniState = false;
+
+  function ensureMiniBar() {
+    if (document.getElementById('miniBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'miniBar';
+    bar.innerHTML = '<span class="mb-t">白泽 · 对话</span>' +
+      '<button class="btn ghost sm" id="miniExpand">⤢ 工作模式</button>';
+    document.body.appendChild(bar);
+    bar.querySelector('#miniExpand').onclick = async () => {
+      await fetch('/api/local/ball/mini', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ on: false }),
+      }).catch(() => {});
+      toast('已切回工作模式', 'ok');
+    };
+  }
+  function removeMiniBar() {
+    const b = document.getElementById('miniBar');
+    if (b) b.remove();
+  }
+
+  async function pollMini() {
+    let r = {};
+    try { r = await (await fetch('/api/local/ball/mini')).json(); } catch (e) { r = {}; }
+    const on = !!(r && r.mini);
+    if (on === miniState) return;
+    miniState = on;
+    document.body.classList.toggle('mini', on);
+    if (on) { ensureMiniBar(); openApp('chat'); }
+    else { removeMiniBar(); }
+  }
+
   /* ---------------- 授权 / 审批弹窗（B4）----------------
      危险操作执行前，置顶弹一个确认框：操作描述 / 目标 / 影响范围 / 建议 + 确认·拒绝。
      无论当前在哪个应用里都会弹；一次只处理一条，其余排队。超时由后端按「拒绝」处理，
@@ -302,11 +338,12 @@ window.Shell = (function () {
 
   /* ---------------- 启动 ---------------- */
   function boot() {
-    buildNav(); clock(); conn(); pollPending(); pollApprovals();
+    buildNav(); clock(); conn(); pollPending(); pollApprovals(); pollMini();
     setInterval(clock, 20000);
     setInterval(conn, 8000);
     setInterval(pollPending, 12000);
     setInterval(pollApprovals, 4000); // 审批弹窗：4 秒一次，尽量不让危险操作等太久
+    setInterval(pollMini, 2500);      // 迷你小窗：原生侧随时可能切，跟紧点
 
     /* 深链 #appid 直接打开某个应用；否则默认开「设备」 */
     const want = (location.hash || '').replace(/^#/, '').trim();

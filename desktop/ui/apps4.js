@@ -52,6 +52,7 @@ async function renderPlugins(root) {
         </div>
         <div class="tags">
           ${(a.tags || []).map(x => `<span class="tag">${esc(x)}</span>`).join('')}
+          ${a.builtin ? '<span class="tag on">内置</span>' : ''}
           ${tagOf(a)}
           ${a.installed
             ? `<button class="btn ghost sm" data-uninstall="${esc(a.id)}">卸载</button>`
@@ -99,14 +100,15 @@ async function renderPlugins(root) {
     const rows = state.sources.length ? state.sources.map(s => `
       <div class="row">
         <div class="who">
-          <b>${esc(s.name || s.url)} <span class="tag ${s.enabled ? 'on' : 'off'}">${s.enabled ? '启用' : '停用'}</span></b>
-          <span class="mono">${esc(s.url)}</span>
+          <b>${esc(s.name || s.url)} <span class="tag ${s.enabled ? 'on' : 'off'}">${s.enabled ? '启用' : '停用'}</span>${s.builtin ? ' <span class="tag on">内置</span>' : ''}</b>
+          <span class="mono">${s.builtin ? '随后端一起分发，离线可用（不用管，也删不掉）' : esc(s.url)}</span>
           <span>${s.error ? `<span class="err">${esc(s.error)}</span>`
             : `${s.count} 个插件${s.indexName ? ' · ' + esc(s.indexName) : ''}${s.updated ? ' · ' + esc(s.updated) : ''}`}</span>
         </div>
         <div class="tags">
+          ${s.builtin ? '' : `
           <button class="btn ghost sm" data-addsrc="${esc(s.url)}" data-name="${esc(s.name)}" data-on="${s.enabled ? '0' : '1'}">${s.enabled ? '停用' : '启用'}</button>
-          <button class="btn ghost sm" data-rmsrc="${esc(s.url)}">删除</button>
+          <button class="btn ghost sm" data-rmsrc="${esc(s.url)}">删除</button>`}
         </div>
       </div>`).join('') : '<div class="empty">还没有插件源。</div>';
 
@@ -114,15 +116,16 @@ async function renderPlugins(root) {
       <div class="sect" style="margin-top:0">
         <h3>添加插件源</h3>
         <div class="sub">填 <span class="mono">index.json</span> 的地址：可以是 http(s)（任何静态托管都行），也可以是本机路径。
-          同一个地址重复添加只会更新名字/开关。</div>
+          同一个地址重复添加只会更新名字/开关。<br>
+          内置的<b>「官方插件源」</b>随后端一起分发（离线也能用），它<b>一定在下面的列表里</b>，不用也不要手动添加。</div>
         <div class="fields" style="grid-template-columns:1fr 1fr 110px">
-          <div><label>名字（可留空）</label><input id="plSrcName" placeholder="例如 官方源"></div>
+          <div><label>名字（可留空）</label><input id="plSrcName" placeholder="例如 团队共享源"></div>
           <div><label>index.json 地址</label><input id="plSrcUrl" placeholder="https://…/index.json"></div>
           <div style="display:flex;align-items:flex-end"><button class="btn" id="plSrcAdd">添加</button></div>
         </div>
       </div>
       <div class="sect">
-        <h3>已配置的源（${state.sources.length}）</h3>
+        <h3>插件源（${state.sources.length}）</h3>
         <div id="plSrcList">${rows}</div>
       </div>`;
   };

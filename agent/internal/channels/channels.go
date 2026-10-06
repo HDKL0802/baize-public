@@ -59,6 +59,9 @@ type Info struct {
 	PollSec     int      `json:"pollSec,omitempty"`
 	HasToken    bool     `json:"hasToken"`
 	BotPrefix   string   `json:"botPrefix,omitempty"`
+	AppID       string   `json:"appId,omitempty"`   // 应用 App ID（xiaoyi 即 AK）——非敏感，回填编辑用
+	AgentID     string   `json:"agentId,omitempty"` // xiaoyi：Agent ID
+	Domain      string   `json:"domain,omitempty"`  // 自建/测试可改的域名
 }
 
 // entry 一个已登记的频道：配置快照 + 活对象
@@ -119,6 +122,7 @@ func (m *Manager) List() []Info {
 			OutboundURL: e.cfg.OutboundURL, Format: NormalizeFormat(e.cfg.Format),
 			ChatIDs: e.cfg.ChatIDs, PollSec: e.cfg.PollSec,
 			HasToken: strings.TrimSpace(e.cfg.Token) != "", BotPrefix: e.cfg.BotPrefix,
+			AppID: e.cfg.AppID, AgentID: e.cfg.AgentID, Domain: e.cfg.Domain,
 		})
 	}
 	return out

@@ -23,6 +23,9 @@ type channelInfo struct {
 	HasToken bool     `json:"hasToken"`
 	ChatIDs  []string `json:"chatIds"`
 	PollSec  int      `json:"pollSec"`
+	AppID    string   `json:"appId"`
+	AgentID  string   `json:"agentId"`
+	Domain   string   `json:"domain"`
 }
 
 type channelsResp struct {
@@ -316,4 +319,109 @@ func TestChannelsAbsentWithoutAgent(t *testing.T) {
 	if code := e.do("GET", "/api/agent/channels", nil, true, nil); code == 200 {
 		t.Fatalf("没挂 Agent 时 /api/agent/channels 不该可用，实际 %d", code)
 	}
+}
+
+// 新增的平台频道（钉钉 / QQ 官方 / 小艺 / 元宝 / 微信）：清单里要有；各自的必填项要在门口拒绝；
+// 非敏感配置（appId / agentId / domain）要能回显（appSecret 不回）。
+// 一律 enabled=false 保存，避免装配时真去连平台（那要走网络）。
+func TestChannelsNewKinds(t *testing.T) {
+	e, _ := newAgentEnv(t)
+
+	var base channelsResp
+	if code := e.do("GET", "/api/agent/channels", nil, true, &base); code != 200 {
+		t.Fatalf("GET /api/agent/channels 期望 200，实际 %d", code)
+	}
+	for _, k := range []string{"dingtalk", "qq", "xiaoyi", "yuanbao", "wechat"} {
+		if !hasStr(base.Kinds, k) {
+			t.Fatalf("类型清单缺 %s：%+v", k, base.Kinds)
+		}
+	}
+
+	// dingtalk：缺凭证 400；填了 200 且 appId / domain 回显
+	if code := e.do("POST", "/api/agent/channels", map[string]any{
+		"action": "save", "id": "dt", "kind": "dingtalk", "enabled": false}, true, nil); code != 400 {
+		t.Fatalf("dingtalk 缺 appId/appSecret 应 400，实际 %d", code)
+	}
+	var dt channelsResp
+	if code := e.do("POST", "/api/agent/channels", map[string]any{
+		"action": "save", "id": "dt", "kind": "dingtalk", "enabled": false,
+		"appId": "cid", "appSecret": "csec", "domain": "http://127.0.0.1:1"}, true, &dt); code != 200 {
+		t.Fatalf("dingtalk 保存失败：%d", code)
+	}
+	var got *channelInfo
+	for i := range dt.Channels {
+		if dt.Channels[i].ID == "dt" {
+			got = &dt.Channels[i]
+		}
+	}
+	if got == nil || got.Kind != "dingtalk" || got.AppID != "cid" || got.Domain != "http://127.0.0.1:1" {
+		t.Fatalf("dingtalk 回显不对：%+v", dt.Channels)
+	}
+	if got.HasToken {
+		t.Fatalf("dingtalk 不该有入站令牌：%+v", got)
+	}
+
+	// xiaoyi：缺 agentId 400；填全 200
+	if code := e.do("POST", "/api/agent/channels", map[string]any{
+		"action": "save", "id": "xy", "kind": "xiaoyi", "enabled": false,
+		"appId": "ak", "appSecret": "sk"}, true, nil); code != 400 {
+		t.Fatalf("xiaoyi 缺 agentId 应 400，实际 %d", code)
+	}
+	if code := e.do("POST", "/api/agent/channels", map[string]any{
+		"action": "save", "id": "xy", "kind": "xiaoyi", "enabled": false,
+		"appId": "ak", "appSecret": "sk", "agentId": "ag1"}, true, nil); code != 200 {
+		t.Fatalf("xiaoyi 保存失败：%d", code)
+	}
+
+	// yuanbao：缺凭证 400；outboundUrl 非 ws 400；正常 200
+	if code := e.do("POST", "/api/agent/channels", map[string]any{
+		"action": "save", "id": "yb", "kind": "yuanbao", "enabled": false}, true, nil); code != 400 {
+		t.Fatalf("yuanbao 缺凭证应 400，实际 %d", code)
+	}
+	if code := e.do("POST", "/api/agent/channels", map[string]any{
+		"action": "save", "id": "yb", "kind": "yuanbao", "enabled": false,
+		"appId": "a", "appSecret": "s", "outboundUrl": "http://x/y"}, true, nil); code != 400 {
+		t.Fatalf("yuanbao outboundUrl 非 ws 应 400，实际 %d", code)
+	}
+	if code := e.do("POST", "/api/agent/channels", map[string]any{
+		"action": "save", "id": "yb", "kind": "yuanbao", "enabled": false,
+		"appId": "a", "appSecret": "s", "outboundUrl": "ws://127.0.0.1:1"}, true, nil); code != 200 {
+		t.Fatalf("yuanbao 保存失败：%d", code)
+	}
+
+	// qq：缺凭证 400；填了 200
+	if code := e.do("POST", "/api/agent/channels", map[string]any{
+		"action": "save", "id": "q1", "kind": "qq", "enabled": false}, true, nil); code != 400 {
+		t.Fatalf("qq 缺凭证应 400，实际 %d", code)
+	}
+	if code := e.do("POST", "/api/agent/channels", map[string]any{
+		"action": "save", "id": "q1", "kind": "qq", "enabled": false,
+		"appId": "a", "appSecret": "s"}, true, nil); code != 200 {
+		t.Fatalf("qq 保存失败：%d", code)
+	}
+
+	// wechat：首次需扫码登录，故不强制凭证，无凭证也允许保存
+	if code := e.do("POST", "/api/agent/channels", map[string]any{
+		"action": "save", "id": "wx", "kind": "wechat", "enabled": false}, true, nil); code != 200 {
+		t.Fatalf("wechat 无凭证应允许保存，实际 %d", code)
+	}
+
+	// 密钥不该出现在清单里（只回 hasToken / 非敏感项）
+	if strings.Contains(latestChannelsJSON(t, e), "csec") {
+		t.Fatal("清单里不该回显 appSecret 明文")
+	}
+}
+
+// latestChannelsJSON 取一次频道清单的原始 JSON（用来断言密钥没被回显）
+func latestChannelsJSON(t *testing.T, e *env) string {
+	t.Helper()
+	req, _ := http.NewRequest("GET", e.srv.URL+"/api/agent/channels", nil)
+	req.Header.Set("X-Baize-Token", e.token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET 频道清单失败：%v", err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return string(b)
 }

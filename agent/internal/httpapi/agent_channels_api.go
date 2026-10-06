@@ -60,6 +60,7 @@ func (s *Server) handleChannelAdmin(w http.ResponseWriter, r *http.Request) {
 		BotPrefix   *string   `json:"botPrefix"`
 		AppID       *string   `json:"appId"`
 		AppSecret   *string   `json:"appSecret"`
+		AgentID     *string   `json:"agentId"`
 		EncryptKey  *string   `json:"encryptKey"`
 		Domain      *string   `json:"domain"`
 		ChatIDs     *[]string `json:"chatIds"`
@@ -131,6 +132,9 @@ func (s *Server) handleChannelAdmin(w http.ResponseWriter, r *http.Request) {
 		if req.AppSecret != nil {
 			cur.AppSecret = strings.TrimSpace(*req.AppSecret)
 		}
+		if req.AgentID != nil {
+			cur.AgentID = strings.TrimSpace(*req.AgentID)
+		}
 		if req.EncryptKey != nil {
 			cur.EncryptKey = strings.TrimSpace(*req.EncryptKey)
 		}
@@ -177,6 +181,50 @@ func (s *Server) handleChannelAdmin(w http.ResponseWriter, r *http.Request) {
 			if cur.Domain != "" {
 				if u, err := url.Parse(cur.Domain); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 					writeErr(w, http.StatusBadRequest, "domain 要是一个 http/https URL（默认 https://open.feishu.cn）")
+					return
+				}
+			}
+		case "dingtalk":
+			// Stream 长连接要应用凭证（AppKey / AppSecret）才能换接入点
+			if strings.TrimSpace(cur.AppID) == "" || strings.TrimSpace(cur.AppSecret) == "" {
+				writeErr(w, http.StatusBadRequest, "dingtalk 频道必须配 appId / appSecret（钉钉应用的 Client ID / Client Secret）")
+				return
+			}
+			if cur.Domain != "" {
+				if u, err := url.Parse(cur.Domain); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+					writeErr(w, http.StatusBadRequest, "domain 要是一个 http/https URL（默认 https://api.dingtalk.com）")
+					return
+				}
+			}
+		case "qq":
+			// QQ 官方机器人：换 AccessToken 要 appId / clientSecret
+			if strings.TrimSpace(cur.AppID) == "" || strings.TrimSpace(cur.AppSecret) == "" {
+				writeErr(w, http.StatusBadRequest, "qq 频道必须配 appId / appSecret（QQ 机器人的 AppID / ClientSecret）")
+				return
+			}
+		case "xiaoyi":
+			// 小艺：AK/SK 签名 + Agent ID
+			if strings.TrimSpace(cur.AppID) == "" || strings.TrimSpace(cur.AppSecret) == "" || strings.TrimSpace(cur.AgentID) == "" {
+				writeErr(w, http.StatusBadRequest, "xiaoyi 频道必须配 appId(=AK) / appSecret(=SK) / agentId（小艺开放平台的 Agent ID）")
+				return
+			}
+		case "yuanbao":
+			// 元宝：sign-token 要 app_id / app_secret
+			if strings.TrimSpace(cur.AppID) == "" || strings.TrimSpace(cur.AppSecret) == "" {
+				writeErr(w, http.StatusBadRequest, "yuanbao 频道必须配 appId / appSecret（元宝机器人的 app_id / app_secret）")
+				return
+			}
+			if cur.OutboundURL != "" {
+				if u, err := url.Parse(cur.OutboundURL); err != nil || (u.Scheme != "ws" && u.Scheme != "wss") || u.Host == "" {
+					writeErr(w, http.StatusBadRequest, "outboundUrl 要是一个 ws/wss URL（缺省用官方默认接入点）")
+					return
+				}
+			}
+		case "wechat":
+			// 个人微信走官方 iLink Bot：首次需扫码登录（登录后凭证落盘），故不强制先填令牌。
+			if cur.Domain != "" {
+				if u, err := url.Parse(cur.Domain); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+					writeErr(w, http.StatusBadRequest, "domain 要是一个 http/https URL（默认 https://ilinkai.weixin.qq.com）")
 					return
 				}
 			}

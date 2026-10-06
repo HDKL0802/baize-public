@@ -136,8 +136,9 @@ type ChannelConfig struct {
 	Token       string   `json:"token,omitempty"`       // webhook / onebot 的入站令牌；feishu 用作事件回调的「验证令牌」
 	OutboundURL string   `json:"outboundUrl,omitempty"` // webhook：出站地址
 	Format      string   `json:"format,omitempty"`      // webhook：出站体形状（generic/feishu/dingtalk/slack）
-	AppID       string   `json:"appId,omitempty"`       // feishu：应用 App ID
-	AppSecret   string   `json:"appSecret,omitempty"`   // feishu：应用 App Secret
+	AppID       string   `json:"appId,omitempty"`       // feishu / dingtalk / qq / xiaoyi：应用 App ID（xiaoyi 即 AK）
+	AppSecret   string   `json:"appSecret,omitempty"`   // feishu / dingtalk / qq / xiaoyi：应用 App Secret（xiaoyi 即 SK）
+	AgentID     string   `json:"agentId,omitempty"`     // xiaoyi：小艺开放平台的 Agent ID
 	EncryptKey  string   `json:"encryptKey,omitempty"`  // feishu：可选，事件加密时用来解密
 	Domain      string   `json:"domain,omitempty"`      // feishu：可选，默认 https://open.feishu.cn（自建/测试可改）
 	ChatIDs     []string `json:"chatIds,omitempty"`     // feishu：轮询监听的会话（chat_id）；配了就启用「轮询入站」（免公网）
@@ -616,11 +617,18 @@ func normalizeHeartbeatTarget(v string) string {
 	return "main"
 }
 
-var channelKinds = []string{"webhook", "onebot", "feishu"}
+var channelKinds = []string{"webhook", "onebot", "feishu", "dingtalk", "qq", "xiaoyi", "yuanbao", "wechat"}
 var channelFormats = []string{"generic", "feishu", "dingtalk", "slack"}
 
-// ChannelKinds 支持的频道类型（界面下拉用）。目前只有 webhook：
-// 出站 POST 到一个 URL（飞书/钉钉/Slack 群机器人都只要一个 URL），入站走 /api/channels/{id}/inbound。
+// ChannelKinds 支持的频道类型（界面下拉用）：
+//   - webhook：出站 POST 到一个 URL（飞书/钉钉/Slack 群机器人都只要一个 URL），入站走 /api/channels/{id}/inbound
+//   - onebot：QQ OneBot V11 反向 WebSocket（实现端连进来）
+//   - feishu：飞书事件回调 / 轮询入站，出站走 OpenAPI
+//   - dingtalk：钉钉 Stream 长连接（白泽主动连出去，免公网），回复走消息里的 sessionWebhook
+//   - qq：QQ 官方机器人（AccessToken + WebSocket 网关收事件 + OpenAPI 发消息）
+//   - xiaoyi：华为小艺（A2A over WebSocket，AK/SK 签名 + Agent ID）
+//   - yuanbao：腾讯元宝（protobuf over WebSocket + sign-token）
+//   - wechat：个人微信（官方 iLink Bot HTTP：二维码登录 + 长轮询收信 + HTTP 发信）
 func ChannelKinds() []string { return append([]string{}, channelKinds...) }
 
 // ChannelFormats webhook 出站请求体的形状（对接不同 IM 群机器人用）

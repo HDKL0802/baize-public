@@ -467,6 +467,75 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 		}
 	}))
 
+	// 回显单条通道的某个字段（apiKey | baseUrl），供控制台/桌面端「复制」用。
+	//
+	// ⚠️ 这是全项目唯一回显明文 Key 的接口：控制台本身已是令牌闸门之后，
+	// 用户要复制 Key 去别处粘贴。取值走 agentsvc.ProviderSecret（只读），
+	// 明文不进 ProviderInfo / 列表响应。
+	mux.HandleFunc("POST /api/agent/providers/secret", s.api(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Name  string `json:"name"`
+			Field string `json:"field"`
+		}
+		if err := decodeBody(r, &req); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		field := strings.TrimSpace(req.Field)
+		if field != "apiKey" && field != "baseUrl" {
+			writeErr(w, http.StatusBadRequest, "field 只支持 apiKey | baseUrl，收到："+field)
+			return
+		}
+		value, err := a.ProviderSecret(req.Name, field)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		s.lg.Warn("接口：回显通道密钥", "name", req.Name, "field", field, "addr", r.RemoteAddr)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "field": field, "value": value})
+	}))
+
+	// 通道充值记账：GET 读全部；POST action=add|remove。
+	// 只记「金额 / 时间 / 备注」，**不做汇率与单价换算** —— 换算口径多变，交给界面/使用者自己算。
+	mux.HandleFunc("GET /api/agent/providers/recharge", s.api(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"recharges": a.ProviderRecharges()})
+	}))
+
+	mux.HandleFunc("POST /api/agent/providers/recharge", s.api(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Action string  `json:"action"`
+			Name   string  `json:"name"`
+			Amount float64 `json:"amount"`
+			Note   string  `json:"note"`
+			ID     string  `json:"id"`
+		}
+		if err := decodeBody(r, &req); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		action := strings.ToLower(strings.TrimSpace(req.Action))
+		if action == "" {
+			action = "add"
+		}
+		switch action {
+		case "add":
+			entry, err := a.AddProviderRecharge(req.Name, req.Amount, req.Note)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "entry": entry})
+		case "remove":
+			if err := a.RemoveProviderRecharge(req.Name, req.ID); err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "removed": req.ID})
+		default:
+			writeErr(w, http.StatusBadRequest, "不支持的 action："+action+"（可用 add | remove）")
+		}
+	}))
+
 	// 截图提问：把一张截图交给多模态模型做「提取文字 / 翻译」
 	mux.HandleFunc("POST /api/agent/vision", s.api(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -647,6 +716,28 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deviceId": req.DeviceID, "remark": strings.TrimSpace(req.Remark)})
+	}))
+
+	// 删除设备：硬删。离线设备记录会一直留着，用户要能清掉；备注一并清。
+	// 备注存在 config.json（见 DeviceRemarks），不在设备表里，所以两张地方都要清。
+	mux.HandleFunc("DELETE /api/agent/devices/{id}", s.api(func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.PathValue("id"))
+		if id == "" {
+			writeErr(w, http.StatusBadRequest, "缺少设备 id")
+			return
+		}
+		if err := s.hub.Store().DeleteDevice(id); err != nil {
+			writeErr(w, http.StatusInternalServerError, "删除设备失败："+err.Error())
+			return
+		}
+		// Agent 服务可能没挂（s.agent 为 nil）：没挂就没有备注要清
+		if s.agent != nil {
+			if err := s.agent.ClearDeviceRemark(id); err != nil {
+				writeErr(w, http.StatusInternalServerError, "设备已删除，但清理备注失败："+err.Error())
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "removed": id})
 	}))
 
 	mux.HandleFunc("GET /api/agent/config", s.api(func(w http.ResponseWriter, r *http.Request) {

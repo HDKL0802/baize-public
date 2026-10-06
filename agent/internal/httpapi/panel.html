@@ -326,6 +326,30 @@ function esc(s) {
   return String(s === null || s === undefined ? "" : s).replace(/[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+/* 复制文本。⚠️ 局域网 http:// 下 navigator.clipboard 是 undefined，
+   必须回退到 document.execCommand('copy') + 临时 textarea，否则网页版控制台复制不了。 */
+function copyText(text) {
+  text = String(text === null || text === undefined ? "" : text);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => copyTextFallback(text));
+  }
+  return Promise.resolve(copyTextFallback(text));
+}
+function copyTextFallback(text) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.top = "-1000px";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  ta.setSelectionRange(0, ta.value.length);
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  return ok;
+}
 function toast(msg, isErr) {
   const t = $("toast");
   t.textContent = msg;
@@ -359,6 +383,20 @@ function confirmBox(title, desc, okText, onOk) {
     try { await onOk(); } catch (e) { toast("失败：" + e.message, true); }
   };
 }
+/* formModal 带表单的弹窗：和 confirmBox 共用同一个 modal 容器与 .field/.btn 样式，
+   只是把标题/描述换成任意表单 HTML（技能的新建 / 导入都用它）。
+   与 confirmBox 略有不同：失败时不关弹窗，用户不用重填。 */
+function formModal(bodyHTML, onOk) {
+  $("modal").innerHTML = bodyHTML +
+    '<div class="acts"><button class="btn" id="m-cancel">取消</button>' +
+    '<button class="btn primary" id="m-ok">确定</button></div>';
+  $("mask").className = "modal-mask show";
+  const close = () => { $("mask").className = "modal-mask"; };
+  $("m-cancel").onclick = close;
+  $("m-ok").onclick = async () => {
+    try { await onOk(); close(); } catch (e) { toast("失败：" + e.message, true); }
+  };
+}
 const fmtMs = (v) => { if (!v) return "—"; const d = new Date(v); return d.toLocaleString("zh-CN", { hour12: false }); };
 const fmtAgo = (v) => {
   if (!v) return "—";
@@ -380,6 +418,10 @@ const S = {
   heartbeat: null, hbContent: null, hbDirty: false, // 心跳状态 + 编辑器内容（hbDirty=用户动过，别让轮询盖掉）
   commands: null,                                  // 魔法命令清单（/api/agent/commands）
   channels: null,                                  // 频道清单（/api/agent/channels）
+  plugins: null,                                   // 插件市场（/api/agent/plugins）
+  pluginsTab: "market",                            // 插件市场页签：market / installed / sources
+  observe: null, observeWin: "24h",                // 可观测性：最近一次观测面 + 当前时间窗
+  recharges: null,                                 // 通道充值流水（/api/agent/providers/recharge）
 };
 const CHAT_KEY = "bz_console_chat_v1";
 function loadChat() { try { S.chat = JSON.parse(localStorage.getItem(CHAT_KEY) || "[]") || []; } catch (e) { S.chat = []; } }
@@ -391,11 +433,13 @@ const PAGES = [
   { id: "agent", name: "对话", title: "对话", sub: "一句话派活，Agent 自己决定调哪些工具" },
   { id: "kb", name: "知识库", title: "知识库", sub: "待办 + 密码本 + 附件的正本，手机端读的就是这里", ep: "/api/kb/state" },
   { id: "runs", name: "运行记录", title: "运行记录", sub: "每次派活的步骤、工具链路与 token 用量", ep: "/api/agent/runs" },
+  { id: "observability", name: "可观测性", title: "可观测性", sub: "运行量 / 工具 / 模型通道 / 日志 / 健康，一次看全", ep: "/api/agent/observability" },
   { group: "资源" },
   { id: "devices", name: "设备", title: "设备", sub: "电脑 / 手机 / NAS 注册上来的执行端", ep: "/api/state.devices" },
   { id: "tasks", name: "任务与审批", title: "任务与审批", sub: "危险动作要人工放行后才真的执行", ep: "/api/tasks" },
   { id: "memory", name: "长期记忆", title: "长期记忆", sub: "任务结论自动落盘，动手前先检索", ep: "/api/agent/memory" },
   { id: "skills", name: "技能", title: "技能", sub: "工作目录里的可复用技能包", ep: "/api/agent/state.skills" },
+  { id: "plugins", name: "插件市场", title: "插件市场", sub: "官方源里的技能包，装了就能被白泽调用", ep: "/api/agent/plugins" },
   { id: "persona", name: "人设", title: "人设", sub: "一组 Markdown 文件，按顺序拼进系统提示；改完立即生效", ep: "/api/agent/persona" },
   { group: "配置" },
   { id: "models", name: "模型通道", title: "模型通道", sub: "只认 OpenAI / Anthropic 两种协议", ep: "/api/agent/providers" },
@@ -417,10 +461,12 @@ const ICONS = {
   agent: '<path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v6a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 12.5z"/>',
   kb: '<path d="M12 6.6C10.4 5.1 7.9 4.5 4 4.5v13c3.9 0 6.4.6 8 2.1 1.6-1.5 4.1-2.1 8-2.1v-13c-3.9 0-6.4.6-8 2.1z"/><path d="M12 6.6v13"/>',
   runs: '<path d="M8.5 6.5h11M8.5 12h11M8.5 17.5h7"/><path d="M4 6.5h.01M4 12h.01M4 17.5h.01"/>',
+  observability: '<path d="M4 3.5v17h16.5"/><path d="M7 15.5l3.4-4.2 3 2.6L20 7"/>',
   devices: '<rect x="3" y="4.5" width="18" height="11.5" rx="1.5"/><path d="M9 20h6M12 16v4"/>',
   tasks: '<rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9.5 4.5h5v2.5h-5z"/><path d="m9.5 12.5 2 2 3.5-4"/>',
   memory: '<rect x="7" y="7" width="10" height="10" rx="1.6"/><path d="M10 3.5v3.5M14 3.5v3.5M10 17v3.5M14 17v3.5M3.5 10h3.5M3.5 14h3.5M17 10h3.5M17 14h3.5"/>',
   skills: '<path d="M12 3.2l2 5.3 5.3 2-5.3 2-2 5.3-2-5.3-5.3-2 5.3-2z"/><path d="M18.5 16.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+  plugins: '<path d="M10.2 4.3a1.7 1.7 0 0 1 3.4 0V6h2.4a1.4 1.4 0 0 1 1.4 1.4v2.4h1.7a1.7 1.7 0 0 1 0 3.4h-1.7v2.4a1.4 1.4 0 0 1-1.4 1.4H6.4A1.4 1.4 0 0 1 5 15.6v-2.4H6.7a1.7 1.7 0 0 0 0-3.4H5V7.4A1.4 1.4 0 0 1 6.4 6h2.4V4.3z"/>',
   persona: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10.6" r="2.1"/><path d="M5.7 16.4c.6-1.6 1.8-2.4 3.3-2.4s2.7.8 3.3 2.4"/><path d="M15 10.2h3.6M15 13.4h3.6"/>',
   models: '<path d="M13.5 3 5.5 13.5H11l-1 7.5 8.5-10.5H13z"/>',
   voice: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21M8.5 21h7"/>',
@@ -564,6 +610,176 @@ function pageRuns() {
   return h;
 }
 
+/* 可观测性：一次请求拿整张观测面（/api/agent/observability?window=…）。
+   三块数据时效性不同：运行量来自 runs.db（跨重启）；工具/通道明细是进程内计数（本次启动以来，重启清零）；
+   健康与积压现读现算。模型通道表里的「累计充值」来自 /api/agent/providers/recharge（配置里记账，跨重启）。 */
+function pageObserve() {
+  const rep = S.observe || {};
+  const WINS = [["1h", "近 1 小时"], ["24h", "近 24 小时"], ["7d", "近 7 天"], ["30d", "近 30 天"], ["all", "全部"]];
+  const win = S.observeWin || "24h";
+  const r = rep.runs || {};
+  const logs = rep.logs || { recent: [] };
+  const tools = rep.tools || [], provs = rep.providers || [];
+  const num0 = (v) => (v == null ? "—" : Number(v).toLocaleString());
+  const msStr = (v) => {
+    if (!v) return "—";
+    if (v < 1000) return v + " ms";
+    if (v < 60000) return (v / 1000).toFixed(1) + " s";
+    return Math.floor(v / 60000) + " m " + Math.round((v % 60000) / 1000) + " s";
+  };
+  const upStr = (sec) => (sec < 3600 ? Math.max(1, Math.floor(sec / 60)) + " 分钟" : (sec / 3600).toFixed(1) + " 小时");
+  const sumRc = (name) => (((S.recharges || {})[name]) || []).reduce((a, e) => a + (e.amount || 0), 0);
+  const blocked = tools.reduce((a, t) => a + (t.blocked || 0), 0);
+
+  // 顶部：时间窗切换 + KPI
+  let h = '<div class="card"><header><h2>可观测性</h2><span class="ep mono">/api/agent/observability</span></header>' +
+    '<p class="desc">白泽最近干得怎么样：跑了多少活、慢在哪、哪里在报错、有什么还没配。' +
+    '「运行量」来自落盘的运行记录（跨重启）；「工具 / 模型通道明细」是进程内计数（本次启动以来，重启清零）。</p>' +
+    '<div class="pad" style="border-bottom:1px solid var(--app-border-subtle)"><div class="row">' +
+    WINS.map((w) => '<button class="btn sm' + (w[0] === win ? " primary" : "") + '" data-obwin="' + w[0] + '">' + w[1] + "</button>").join("") +
+    '<span class="pill" style="margin-left:auto">后端已跑 ' + esc(upStr(rep.uptimeSec || 0)) + " · 生成于 " + esc(fmtMs(rep.generatedAt)) + "</span>" +
+    "</div></div>" +
+    '<div class="pad"><div class="stats">' +
+    "<div><b>" + num0(r.total) + "</b><span>运行次数</span></div>" +
+    "<div><b>" + num0(r.toolCalls) + "</b><span>工具调用</span></div>" +
+    "<div><b>" + num0(blocked) + "</b><span>被审批拦下</span></div>" +
+    "<div><b>" + num0(r.failed) + "</b><span>运行出错</span></div>" +
+    "<div><b>" + num0((r.promptTokens || 0) + (r.outTokens || 0)) + "</b><span>token</span></div>" +
+    "</div></div></div>";
+
+  // 健康（先看这里）
+  const health = rep.health || [];
+  h += '<div class="card"><header><h2>健康</h2><span class="ep mono">现读现算</span></header>';
+  if (!health.length) {
+    h += '<div class="empty">还没有可体检的通道 —— 先去「模型通道」配一条。</div>';
+  } else {
+    h += '<table><thead><tr><th>项目</th><th class="nowrap">状态</th><th>说明</th></tr></thead><tbody>';
+    health.forEach((it) => {
+      const cls = it.status === "error" ? "err" : it.status === "warn" ? "warn" : "ok";
+      h += '<tr><td class="cell-title">' + esc(it.name) + "</td>" +
+        '<td class="nowrap"><span class="tag ' + cls + '">' + esc(it.status) + "</span></td>" +
+        '<td class="cell-sub">' + esc(it.detail || "") +
+        (it.hint ? '<div class="cell-sub">建议：' + esc(it.hint) + "</div>" : "") + "</td></tr>";
+    });
+    h += "</tbody></table>";
+  }
+  h += "</div>";
+
+  // 运行量（分桶）
+  const buckets = (rep.buckets || []).filter((b) => (b.runs || 0) > 0);
+  h += '<div class="card"><header><h2>运行量</h2><span class="ep mono">runs.db · 窗口 ' + esc(rep.window || win) + "</span></header>";
+  if (!buckets.length) {
+    h += '<div class="empty">这段时间还没有运行记录</div>';
+  } else {
+    const shown = buckets.slice(-40);
+    h += '<table><thead><tr><th class="nowrap">时间桶</th><th class="nowrap">运行</th><th class="nowrap">失败</th><th class="nowrap">token</th></tr></thead><tbody>';
+    shown.forEach((b) => {
+      h += '<tr><td class="nowrap cell-sub">' + esc(fmtMs(b.at)) + "</td>" +
+        '<td class="nowrap">' + num0(b.runs) + "</td>" +
+        '<td class="nowrap">' + (b.failed ? '<span class="tag err">' + num0(b.failed) + "</span>" : "0") + "</td>" +
+        '<td class="nowrap">' + num0(b.tokens) + "</td></tr>";
+    });
+    h += "</tbody></table>";
+    if (buckets.length > shown.length) h += '<p class="desc">共 ' + buckets.length + " 个有运行的桶，只列最近 40 个。</p>";
+  }
+  h += "</div>";
+
+  // 工具明细
+  h += '<div class="card"><header><h2>工具明细</h2><span class="ep mono">本次启动以来</span></header>';
+  if (!tools.length) {
+    h += '<div class="empty">本次启动以来还没调过工具</div>';
+  } else {
+    h += '<table><thead><tr><th>工具</th><th class="nowrap">调用</th><th class="nowrap">失败</th><th class="nowrap">被拦</th><th class="nowrap">平均耗时</th><th>最近出错</th></tr></thead><tbody>';
+    tools.forEach((t) => {
+      h += '<tr><td class="mono">' + esc(t.tool) + "</td>" +
+        '<td class="nowrap">' + num0(t.calls) + "</td>" +
+        '<td class="nowrap">' + (t.errors ? '<span class="tag err">' + num0(t.errors) + "</span>" : "0") + "</td>" +
+        '<td class="nowrap">' + (t.blocked ? '<span class="tag warn">' + num0(t.blocked) + "</span>" : "0") + "</td>" +
+        '<td class="nowrap">' + esc(msStr(t.avgMs)) + "</td>" +
+        '<td class="cell-sub mono">' + esc(t.lastErr || "—") + "</td></tr>";
+    });
+    h += "</tbody></table>";
+  }
+  h += "</div>";
+
+  // 模型通道明细（含累计充值）
+  h += '<div class="card"><header><h2>模型通道明细</h2><span class="ep mono">本次启动以来</span></header>' +
+    '<p class="desc">「平均等待」含重试等待：它回答的是"等这一步到底花了多久"。「累计充值」来自配置里的记账（/api/agent/providers/recharge），只记金额、不做换算。</p>';
+  if (!provs.length) {
+    h += '<div class="empty">本次启动以来还没问过模型</div>';
+  } else {
+    h += '<table><thead><tr><th>通道 · 模型</th><th class="nowrap">请求</th><th class="nowrap">回复</th><th class="nowrap">重试</th><th class="nowrap">token</th><th class="nowrap">平均等待</th><th>最近出错</th><th class="nowrap">累计充值</th></tr></thead><tbody>';
+    provs.forEach((p) => {
+      const rc = sumRc(p.provider);
+      h += '<tr><td><div class="cell-title">' + esc(p.provider) + "</div>" +
+        (p.model ? '<div class="cell-sub mono">' + esc(p.model) + "</div>" : "") + "</td>" +
+        '<td class="nowrap">' + num0(p.requests) + "</td>" +
+        '<td class="nowrap">' + num0(p.replies) + "</td>" +
+        '<td class="nowrap">' + (p.retries ? '<span class="tag warn">' + num0(p.retries) + "</span>" : "0") + "</td>" +
+        '<td class="nowrap">' + num0(p.tokens) + "</td>" +
+        '<td class="nowrap">' + esc(msStr(p.avgMs)) + "</td>" +
+        '<td class="cell-sub mono">' + esc(p.lastErr || "—") + "</td>" +
+        '<td class="nowrap">' + (rc > 0 ? "¥" + esc(String(rc)) : "—") + "</td></tr>";
+    });
+    h += "</tbody></table>";
+  }
+  h += "</div>";
+
+  // 日志（最近的告警 / 错误）
+  const recent = logs.recent || [];
+  h += '<div class="card"><header><h2>日志</h2><span class="ep mono">/api/logs</span></header>' +
+    '<p class="desc">只列最近的告警与错误（最多 20 条）；日志环总 ' + num0(logs.total) + " 行（错误 " + num0(logs.error) + " · 警告 " + num0(logs.warn) + "）。</p>";
+  if (!recent.length) {
+    h += '<div class="empty">没有告警 / 错误</div>';
+  } else {
+    h += '<pre class="logbox">' + esc(recent.map((l) => fmtMs(l.at) + "  " + (l.level || "") + "  " + (l.text || "")).join("\n")) + "</pre>";
+  }
+  h += "</div>";
+  return h;
+}
+
+/* 重新拉一遍充值流水到 S.recharges（记完账后刷新页面用） */
+async function reloadRecharges() {
+  const rc = await api("/api/agent/providers/recharge").catch(() => null);
+  S.recharges = (rc && rc.recharges) || {};
+}
+
+/* 通道充值弹窗：金额 + 备注，下面列出该通道的历史记录（每条可删）。 */
+function openRechargeModal(name) {
+  const list = ((S.recharges || {})[name]) || [];
+  const hist = list.length
+    ? '<table><thead><tr><th class="nowrap">时间</th><th class="nowrap">金额</th><th>备注</th><th class="nowrap">操作</th></tr></thead><tbody>' +
+      list.map((e) => '<tr><td class="nowrap cell-sub">' + esc(fmtMs(e.at)) + "</td>" +
+        '<td class="nowrap">¥' + esc(String(e.amount)) + "</td>" +
+        '<td class="cell-sub">' + esc(e.note || "—") + "</td>" +
+        '<td class="nowrap"><button class="btn sm danger" data-prcdel="' + esc(e.id) + '">删除</button></td></tr>').join("") +
+      "</tbody></table>"
+    : '<p class="desc" style="padding:0">还没有充值记录</p>';
+  formModal(
+    '<h3>通道充值</h3><p class="desc" style="padding:0 0 12px">给「' + esc(name) + "」记一笔充值（只记账，不做汇率换算）。</p>" +
+    '<div class="field"><label>金额（元）</label><input type="number" id="prc-amount" placeholder="例如 100" step="0.01" min="0"></div>' +
+    '<div class="field"><label>备注（可选）</label><input type="text" id="prc-note" placeholder="例如 2026-10 首充"></div>' +
+    '<div class="field"><label>历史记录</label>' + hist + "</div>",
+    async () => {
+      const raw = ($("prc-amount").value || "").trim();
+      const amount = parseFloat(raw);
+      if (!raw || !isFinite(amount) || amount <= 0) throw new Error("金额要填一个大于 0 的数字");
+      await api("/api/agent/providers/recharge", { method: "POST", body: { action: "add", name: name, amount: amount, note: ($("prc-note").value || "").trim() } });
+      await reloadRecharges();
+      toast("已记一笔充值");
+      render();
+    });
+  document.querySelectorAll("[data-prcdel]").forEach((b) => b.onclick = async () => {
+    try {
+      await api("/api/agent/providers/recharge", { method: "POST", body: { action: "remove", name: name, id: b.dataset.prcdel } });
+      await reloadRecharges();
+      toast("已删除");
+      openRechargeModal(name);
+      render();
+    } catch (e) { toast("删除失败：" + e.message, true); }
+  });
+}
+
 function pageDevices() {
   const ds = (S.state && S.state.devices) || [];
   const remarks = (S.state && S.state.deviceRemarks) || {};
@@ -595,7 +811,8 @@ function pageDevices() {
         '<td class="nowrap cell-sub">' + esc(d.os || "") + "/" + esc(d.arch || "") + "</td>" +
         '<td class="nowrap cell-sub">' + esc(fmtAgo(d.lastSeen)) + "</td>" +
         '<td class="nowrap"><button class="btn sm" data-ping="' + esc(d.id) + '">探活</button> ' +
-        '<button class="btn sm" data-rm="' + esc(d.id) + '">备注</button></td></tr>';
+        '<button class="btn sm" data-rm="' + esc(d.id) + '">备注</button> ' +
+        '<button class="btn sm danger" data-del="' + esc(d.id) + '">删除</button></td></tr>';
     });
     h += "</tbody></table>";
   }
@@ -796,16 +1013,112 @@ function pageMemory() {
 
 function pageSkills() {
   const sk = (S.agent && S.agent.skills) || [];
-  let h = '<div class="card"><header><h2>技能</h2><span class="ep mono">/api/agent/state.skills</span></header>' +
-    '<p class="desc">放在 <code>' + esc((S.agent && S.agent.skillsDir) || "") + '</code> 下的技能包，Agent 按需加载。</p>';
+  let h = '<div class="card"><header><h2>技能</h2><span class="ep mono">/api/agent/state.skills</span>' +
+    '<button class="btn sm" id="btn-sk-new" style="margin-left:auto">新建</button>' +
+    '<button class="btn sm" id="btn-sk-import" style="margin-left:8px">导入 SKILL.md</button></header>' +
+    '<p class="desc">放在 <code>' + esc((S.agent && S.agent.skillsDir) || "") + '</code> 下的技能包（<code>&lt;技能目录&gt;/[分类/]&lt;名字&gt;/SKILL.md</code>），Agent 按需加载。</p>';
   if (!sk.length) h += '<div class="empty">还没有技能包</div>';
   else {
-    h += '<table><thead><tr><th>技能</th><th>说明</th><th class="nowrap">token</th></tr></thead><tbody>';
+    // 按分类分组：没有分类（category 为空）的归「未分类」，排在最后
+    const groups = new Map();
     sk.forEach((s) => {
-      h += '<tr><td class="cell-title">' + esc(s.name) + '</td><td class="cell-sub">' + esc(s.description || "") + "</td>" +
-        '<td class="nowrap cell-sub">' + (s.tokens || 0) + "</td></tr>";
+      const c = (s.category || "").trim() || "未分类";
+      if (!groups.has(c)) groups.set(c, []);
+      groups.get(c).push(s);
+    });
+    const cats = Array.from(groups.keys()).sort((a, b) =>
+      a === "未分类" ? 1 : b === "未分类" ? -1 : a.localeCompare(b));
+    h += '<table><thead><tr><th>技能</th><th>说明</th><th class="nowrap">分类</th><th class="nowrap">token</th></tr></thead><tbody>';
+    cats.forEach((c) => {
+      h += '<tr><td colspan="4" class="cell-sub" style="padding-top:12px"><b>' + esc(c) + '</b> ' +
+        '<span class="tag">' + groups.get(c).length + "</span></td></tr>";
+      groups.get(c).forEach((s) => {
+        h += '<tr><td class="cell-title">' + esc(s.name) + '</td><td class="cell-sub">' + esc(s.description || "") + "</td>" +
+          '<td class="nowrap"><span class="tag">' + esc(c) + "</span></td>" +
+          '<td class="nowrap cell-sub">' + (s.tokens || 0) + "</td></tr>";
+      });
     });
     h += "</tbody></table>";
+  }
+  return h + "</div>";
+}
+
+/* 插件市场：官方源里的技能包（技能 + MCP），装了就能被白泽调用。
+   简化版三页签：市场 / 已安装 / 插件源，动作全走 POST /api/agent/plugins。 */
+function pagePlugins() {
+  const p = S.plugins || {};
+  const tab = S.pluginsTab || "market";
+  const avail = p.available || [];
+  const ins = p.installed || [];
+  const srcs = p.sources || [];
+  // hasUpdate 只标在货架上，这里先建个「已安装 id → 有更新」的索引，供「已安装」页用
+  const upd = {};
+  avail.forEach((a) => { if (a.hasUpdate) upd[a.id] = true; });
+
+  const tabBtn = (id, name) =>
+    '<button class="btn sm' + (tab === id ? " primary" : "") + '" data-pltab="' + id + '">' + name + "</button>";
+  let h = '<div class="card"><header><h2>插件市场</h2><span class="ep mono">/api/agent/plugins</span>' +
+    '<span class="pill" style="margin-left:auto">插件目录 <code>' + esc(p.dir || "") + '</code></span></header>' +
+    '<p class="desc">插件 = 一个 zip：装进来会把里面的技能落进技能目录、把 MCP 服务登记进配置（与现有同名的技能/MCP 一律跳过，不覆盖你自己的东西）。</p>' +
+    '<div class="row">' + tabBtn("market", "市场") + tabBtn("installed", "已安装") + tabBtn("sources", "插件源") + "</div>";
+
+  if (tab === "installed") {
+    if (!ins.length) h += '<div class="empty">还没装任何插件</div>';
+    else {
+      h += '<table><thead><tr><th>插件</th><th class="nowrap">版本</th><th class="nowrap">状态</th><th class="nowrap">来源</th><th class="nowrap">操作</th></tr></thead><tbody>';
+      ins.forEach((it) => {
+        h += '<tr><td><div class="cell-title">' + esc(it.name || it.id) + "</div>" +
+          '<div class="cell-sub mono">' + esc(it.id) +
+          ((it.skills || []).length ? " · 技能 " + esc((it.skills || []).join("、")) : "") +
+          ((it.mcp || []).length ? " · MCP " + esc((it.mcp || []).join("、")) : "") + "</div>" +
+          (it.note ? '<div class="cell-sub">' + esc(it.note) + "</div>" : "") + "</td>" +
+          '<td class="nowrap cell-sub">' + esc(it.version || "") + "</td>" +
+          '<td class="nowrap"><span class="tag ' + (it.enabled ? "ok" : "") + '">' + (it.enabled ? "已启用" : "已停用") + "</span></td>" +
+          '<td class="nowrap cell-sub">' + esc(it.source || "") + "</td>" +
+          '<td class="nowrap">' +
+          '<button class="btn sm" data-plitoggle="' + esc(it.id) + '" data-plon="' + (it.enabled ? "0" : "1") + '">' + (it.enabled ? "停用" : "启用") + "</button> " +
+          (upd[it.id] ? '<button class="btn sm primary" data-plupdate="' + esc(it.id) + '">升级</button> ' : "") +
+          '<button class="btn sm danger" data-pluninstall="' + esc(it.id) + '">卸载</button></td></tr>';
+      });
+      h += "</tbody></table>";
+    }
+  } else if (tab === "sources") {
+    if (!srcs.length) h += '<div class="empty">还没有插件源</div>';
+    else {
+      h += '<table><thead><tr><th>源</th><th class="nowrap">状态</th><th class="nowrap">插件数</th></tr></thead><tbody>';
+      srcs.forEach((s) => {
+        h += '<tr><td><div class="cell-title">' + esc(s.name || s.url) + (s.builtin ? ' <span class="tag">内置</span>' : "") + "</div>" +
+          '<div class="cell-sub mono">' + esc(s.builtin ? "随后端一起分发，离线可用" : s.url) + "</div></td>" +
+          '<td class="nowrap">' + (s.error ? '<span class="tag err">' + esc(s.error) + "</span>" : '<span class="tag ok">可用</span>') + "</td>" +
+          '<td class="nowrap cell-sub">' + (s.count || 0) + "</td></tr>";
+      });
+      h += "</tbody></table>";
+    }
+    h += '<div class="pad" style="border-top:1px solid var(--app-border-subtle)"><div class="row">' +
+      '<input type="text" id="pl-srcname" placeholder="源名字（可空）" style="width:180px">' +
+      '<input type="text" id="pl-srcurl" placeholder="index.json 地址（http(s) 或本机路径）" style="flex:1;min-width:220px">' +
+      '<button class="btn" id="btn-pl-addsrc">添加源</button></div>' +
+      '<div class="cell-sub" style="margin-top:6px">内置的「官方插件源」随后端一起分发，不用手动添加。</div></div>';
+  } else {
+    if (!avail.length) h += '<div class="empty">还没有插件源（或源里没有插件）</div>';
+    else {
+      h += '<table><thead><tr><th>插件</th><th class="nowrap">版本</th><th>说明</th><th class="nowrap">分类</th><th class="nowrap">来源</th><th class="nowrap">操作</th></tr></thead><tbody>';
+      avail.forEach((a) => {
+        h += '<tr><td class="cell-title">' + esc(a.name || a.id) + '<div class="cell-sub mono">' + esc(a.id) + "</div></td>" +
+          '<td class="nowrap cell-sub">' + esc(a.version || "") + "</td>" +
+          '<td class="cell-sub">' + esc(a.description || "—") +
+          ((a.tags || []).length ? "<div>" + (a.tags || []).map((t) => '<span class="tag">' + esc(t) + "</span>").join(" ") + "</div>" : "") + "</td>" +
+          '<td class="nowrap">' + (a.category ? '<span class="tag">' + esc(a.category) + "</span>" : "") + "</td>" +
+          '<td class="nowrap cell-sub">' + esc(a.source || "") + (a.channel === "official" ? ' <span class="tag">官方</span>' : "") + "</td>" +
+          '<td class="nowrap">' + (a.installed
+            ? '<span class="tag ok">已装</span>' + (a.hasUpdate ? ' <button class="btn sm primary" data-plupdate="' + esc(a.id) + '">升级</button>' : "")
+            : '<button class="btn sm" data-plinstall="' + esc(a.id) + '">安装</button>') + "</td></tr>";
+      });
+      h += "</tbody></table>";
+    }
+    h += '<div class="pad" style="border-top:1px solid var(--app-border-subtle)"><div class="row">' +
+      '<input type="text" id="pl-dl" placeholder="插件包 .zip 地址或本机路径（源里没有的）" style="flex:1;min-width:260px">' +
+      '<button class="btn" id="btn-pl-dl">直接安装</button></div></div>';
   }
   return h + "</div>";
 }
@@ -867,12 +1180,17 @@ function pageModels() {
     '<table><thead><tr><th>通道</th><th class="nowrap">协议</th><th class="nowrap">状态</th><th class="nowrap">地址</th><th class="nowrap">操作</th></tr></thead><tbody>';
   if (!ps.length) h += '<tr><td colspan="5" class="empty">还没有可用的模型通道 —— 先在下面加一个，Agent 才能干活</td></tr>';
   ps.forEach((p) => {
-    h += '<tr><td><div class="cell-title">' + esc(p.name) + '</div><div class="cell-sub mono">' + esc(p.model) + "</div></td>" +
+    const rc = (((S.recharges || {})[p.name]) || []).reduce((a, e) => a + (e.amount || 0), 0);
+    h += '<tr><td><div class="cell-title">' + esc(p.name) + '</div><div class="cell-sub mono">' + esc(p.model) + "</div>" +
+      (rc > 0 ? '<div><span class="tag">累计 ¥' + esc(String(rc)) + "</span></div>" : "") + "</td>" +
       '<td class="nowrap">' + esc(p.protocol) + "</td>" +
       '<td class="nowrap">' + (p.usable ? '<span class="tag ok">可用</span>' : '<span class="tag err">缺配置</span>') +
       (p.local ? '<span class="tag">本地</span>' : "") + "</td>" +
       '<td class="nowrap mono cell-sub">' + esc(p.baseUrl) + "</td>" +
       '<td class="nowrap"><button class="btn sm" data-pt="' + esc(p.name) + '">探活</button> ' +
+      '<button class="btn sm" data-ck="' + esc(p.name) + '"' + (p.hasApiKey ? "" : " disabled") + '>复制 Key</button> ' +
+      '<button class="btn sm" data-cu="' + esc(p.name) + '">复制 URL</button> ' +
+      '<button class="btn sm" data-prc="' + esc(p.name) + '">充值</button> ' +
       '<button class="btn sm danger" data-pd="' + esc(p.name) + '">删除</button></td></tr>';
   });
   h += "</tbody></table>";
@@ -1305,7 +1623,9 @@ async function pollActivity() {
 /* ---------------- 路由与事件 ---------------- */
 const RENDER = {
   agent: pageAgent, kb: pageKb, runs: pageRuns, devices: pageDevices, tasks: pageTasks, memory: pageMemory,
+  observability: pageObserve,
   skills: pageSkills, persona: pagePersona, models: pageModels, voice: pageVoice, mcp: pageMCP, backups: pageBackups, cron: pageCron,
+  plugins: pagePlugins,
   heartbeat: pageHeartbeat,
   commands: pageCommands,
   channels: pageChannels,
@@ -1505,6 +1825,47 @@ function bind() {
     if (e) e.onclick = () => e.classList.toggle("on");
   });
 
+  /* ---- 技能：新建 / 导入 SKILL.md（都弹表单，走 action=create / action=import） ---- */
+  on("btn-sk-new", () => formModal(
+    '<h3>新建技能</h3><p>目录名（slug）只能是字母数字、下划线或短横线，且以字母/数字开头；' +
+    '展示名写在 SKILL.md 的 front-matter（name:）里，可以中文。</p>' +
+    '<div class="field"><label>目录名（slug）</label><input type="text" id="skm-slug" placeholder="daily-report"></div>' +
+    '<div class="field"><label>分类（可空）</label><input type="text" id="skm-cat" placeholder="report"></div>' +
+    '<div class="field"><label>SKILL.md 全文（必须带 front-matter：name + description）</label>' +
+    '<textarea id="skm-content" class="mono" style="min-height:220px" placeholder="---&#10;name: 每日汇报&#10;description: 把昨天的运行记录归纳成三点&#10;---&#10;&#10;1. 先读昨天的运行记录&#10;2. 归纳成三点"></textarea></div>',
+    async () => {
+      const name = $("skm-slug").value.trim();
+      const content = $("skm-content").value;
+      if (!name) throw new Error("目录名（slug）不能为空");
+      if (!content.trim()) throw new Error("SKILL.md 正文不能为空");
+      await api("/api/agent/skills", {
+        method: "POST",
+        body: { action: "create", name: name, category: $("skm-cat").value.trim(), content: content },
+      });
+      toast("技能已创建（白泽立刻能用）"); load(true);
+    }));
+  on("btn-sk-import", () => formModal(
+    '<h3>导入 SKILL.md</h3><p>粘贴一份 SKILL.md 全文（必须带 front-matter：name + description）；' +
+    '目录名（slug）与分类都只认 ASCII：小写字母 / 数字 / <code>-._</code>，且以字母或数字开头；分类可空（填了就落到该分类目录下）。</p>' +
+    '<div class="field"><label>目录名（slug）</label><input type="text" id="ski-slug" placeholder="daily-report"></div>' +
+    '<div class="field"><label>分类（可空，如 report）</label><input type="text" id="ski-cat" placeholder="report"></div>' +
+    '<div class="field"><label>SKILL.md 全文（粘贴）</label>' +
+    '<textarea id="ski-content" class="mono" style="min-height:240px" placeholder="---&#10;name: 每日汇报&#10;description: 把昨天的运行记录归纳成三点&#10;---&#10;&#10;1. 先读昨天的运行记录&#10;2. 归纳成三点"></textarea></div>',
+    async () => {
+      const name = $("ski-slug").value.trim();
+      const content = $("ski-content").value;
+      if (!name) throw new Error("目录名（slug）不能为空");
+      if (!content.trim()) throw new Error("SKILL.md 正文不能为空");
+      await api("/api/agent/skills", {
+        method: "POST",
+        body: {
+          action: "import", name: name, category: $("ski-cat").value.trim(),
+          files: [{ path: "SKILL.md", content: content }],
+        },
+      });
+      toast("技能已导入（白泽立刻能用）"); load(true);
+    }));
+
   document.querySelectorAll("[data-ap]").forEach((b) => b.onclick = () => approval(b.dataset.ap, true));
   document.querySelectorAll("[data-rj]").forEach((b) => b.onclick = () => approval(b.dataset.rj, false));
   document.querySelectorAll("[data-tap]").forEach((b) => b.onclick = () =>
@@ -1522,6 +1883,11 @@ function bind() {
       .then(() => { toast(v.trim() ? "备注已保存" : "备注已清除"); load(true); })
       .catch((e) => toast("保存失败：" + e.message, true));
   });
+  document.querySelectorAll("[data-del]").forEach((b) => b.onclick = () =>
+    confirmBox("删除设备", "把「" + b.dataset.del + "」从设备表里删掉（含备注）。离线设备记录会一直留着，这里可以清掉。", "删除", async () => {
+      await api("/api/agent/devices/" + encodeURIComponent(b.dataset.del), { method: "DELETE" });
+      toast("已删除"); load(true);
+    }));
   document.querySelectorAll("[data-run]").forEach((b) => b.onclick = async () => {
     S.run = await api("/api/agent/runs/" + b.dataset.run); render();
   });
@@ -1534,6 +1900,18 @@ function bind() {
       await api("/api/agent/providers", { method: "POST", body: { action: "remove", name: b.dataset.pd } });
       toast("已删除"); load(true);
     }));
+  document.querySelectorAll("[data-ck]").forEach((b) => b.onclick = () =>
+    api("/api/agent/providers/secret", { method: "POST", body: { name: b.dataset.ck, field: "apiKey" } })
+      .then((r) => copyText(r.value).then((ok) => toast(ok ? "Key 已复制" : "复制失败：浏览器不允许复制", !ok)))
+      .catch((e) => toast("读取失败：" + e.message, true)));
+  document.querySelectorAll("[data-cu]").forEach((b) => b.onclick = () =>
+    api("/api/agent/providers/secret", { method: "POST", body: { name: b.dataset.cu, field: "baseUrl" } })
+      .then((r) => copyText(r.value).then((ok) => toast(ok ? "Base URL 已复制" : "复制失败：浏览器不允许复制", !ok)))
+      .catch((e) => toast("读取失败：" + e.message, true)));
+  /* 通道充值：弹表单记一笔；充值记录历史在弹窗里 */
+  document.querySelectorAll("[data-prc]").forEach((b) => b.onclick = () => openRechargeModal(b.dataset.prc));
+  /* 可观测性：切时间窗（改了窗就重新拉观测面） */
+  document.querySelectorAll("[data-obwin]").forEach((b) => b.onclick = () => { S.observeWin = b.dataset.obwin; load(true); });
   /* 人设：编辑 / 启停 / 恢复默认 / 归档 / 新建 / 总开关 */
   document.querySelectorAll("[data-pedit]").forEach((b) => b.onclick = async () => {
     try {
@@ -1640,6 +2018,42 @@ function bind() {
       const r = await api("/api/agent/channels", { method: "POST", body: { action: "remove", id: b.dataset.chdel } });
       S.channels = r; toast("已删除"); render();
     }));
+  /* ---- 插件市场 ---- */
+  document.querySelectorAll("[data-pltab]").forEach((b) => b.onclick = () => { S.pluginsTab = b.dataset.pltab; render(); });
+  document.querySelectorAll("[data-plinstall]").forEach((b) => b.onclick = async () => {
+    try { await api("/api/agent/plugins", { method: "POST", body: { action: "install", id: b.dataset.plinstall } }); toast("安装完成"); load(true); }
+    catch (e) { toast("安装失败：" + e.message, true); }
+  });
+  document.querySelectorAll("[data-plupdate]").forEach((b) => b.onclick = async () => {
+    try { await api("/api/agent/plugins", { method: "POST", body: { action: "update", id: b.dataset.plupdate } }); toast("升级完成"); load(true); }
+    catch (e) { toast("升级失败：" + e.message, true); }
+  });
+  document.querySelectorAll("[data-pluninstall]").forEach((b) => b.onclick = () =>
+    confirmBox("卸载插件", "卸载「" + b.dataset.pluninstall + "」后它的技能会被归档、登记的 MCP 服务会被移除（都能捞回来）。", "卸载", async () => {
+      await api("/api/agent/plugins", { method: "POST", body: { action: "uninstall", id: b.dataset.pluninstall } });
+      toast("已卸载"); load(true);
+    }));
+  document.querySelectorAll("[data-plitoggle]").forEach((b) => b.onclick = async () => {
+    const on = b.dataset.plon === "1";
+    try {
+      await api("/api/agent/plugins", { method: "POST", body: { action: on ? "enable" : "disable", id: b.dataset.plitoggle } });
+      toast(on ? "已启用" : "已停用"); load(true);
+    } catch (e) { toast("失败：" + e.message, true); }
+  });
+  on("btn-pl-dl", async () => {
+    const url = $("pl-dl").value.trim();
+    if (!url) { toast("先填插件包地址或路径", true); return; }
+    try { await api("/api/agent/plugins", { method: "POST", body: { action: "install", url: url } }); toast("安装完成"); load(true); }
+    catch (e) { toast("安装失败：" + e.message, true); }
+  });
+  on("btn-pl-addsrc", async () => {
+    const url = $("pl-srcurl").value.trim();
+    if (!url) { toast("先填 index.json 地址", true); return; }
+    try {
+      await api("/api/agent/plugins", { method: "POST", body: { action: "addSource", name: $("pl-srcname").value.trim(), url: url } });
+      toast("已添加源"); load(true);
+    } catch (e) { toast("添加失败：" + e.message, true); }
+  });
   document.querySelectorAll("[data-mre]").forEach((b) => b.onclick = () =>
     api("/api/agent/mcp", { method: "POST", body: { action: "reload", server: b.dataset.mre } })
       .then(() => { toast("已重载"); load(true); }).catch((e) => toast(e.message, true)));
@@ -1881,6 +2295,22 @@ async function load(silent) {
     if (S.page === "channels") {
       const ch = await api("/api/agent/channels").catch(() => null);
       S.channels = ch || S.channels;
+    }
+    if (S.page === "plugins") {
+      const pl = await api("/api/agent/plugins").catch(() => null);
+      S.plugins = pl || S.plugins;
+    }
+    if (S.page === "observability") {
+      const [ob, rc] = await Promise.all([
+        api("/api/agent/observability?window=" + encodeURIComponent(S.observeWin || "24h")).catch(() => null),
+        api("/api/agent/providers/recharge").catch(() => null),
+      ]);
+      S.observe = ob || S.observe;
+      S.recharges = (rc && rc.recharges) || S.recharges;
+    }
+    if (S.page === "models") {
+      const rc = await api("/api/agent/providers/recharge").catch(() => null);
+      S.recharges = (rc && rc.recharges) || S.recharges;
     }
     render();
   } catch (e) {

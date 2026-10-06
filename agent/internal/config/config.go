@@ -27,6 +27,17 @@ type Provider struct {
 	TimeoutSec int      `json:"timeoutSec,omitempty"`
 }
 
+// ProviderRecharge 一条「通道充值」流水（人工记账）。
+//
+// 只记「哪条通道、充了多少、什么时候、备注」，**不做汇率 / 单价换算** —— 换算口径因通道而异且会变，
+// 这里只如实记账；界面把它跟 token 用量摆在一起，给一个"按通道看成本"的视角即可。
+type ProviderRecharge struct {
+	ID     string  `json:"id"`
+	Amount float64 `json:"amount"`
+	Note   string  `json:"note,omitempty"`
+	At     int64   `json:"at"` // 记账时间（毫秒）
+}
+
 // Embedding 向量化通道（记忆的语义检索用）。
 // 刻意与对话通道分开：向量模型和对话模型常常不是同一家（DeepSeek 就没有 embedding 接口）。
 // 不配这条通道时记忆退回关键词检索，界面会明说"语义检索未启用"，不假装有向量。
@@ -201,9 +212,12 @@ type PluginSource struct {
 type Config struct {
 	AllowRemote bool       `json:"allowRemote"` // 是否允许非本机模型地址 / 远端 MCP 服务
 	Providers   []Provider `json:"providers"`
-	Workdir     string     `json:"workdir"` // 空 = <data>/workspace
-	SkillsDir   string     `json:"skillsDir"`
-	AllowShell  bool       `json:"allowShell"`
+	// ProviderRecharges 按通道名记的「充值」流水（金额 + 时间 + 备注），用来跟 token 用量拼一个
+	// 按通道的成本视图。**只记账，不做汇率 / 单价换算** —— 换算口径多且会变，交给界面/使用者自己算。
+	ProviderRecharges map[string][]ProviderRecharge `json:"providerRecharges,omitempty"`
+	Workdir           string                        `json:"workdir"` // 空 = <data>/workspace
+	SkillsDir         string                        `json:"skillsDir"`
+	AllowShell        bool                          `json:"allowShell"`
 	// ShellAllowCmds shell_run 的命令白名单（只比对"命令名"）。
 	// 空 = 不限制（沿用旧行为，任何命令都能跑，仅靠人工审批兜底）；
 	// 非空 = 只允许这些命令，且**拒绝管道/重定向/串联**——否则 `ls; rm -rf /` 这类

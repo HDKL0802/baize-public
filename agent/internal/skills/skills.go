@@ -19,6 +19,7 @@ import (
 type Skill struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
+	Category    string   `json:"category"` // 分类：技能目录的上一级目录名，顶层技能为空串
 	Path        string   `json:"path"`
 	Body        string   `json:"body"`               // 去掉 front-matter 的正文
 	Triggers    []string `json:"triggers,omitempty"` // 可选：触发词（先做展示，后续接意图路由）
@@ -58,7 +59,7 @@ func Load(dir string) (*Library, error) {
 		if err != nil {
 			return err
 		}
-		sk := parse(string(raw), path)
+		sk := parse(string(raw), path, dir)
 		if sk.Name == "" || seen[sk.Name] {
 			return nil
 		}
@@ -100,8 +101,9 @@ func Load(dir string) (*Library, error) {
 
 // parse 解析 SKILL.md：支持 YAML front-matter（name/description/triggers），
 // 没有 front-matter 时退化为"一级标题当名字，首段当说明"。
-func parse(text, path string) Skill {
-	sk := Skill{Path: path}
+// root 是技能根目录（Library 的 Dir()），用来推断分类。
+func parse(text, path, root string) Skill {
+	sk := Skill{Path: path, Category: skillCategory(path, root)}
 	body := text
 	if strings.HasPrefix(strings.TrimSpace(text), "---") {
 		lines := strings.Split(text, "\n")
@@ -158,6 +160,21 @@ func parse(text, path string) Skill {
 	sk.Body = body
 	sk.Tokens = estimateTokens(body)
 	return sk
+}
+
+// skillCategory 从 SKILL.md 的路径推分类。技能目录形如 <root>/[分类/]<名字>/SKILL.md，
+// 所以"分类"= SKILL.md 的祖父目录名；仅当它不等于技能根目录时才算分类，否则空串
+// （顶层技能 <root>/<名字>/SKILL.md 与老的散装 <root>/<名字>.md 都归"无分类"）。
+func skillCategory(path, root string) string {
+	dir := filepath.Clean(filepath.Dir(path))
+	root = filepath.Clean(root)
+	if dir == root {
+		return "" // 散装在根目录下的 <名字>.md：没有技能目录，自然没有分类
+	}
+	if gp := filepath.Dir(dir); gp != root {
+		return filepath.Base(gp)
+	}
+	return ""
 }
 
 // Names 技能名（排序）

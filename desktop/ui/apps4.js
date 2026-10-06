@@ -81,6 +81,7 @@ async function renderPlugins(root) {
         ${a.builtin ? '<span class="tag on">内置</span>' : ''}
         ${a.stage === 'beta' ? '<span class="tag warn">测试版</span>' : ''}
         ${tagOf(a)}
+        ${a.hasUpdate ? `<button class="btn sm" data-update="${esc(a.id)}">升级</button>` : ''}
         ${a.installed
           ? `<button class="btn ghost sm" data-uninstall="${esc(a.id)}">卸载</button>`
           : `<button class="btn sm" data-install="${esc(a.id)}">安装</button>`}
@@ -120,6 +121,9 @@ async function renderPlugins(root) {
     if (!state.installed.length) {
       return '<div class="empty">还没装任何插件。去「市场」页看看，或直接给一个本地 zip 装上。</div>';
     }
+    // hasUpdate 只标在货架上，这里建个「已安装 id → 有更新」的索引，好在本页显示「升级」
+    const upd = {};
+    state.available.forEach(a => { if (a.hasUpdate) upd[a.id] = true; });
     return `<div id="plIns">` + state.installed.map(it => `
       <div class="row">
         <div class="who">
@@ -130,6 +134,7 @@ async function renderPlugins(root) {
           ${it.note ? `<span class="mono">说明：${esc(it.note)}</span>` : ''}
         </div>
         <div class="tags">
+          ${upd[it.id] ? `<button class="btn sm" data-update="${esc(it.id)}">升级</button>` : ''}
           <button class="btn ghost sm" data-toggle="${esc(it.id)}" data-on="${it.enabled ? '0' : '1'}">${it.enabled ? '停用' : '启用'}</button>
           <button class="btn ghost sm" data-uninstall="${esc(it.id)}">卸载</button>
         </div>
@@ -183,6 +188,10 @@ async function renderPlugins(root) {
     root.querySelectorAll('[data-toggle]').forEach(b => b.onclick = async () => {
       const on = b.dataset.on === '1';
       await act({ action: on ? 'enable' : 'disable', id: b.dataset.toggle }, on ? '已启用' : '已停用', b);
+    });
+    // 升级：同 id 覆盖升级（后端复用 Install，先拆旧版本再装新包）
+    root.querySelectorAll('[data-update]').forEach(b => b.onclick = async () => {
+      await act({ action: 'update', id: b.dataset.update }, '已升级', b);
     });
     root.querySelectorAll('[data-rmsrc]').forEach(b => b.onclick = async () => {
       if (!confirm('删掉这个插件源？（已安装的插件不受影响）')) return;

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +34,34 @@ func (s *Service) Providers() []ProviderInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return append([]ProviderInfo{}, s.providers...)
+}
+
+// ProviderSecret 取某条通道的原始取值（apiKey | baseUrl），只读、不写库。
+//
+// 这是全项目唯一会回显明文 Key 的取值入口：控制台本身已在令牌闸门之后，
+// 用户要复制 Key 去别处粘贴。ProviderInfo / 列表响应里始终只带 hasApiKey，
+// 明文绝不进那些结构体——所以这里单独开一个最小方法，避免污染展示用模型。
+func (s *Service) ProviderSecret(name, field string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", errors.New("要读哪条通道？请给 name")
+	}
+	s.mu.RLock()
+	cfg := s.cfg
+	s.mu.RUnlock()
+	for i := range cfg.Providers {
+		if cfg.Providers[i].Name != name {
+			continue
+		}
+		switch field {
+		case "apiKey":
+			return cfg.Providers[i].APIKey, nil
+		case "baseUrl":
+			return cfg.Providers[i].BaseURL, nil
+		}
+		return "", fmt.Errorf("不支持的 field：%s", field)
+	}
+	return "", fmt.Errorf("没有这个模型通道：%s", name)
 }
 
 // ProviderSave 新增或更新一条模型通道（按 name 匹配），并写回 config.json
@@ -129,6 +158,105 @@ func (s *Service) ProviderRemove(name string) ([]ProviderInfo, error) {
 	}
 	s.lg.Info("模型通道已删除", "name", name)
 	return s.Providers(), nil
+}
+
+/* ---------- 通道充值记账（只记金额/时间/备注，不做汇率换算） ---------- */
+
+// ProviderRecharges 全部充值流水（按通道名分组的一份拷贝，调用方随便改不影响配置）。
+func (s *Service) ProviderRecharges() map[string][]config.ProviderRecharge {
+	s.mu.RLock()
+	cfg := s.cfg
+	s.mu.RUnlock()
+	out := map[string][]config.ProviderRecharge{}
+	for name, list := range cfg.ProviderRecharges {
+		if len(list) == 0 {
+			continue
+		}
+		out[name] = append([]config.ProviderRecharge{}, list...)
+	}
+	return out
+}
+
+// AddProviderRecharge 给某条通道记一笔充值：name 必须非空且该通道存在，amount 必须 > 0。
+// ID 用「rc + 毫秒的 36 进制」（与项目里 cron/token 的既有做法一致），At 记当前毫秒，落盘。
+func (s *Service) AddProviderRecharge(name string, amount float64, note string) (config.ProviderRecharge, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return config.ProviderRecharge{}, errors.New("要记哪条通道的充值？请给 name")
+	}
+	if amount <= 0 {
+		return config.ProviderRecharge{}, errors.New("充值金额要大于 0")
+	}
+	s.mu.Lock()
+	cfg := s.cfg
+	s.mu.Unlock()
+
+	found := false
+	for i := range cfg.Providers {
+		if cfg.Providers[i].Name == name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return config.ProviderRecharge{}, fmt.Errorf("没有这个模型通道：%s", name)
+	}
+
+	now := time.Now().UnixMilli()
+	entry := config.ProviderRecharge{
+		ID:     "rc" + strconv.FormatInt(now, 36),
+		Amount: amount,
+		Note:   strings.TrimSpace(note),
+		At:     now,
+	}
+	if cfg.ProviderRecharges == nil {
+		cfg.ProviderRecharges = map[string][]config.ProviderRecharge{}
+	}
+	cfg.ProviderRecharges[name] = append(cfg.ProviderRecharges[name], entry)
+	if err := s.SaveConfig(cfg); err != nil {
+		return config.ProviderRecharge{}, err
+	}
+	s.lg.Info("通道充值已记账", "name", name, "amount", amount, "id", entry.ID)
+	return entry, nil
+}
+
+// RemoveProviderRecharge 删掉某条通道的一笔充值流水（删空了就把这条通道的键也清掉），落盘。
+func (s *Service) RemoveProviderRecharge(name, id string) error {
+	name = strings.TrimSpace(name)
+	id = strings.TrimSpace(id)
+	if name == "" || id == "" {
+		return errors.New("要删哪条充值记录？请给 name 与 id")
+	}
+	s.mu.Lock()
+	cfg := s.cfg
+	s.mu.Unlock()
+
+	list := cfg.ProviderRecharges[name]
+	kept := make([]config.ProviderRecharge, 0, len(list))
+	hit := false
+	for _, e := range list {
+		if e.ID == id {
+			hit = true
+			continue
+		}
+		kept = append(kept, e)
+	}
+	if !hit {
+		return fmt.Errorf("没有这条充值记录：%s", id)
+	}
+	if cfg.ProviderRecharges == nil {
+		cfg.ProviderRecharges = map[string][]config.ProviderRecharge{}
+	}
+	if len(kept) == 0 {
+		delete(cfg.ProviderRecharges, name)
+	} else {
+		cfg.ProviderRecharges[name] = kept
+	}
+	if err := s.SaveConfig(cfg); err != nil {
+		return err
+	}
+	s.lg.Info("通道充值记录已删除", "name", name, "id", id)
+	return nil
 }
 
 // ProviderTest 对某条通道做一次极小的真实调用（会消耗一点点额度）

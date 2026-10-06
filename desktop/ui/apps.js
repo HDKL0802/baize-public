@@ -600,8 +600,16 @@ async function renderDevices(root) {
           ${x.id === localId ? '<span class="tag on">本机</span>' : ''}
           <span class="tag ${x.online ? 'on' : 'off'}">${x.online ? '在线' : '离线'}</span>
           ${(x.caps || []).map(c => `<span class="tag">${esc(c)}</span>`).join('')}
+          <button class="btn ghost sm danger" data-del="${esc(x.id)}">删除</button>
         </div>
       </div>`).join('') : '<div class="empty">还没有设备注册上来</div>';
+
+    $i('devList').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      if (!confirm('删除设备「' + b.dataset.del + '」？该设备的备注会一并清掉；离线设备记录会一直留着，这里可以清掉。')) return;
+      const r2 = await API.call('/api/agent/devices/' + encodeURIComponent(b.dataset.del), 'DELETE');
+      Shell.toast(r2.ok ? '已删除' : ('删除失败：' + r2.error), r2.ok ? 'ok' : 'err');
+      refresh();
+    });
 
     const tasks = Array.isArray(d.tasks) ? d.tasks : [];
     const pend = tasks.filter(t => t.status === 'pending_approval');

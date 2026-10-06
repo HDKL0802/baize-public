@@ -48,6 +48,19 @@ func (s *Service) Observability(window string) (observe.Report, error) {
 	} else {
 		rep.External = []observe.TargetStat{}
 	}
+	// 给每条通道统计标注「当前配置里的模型名」——按 provider（通道名）去当前 config 里找，
+	// 找不到（通道被删了 / 名字改过）就留空。
+	//
+	// 口径要说清楚：这些计数是**进程内、重启清零**的，而 model 是**按当前配置**贴上去的标签，
+	// 所以只有在"运行中途改过某通道模型"这种小窗口里，标签才会与那段时间的历史数字不完全对应。
+	// 要精确按 model 拆分，得给 llm.Provider 加 Model()、在每次请求事件里一起上报，本轮不做。
+	modelByName := map[string]string{}
+	for _, p := range s.Config().Providers {
+		modelByName[p.Name] = strings.TrimSpace(p.Model)
+	}
+	for i := range rep.Providers {
+		rep.Providers[i].Model = modelByName[rep.Providers[i].Provider]
+	}
 
 	// 日志环概览（没接环就回空，不假装有日志）
 	if s.logRing != nil {

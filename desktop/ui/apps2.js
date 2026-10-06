@@ -46,6 +46,30 @@ function showErr(node, r) {
   node.innerHTML = `<div class="empty err">失败：${esc((r && r.error) || '未知错误')}</div>`;
 }
 
+/* 复制文本：优先 navigator.clipboard，不支持/失败时回退 execCommand + 临时 textarea */
+function copyText(text) {
+  text = String(text == null ? '' : text);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => copyTextFallback(text));
+  }
+  return Promise.resolve(copyTextFallback(text));
+}
+function copyTextFallback(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.top = '-1000px';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  ta.setSelectionRange(0, ta.value.length);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  return ok;
+}
+
 /* ================= 1. 任务与审批 ================= */
 /* 数据：GET /api/state → tasks[{id,deviceId,action,args,status,needApproval,origin,createdAt,
    dispatchedAt,finishedAt,result}] / devices[] / actions[]（动作白名单）
@@ -911,19 +935,24 @@ async function renderProviders(root) {
     </div>`;
 
   const $i = id => root.querySelector('#' + id);
+  let recharges = {};   // 通道充值流水（/api/agent/providers/recharge），按通道名分组
 
   const refresh = async () => {
     const r = await API.get('/api/agent/providers');
     if (!r.ok) { showErr($i('pvList'), r); return; }
     const ps = (r.data && r.data.providers) || [];
     const presets = (r.data && r.data.presets) || [];
+    const rcResp = await API.get('/api/agent/providers/recharge');
+    recharges = (rcResp.ok && rcResp.data && rcResp.data.recharges) || {};
     const selP = $i('pvPreset');
     if (selP && selP.options.length <= 1) {
       selP.innerHTML = '<option value="">（自己填）</option>' +
         presets.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
       selP.dataset.presets = JSON.stringify(presets);
     }
-    $i('pvList').innerHTML = ps.length ? ps.map(p => `
+    $i('pvList').innerHTML = ps.length ? ps.map(p => {
+      const rc = (recharges[p.name] || []).reduce((a, e) => a + (e.amount || 0), 0);
+      return `
       <div class="row">
         <div class="who"><b>${esc(p.name)}</b>
           <span class="mono">${esc(p.protocol)} · ${esc(p.model || '')} · ${esc(p.baseUrl || '')}</span></div>
@@ -935,10 +964,14 @@ async function renderProviders(root) {
           ${p.cost ? `<span class="tag wrap">${esc(p.cost)}</span>` : ''}
           ${(p.kinds || []).length ? `<span class="tag wrap">管 ${esc(p.kinds.join('/'))}</span>` : ''}
           ${p.fallback ? '<span class="tag">兜底</span>' : ''}
+          ${rc > 0 ? `<span class="tag">累计 ¥${esc(String(rc))}</span>` : ''}
           <button class="btn ghost sm" data-test="${esc(p.name)}">探活</button>
+          <button class="btn ghost sm" data-copykey="${esc(p.name)}" ${p.hasApiKey ? '' : 'disabled'}>复制 Key</button>
+          <button class="btn ghost sm" data-copyurl="${esc(p.name)}">复制 URL</button>
+          <button class="btn ghost sm" data-recharge="${esc(p.name)}">充值</button>
           <button class="btn ghost sm danger" data-rm="${esc(p.name)}">删除</button>
         </div>
-      </div>`).join('') : '<div class="empty">还没有配置模型通道</div>';
+      </div>`; }).join('') : '<div class="empty">还没有配置模型通道</div>';
 
     $i('pvList').querySelectorAll('[data-test]').forEach(b => b.onclick = async () => {
       b.disabled = true; b.textContent = '探测中…';
@@ -951,6 +984,30 @@ async function renderProviders(root) {
       if (!confirm('删除通道「' + b.dataset.rm + '」？')) return;
       const rr = await API.post('/api/agent/providers', { action: 'remove', name: b.dataset.rm });
       if (!rr.ok) Shell.toast('删除失败：' + rr.error, 'err');
+      await refresh();
+    });
+    $i('pvList').querySelectorAll('[data-copykey]').forEach(b => b.onclick = async () => {
+      const rr = await API.post('/api/agent/providers/secret', { name: b.dataset.copykey, field: 'apiKey' });
+      if (!rr.ok) { Shell.toast('读取失败：' + rr.error, 'err'); return; }
+      const ok = await copyText(rr.data.value);
+      Shell.toast(ok ? 'Key 已复制' : '复制失败：浏览器不允许复制', ok ? 'ok' : 'err');
+    });
+    $i('pvList').querySelectorAll('[data-copyurl]').forEach(b => b.onclick = async () => {
+      const rr = await API.post('/api/agent/providers/secret', { name: b.dataset.copyurl, field: 'baseUrl' });
+      if (!rr.ok) { Shell.toast('读取失败：' + rr.error, 'err'); return; }
+      const ok = await copyText(rr.data.value);
+      Shell.toast(ok ? 'Base URL 已复制' : '复制失败：浏览器不允许复制', ok ? 'ok' : 'err');
+    });
+    $i('pvList').querySelectorAll('[data-recharge]').forEach(b => b.onclick = async () => {
+      const name = b.dataset.recharge;
+      const raw = prompt('给「' + name + '」记一笔充值，金额（元）：');
+      if (raw === null) return;
+      const amount = parseFloat(String(raw).trim());
+      if (!isFinite(amount) || amount <= 0) { Shell.toast('金额要填一个大于 0 的数字', 'err'); return; }
+      const note = prompt('备注（可留空）：') || '';
+      const rr = await API.post('/api/agent/providers/recharge', { action: 'add', name: name, amount: amount, note: note });
+      if (!rr.ok) { Shell.toast('记账失败：' + rr.error, 'err'); return; }
+      Shell.toast('已记一笔充值', 'ok');
       await refresh();
     });
 
@@ -1168,17 +1225,18 @@ async function renderSkills(root) {
 
       <div class="sect">
         <h3 id="skFormTitle">新建技能</h3>
-        <div class="sub">目录名（slug）只能是字母数字、下划线或短横线，且以字母/数字开头（决定落盘目录）；
+        <div class="sub">目录名（slug）与分类都只能是 ASCII 小写字母 / 数字 / <span class="mono">-._</span>，且以字母或数字开头（决定落盘目录）；
           展示名写在正文的 <span class="mono">name:</span> 里，可以中文。</div>
         <div class="fields" style="grid-template-columns:180px 150px 1fr">
           <div><label>目录名（slug）</label><input id="skSlug" placeholder="daily-report"></div>
-          <div><label>分类（可空）</label><input id="skCat" placeholder="report"></div>
+          <div><label>分类（可空，如 report）</label><input id="skCat" placeholder="report"></div>
           <div><label>提示</label><span class="sub" style="margin:0">删除会归档到 .archive，不硬删</span></div>
         </div>
         <label>SKILL.md 全文（必须带 front-matter，末尾要有正文）</label>
         <textarea id="skBody" class="mono" style="min-height:160px" placeholder="---&#10;name: 每日汇报&#10;description: 把昨天的运行记录归纳成三点&#10;---&#10;&#10;1. 先读昨天的运行记录&#10;2. 归纳成三点"></textarea>
         <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
           <button class="btn" id="skSave">保存</button>
+          <button class="btn ghost" id="skImport">导入 SKILL.md（粘贴）</button>
           <button class="btn ghost" id="skCancel" hidden>取消编辑</button>
           <span class="sub" id="skMsg" style="margin:0"></span>
         </div>
@@ -1201,7 +1259,15 @@ async function renderSkills(root) {
     if (!r.ok) { showErr($i('skList'), r); return; }
     skills = (r.data && r.data.skills) || [];
     $i('skN').textContent = skills.length ? `（${skills.length}）` : '';
-    $i('skList').innerHTML = skills.length ? skills.map(s => `
+    // 按分类分组：没有分类（category 为空）的归「未分类」，排在最后
+    const groups = new Map();
+    skills.forEach(s => {
+      const c = (s.category || '').trim() || '未分类';
+      if (!groups.has(c)) groups.set(c, []);
+      groups.get(c).push(s);
+    });
+    const cats = Array.from(groups.keys()).sort((a, b) => (a === '未分类' ? 1 : b === '未分类' ? -1 : a.localeCompare(b)));
+    const rowOf = s => `
       <div class="row" style="align-items:flex-start">
         <div class="who">
           <b>${esc(s.name || s.slug)}</b>
@@ -1211,10 +1277,15 @@ async function renderSkills(root) {
             <div class="pre" style="max-height:220px;overflow:auto">${esc(s.body || '')}</div></details>
         </div>
         <div class="tags">
+          ${s.category ? `<span class="tag">${esc(s.category)}</span>` : ''}
           <button class="btn ghost sm" data-edit="${esc(s.slug)}">编辑</button>
           <button class="btn ghost sm danger" data-del="${esc(s.slug)}">删除</button>
         </div>
-      </div>`).join('') : '<div class="empty">还没有技能（可以让白泽自己攒，也可以在这里建）</div>';
+      </div>`;
+    $i('skList').innerHTML = skills.length ? cats.map(c =>
+      `<div class="shelf-head">${esc(c)} <span class="tag">${groups.get(c).length}</span></div>` +
+      groups.get(c).map(rowOf).join('')
+    ).join('') : '<div class="empty">还没有技能（可以让白泽自己攒，也可以在这里建）</div>';
 
     $i('skList').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
       const s = skills.find(x => x.slug === b.dataset.edit);
@@ -1254,6 +1325,24 @@ async function renderSkills(root) {
     if (!r.ok) { $i('skMsg').textContent = '失败：' + r.error; return; }
     $i('skMsg').textContent = '已保存（白泽立刻能用）';
     Shell.toast('技能已保存', 'ok');
+    resetForm();
+    await refresh();
+  };
+
+  // 导入 SKILL.md：与「保存」共用表单里的 slug / 分类 / 正文，只是走 action=import
+  $i('skImport').onclick = async () => {
+    const slug = $i('skSlug').value.trim();
+    const content = $i('skBody').value;
+    if (!slug) { $i('skMsg').textContent = '目录名不能为空'; return; }
+    if (!content.trim()) { $i('skMsg').textContent = '正文不能为空'; return; }
+    $i('skMsg').textContent = '导入中…';
+    const body = { action: 'import', name: slug, files: [{ path: 'SKILL.md', content: content }] };
+    const cat = $i('skCat').value.trim();
+    if (cat) body.category = cat;
+    const r = await API.post('/api/agent/skills', body);
+    if (!r.ok) { $i('skMsg').textContent = '失败：' + r.error; return; }
+    $i('skMsg').textContent = '已导入（白泽立刻能用）';
+    Shell.toast('技能已导入', 'ok');
     resetForm();
     await refresh();
   };

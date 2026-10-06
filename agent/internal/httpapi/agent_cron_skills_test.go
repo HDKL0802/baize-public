@@ -23,6 +23,7 @@ type cronResp struct {
 type skillView struct {
 	Name        string `json:"name"`
 	Slug        string `json:"slug"`
+	Category    string `json:"category"`
 	Description string `json:"description"`
 	Body        string `json:"body"`
 }
@@ -211,6 +212,53 @@ func TestSkillsCRUD(t *testing.T) {
 	}
 	if len(gone.Skills) != baseCount {
 		t.Fatalf("归档后清单应回到 %d 条：%+v", baseCount, gone.Skills)
+	}
+}
+
+// import：粘贴一份带分类的 SKILL.md 建技能 → 清单里该项 category 正确。
+// 同时覆盖两条护栏：缺 SKILL.md 要报错、assets/ 下的二进制这轮不支持。
+func TestSkillImportWithCategory(t *testing.T) {
+	e, _ := newAgentEnv(t)
+
+	var made skillsResp
+	if code := e.do("POST", "/api/agent/skills", map[string]any{
+		"action": "import", "name": "imported", "category": "ops",
+		"files": []map[string]any{
+			{"path": "SKILL.md", "content": goodSkill},
+			{"path": "references/checklist.md", "content": "步骤清单\n"},
+		},
+	}, true, &made); code != 200 {
+		t.Fatalf("import 期望 200，实际 %d", code)
+	}
+
+	var got skillsResp
+	if code := e.do("GET", "/api/agent/skills", nil, true, &got); code != 200 {
+		t.Fatalf("GET /api/agent/skills 期望 200，实际 %d", code)
+	}
+	s := findSkill(got.Skills, "imported")
+	if s == nil {
+		t.Fatalf("导入后应能按 slug 找到：%+v", got.Skills)
+	}
+	if s.Category != "ops" {
+		t.Fatalf("category 应为 ops，实际 %q：%+v", s.Category, s)
+	}
+
+	// 没有 SKILL.md 一律报错，别悄悄落一个坏技能
+	if code := e.do("POST", "/api/agent/skills", map[string]any{
+		"action": "import", "name": "nores",
+		"files": []map[string]any{{"path": "references/a.md", "content": "x"}},
+	}, true, &skillsResp{}); code != 400 {
+		t.Fatalf("缺 SKILL.md 期望 400，实际 %d", code)
+	}
+	// assets/ 下的二进制这轮不支持
+	if code := e.do("POST", "/api/agent/skills", map[string]any{
+		"action": "import", "name": "withasset",
+		"files": []map[string]any{
+			{"path": "SKILL.md", "content": goodSkill},
+			{"path": "assets/logo.png", "content": "\x89PNG"},
+		},
+	}, true, &skillsResp{}); code != 400 {
+		t.Fatalf("assets 非文本期望 400，实际 %d", code)
 	}
 }
 

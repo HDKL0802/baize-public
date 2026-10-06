@@ -1,3 +1,6 @@
+// 说明：本文件的通道统计（ProviderStat）**只按 provider（通道名）聚合**，不含 model 维度 ——
+// 模型名什么时候改、改成什么，只有配置知道，计数器这边看不到。所以 ProviderStat.Model 由汇总层
+// （agentsvc.Observability）读当前配置、按通道名贴上去；计数仍是进程内、重启清零的老口径。
 package observe
 
 import (

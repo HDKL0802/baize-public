@@ -144,7 +144,7 @@ func (s *Server) registerCronSkills(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]any{"skills": s.skillViews()})
 	}))
 
-	// action=create|edit|patch|writeFile|delete，另有 save = 有则改写、无则新建
+	// action=create|edit|patch|writeFile|delete|import，另有 save = 有则改写、无则新建
 	// 复用 Agent 的 skill_manage / skill_delete：校验、路径、归档语义完全一致
 	mux.HandleFunc("POST /api/agent/skills", s.api(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -157,6 +157,12 @@ func (s *Server) registerCronSkills(mux *http.ServeMux) {
 			OldString   string `json:"oldString"`
 			NewString   string `json:"newString"`
 			ReplaceAll  bool   `json:"replaceAll"`
+			// import 用：整包文件（path + content）。path 只允许根下的 SKILL.md，
+			// 或 manage.go 里 AllowedSubdirs（references/templates/scripts/assets）下的文本文件。
+			Files []struct {
+				Path    string `json:"path"`
+				Content string `json:"content"`
+			} `json:"files"`
 		}
 		if err := decodeBody(r, &req); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
@@ -190,10 +196,49 @@ func (s *Server) registerCronSkills(mux *http.ServeMux) {
 			res, err = m.Patch(name, req.OldString, req.NewString, strings.TrimSpace(req.FilePath), req.ReplaceAll)
 		case "writefile":
 			res, err = m.WriteFile(name, strings.TrimSpace(req.FilePath), req.FileContent)
+		case "import":
+			// 导入 = 先 Create 落 SKILL.md，再逐个 WriteFile 写支持文件 —— 全部复用 skills.Manager，
+			// 不自己动文件系统，校验/落盘位置与白泽自己建技能完全一致。
+			skillMD := ""
+			for _, f := range req.Files {
+				if importPath(f.Path) == "SKILL.md" {
+					skillMD = f.Content
+					break
+				}
+			}
+			if strings.TrimSpace(name) == "" {
+				writeErr(w, http.StatusBadRequest, "import 需要 name（技能目录名）")
+				return
+			}
+			if strings.TrimSpace(skillMD) == "" {
+				writeErr(w, http.StatusBadRequest, "import 需要一份非空的 SKILL.md（files 里给 path=SKILL.md 的 content）")
+				return
+			}
+			// 二进制 / 非文本这轮不支持：assets 下直接拒绝，别落下个用不了的东西
+			for _, f := range req.Files {
+				if p := importPath(f.Path); p == "assets" || strings.HasPrefix(p, "assets/") {
+					writeErr(w, http.StatusBadRequest, "这轮只支持文本文件：assets/ 下的二进制（图片等）暂不支持导入")
+					return
+				}
+			}
+			res, err = m.Create(name, strings.TrimSpace(req.Category), skillMD)
+			if err != nil {
+				break
+			}
+			for _, f := range req.Files {
+				p := importPath(f.Path)
+				if p == "" || p == "SKILL.md" {
+					continue
+				}
+				if _, werr := m.WriteFile(name, p, f.Content); werr != nil {
+					err = werr
+					break
+				}
+			}
 		case "delete":
 			res, err = m.Delete(name)
 		default:
-			writeErr(w, http.StatusBadRequest, "不支持的 action："+action+"（可用 save | create | edit | patch | writeFile | delete）")
+			writeErr(w, http.StatusBadRequest, "不支持的 action："+action+"（可用 save | create | edit | patch | writeFile | import | delete）")
 			return
 		}
 		if err != nil {
@@ -202,6 +247,15 @@ func (s *Server) registerCronSkills(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "result": res, "skills": s.skillViews()})
 	}))
+}
+
+// importPath 归一 import 请求里的文件路径：去空白、统一成斜杠形式，便于判断是不是 SKILL.md / assets 下的文件。
+func importPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Clean(p))
 }
 
 // skillView 技能 + 它的目录名（slug）。嵌一个 skills.Skill，JSON 里会平铺展开。

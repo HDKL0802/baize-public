@@ -288,6 +288,12 @@ func (s *Store) Device(id string) (Device, bool, error) {
 	return d, true, nil
 }
 
+// DeleteDevice 硬删一台设备（离线设备记录会一直留着，用户要能清掉）
+func (s *Store) DeleteDevice(id string) error {
+	_, err := s.db.Exec(`DELETE FROM devices WHERE id = ?`, id)
+	return err
+}
+
 /* ---------- tasks ---------- */
 
 // CreateTask 新建任务

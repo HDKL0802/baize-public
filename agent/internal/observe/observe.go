@@ -40,6 +40,9 @@ type ToolStat struct {
 // ProviderStat 单个模型通道的调用统计（进程内，重启即清零）
 type ProviderStat struct {
 	Provider string `json:"provider"`
+	// Model 不是计出来的，而是**汇总层按当前配置贴上去的标签**（见 agentsvc.Observability）。
+	// 计数本身仍只按 provider 聚合、进程内、重启清零；找不到对应通道时留空。
+	Model    string `json:"model,omitempty"`
 	Requests int    `json:"requests"`
 	Replies  int    `json:"replies"`
 	Retries  int    `json:"retries"`

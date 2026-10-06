@@ -212,6 +212,102 @@ func TestAgentProviderAPI(t *testing.T) {
 	}
 }
 
+// 通道充值记账：加一笔 / 读出来 / 金额非法报 400 / 删掉就没了
+func TestAgentProviderRechargeAPI(t *testing.T) {
+	e, _ := newAgentEnv(t)
+	openai := fakeOpenAI(t)
+
+	// 记一笔充值必须先有这条通道
+	if code := e.do("POST", "/api/agent/providers/recharge", map[string]any{
+		"action": "add", "name": "ghost", "amount": 10,
+	}, true, nil); code != 400 {
+		t.Fatalf("给不存在的通道充值应 400，实际 %d", code)
+	}
+
+	// 先加一条本机通道
+	if code := e.do("POST", "/api/agent/providers", map[string]any{
+		"action": "upsert",
+		"config": map[string]any{
+			"name": "local", "protocol": "openai",
+			"baseUrl": openai.URL + "/v1", "model": "fake-openai",
+		},
+	}, true, nil); code != 200 {
+		t.Fatalf("加通道失败：%d", code)
+	}
+
+	// 初始没有充值流水
+	var empty struct {
+		Recharges map[string][]map[string]any `json:"recharges"`
+	}
+	if code := e.do("GET", "/api/agent/providers/recharge", nil, true, &empty); code != 200 {
+		t.Fatalf("读充值流水失败：%d", code)
+	}
+	if len(empty.Recharges) != 0 {
+		t.Fatalf("初始不该有充值流水：%+v", empty.Recharges)
+	}
+
+	// 加一笔
+	var added struct {
+		OK    bool           `json:"ok"`
+		Entry map[string]any `json:"entry"`
+	}
+	if code := e.do("POST", "/api/agent/providers/recharge", map[string]any{
+		"action": "add", "name": "local", "amount": 100.5, "note": "首充",
+	}, true, &added); code != 200 {
+		t.Fatalf("记充值失败：%d", code)
+	}
+	if !added.OK || added.Entry["id"] == "" || added.Entry["amount"] != 100.5 {
+		t.Fatalf("充值回执不对：%+v", added)
+	}
+	id, _ := added.Entry["id"].(string)
+
+	// GET 要能看到
+	var got struct {
+		Recharges map[string][]map[string]any `json:"recharges"`
+	}
+	if code := e.do("GET", "/api/agent/providers/recharge", nil, true, &got); code != 200 {
+		t.Fatalf("读充值流水失败：%d", code)
+	}
+	if len(got.Recharges["local"]) != 1 || got.Recharges["local"][0]["id"] != id {
+		t.Fatalf("充值流水没落上：%+v", got.Recharges)
+	}
+
+	// 金额 <= 0 一律 400
+	for _, amt := range []float64{0, -1} {
+		if code := e.do("POST", "/api/agent/providers/recharge", map[string]any{
+			"action": "add", "name": "local", "amount": amt,
+		}, true, nil); code != 400 {
+			t.Fatalf("金额 %v 应 400，实际 %d", amt, code)
+		}
+	}
+
+	// 删掉就没了
+	var removed struct {
+		OK      bool   `json:"ok"`
+		Removed string `json:"removed"`
+	}
+	if code := e.do("POST", "/api/agent/providers/recharge", map[string]any{
+		"action": "remove", "name": "local", "id": id,
+	}, true, &removed); code != 200 {
+		t.Fatalf("删充值失败：%d", code)
+	}
+	if !removed.OK || removed.Removed != id {
+		t.Fatalf("删除回执不对：%+v", removed)
+	}
+	var after struct {
+		Recharges map[string][]map[string]any `json:"recharges"`
+	}
+	e.do("GET", "/api/agent/providers/recharge", nil, true, &after)
+	if len(after.Recharges["local"]) != 0 {
+		t.Fatalf("删除后不该还有：%+v", after.Recharges)
+	}
+
+	// 没有令牌一律 401
+	if code := e.do("GET", "/api/agent/providers/recharge", nil, false, nil); code != 401 {
+		t.Fatalf("没有令牌应 401，实际 %d", code)
+	}
+}
+
 func TestAgentMCPAPI(t *testing.T) {
 	e, _ := newAgentEnv(t)
 	mcpSrv := fakeMCPHTTP(t)

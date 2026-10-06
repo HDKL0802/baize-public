@@ -37,7 +37,7 @@ func (s *Server) registerPlugins(mux *http.ServeMux) {
 		})
 	}))
 
-	// action=install|uninstall|enable|disable|addSource|removeSource
+	// action=install|update|uninstall|enable|disable|addSource|removeSource
 	mux.HandleFunc("POST /api/agent/plugins", s.api(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Action  string `json:"action"`
@@ -61,6 +61,22 @@ func (s *Server) registerPlugins(mux *http.ServeMux) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 			it, err := a.PluginInstall(ctx, plugins.InstallRequest{ID: req.ID, URL: req.URL})
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, s.pluginOK(map[string]any{"plugin": it}))
+		case "update":
+			// 同 id 覆盖升级：直接复用 Install —— 它发现同 id 已装时会先 teardown 旧版本、
+			// 再装新包（见 plugins.Manager.Install），从当前配置的源里按 id 取最新版，
+			// 所以这里不另写一套升级逻辑。
+			if strings.TrimSpace(req.ID) == "" {
+				writeErr(w, http.StatusBadRequest, "update 需要 id")
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			it, err := a.PluginInstall(ctx, plugins.InstallRequest{ID: req.ID})
 			if err != nil {
 				writeErr(w, http.StatusBadRequest, err.Error())
 				return
@@ -107,7 +123,7 @@ func (s *Server) registerPlugins(mux *http.ServeMux) {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sources": srcs})
 		default:
 			writeErr(w, http.StatusBadRequest, "不支持的 action："+action+
-				"（可用 install | uninstall | enable | disable | addSource | removeSource）")
+				"（可用 install | update | uninstall | enable | disable | addSource | removeSource）")
 		}
 	}))
 }

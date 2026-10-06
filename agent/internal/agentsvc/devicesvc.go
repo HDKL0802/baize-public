@@ -34,3 +34,27 @@ func (s *Service) SetDeviceRemark(deviceID, remark string) error {
 	cfg.DeviceRemarks = next
 	return s.SaveConfig(cfg)
 }
+
+// ClearDeviceRemark 清掉某台设备的备注（设备被删除时一并清理）。
+// 备注不存在也算成功——调用方只关心"删完没有"，不关心原本有没有。
+func (s *Service) ClearDeviceRemark(deviceID string) error {
+	id := strings.TrimSpace(deviceID)
+	if id == "" {
+		return nil
+	}
+	s.mu.RLock()
+	cfg := s.cfg
+	s.mu.RUnlock()
+	if _, ok := cfg.DeviceRemarks[id]; !ok {
+		return nil
+	}
+	next := make(map[string]string, len(cfg.DeviceRemarks))
+	for k, v := range cfg.DeviceRemarks {
+		if k == id {
+			continue
+		}
+		next[k] = v
+	}
+	cfg.DeviceRemarks = next
+	return s.SaveConfig(cfg)
+}

@@ -28,6 +28,7 @@ async function renderObserve(root) {
 
   const $i = id => root.querySelector('#' + id);
   let rep = null;
+  let recharges = {};   // 通道充值流水（/api/agent/providers/recharge），按通道名分组
 
   const pct = (a, b) => b > 0 ? Math.round(a / b * 100) : 0;
   const ms = v => {
@@ -80,17 +81,21 @@ async function renderObserve(root) {
 
   const provTable = provs => {
     if (!provs || !provs.length) return '<div class="empty">本次启动以来还没问过模型</div>';
+    const rcSum = name => (recharges[name] || []).reduce((a, e) => a + (e.amount || 0), 0);
     return `<table class="ob-table"><thead><tr>
-      <th>通道</th><th>请求</th><th>回复</th><th>重试</th><th>token</th><th>平均等待</th><th>最近出错</th></tr></thead><tbody>` +
-      provs.map(p => `<tr>
-        <td class="mono">${esc(p.provider)}</td>
+      <th>通道 · 模型</th><th>请求</th><th>回复</th><th>重试</th><th>token</th><th>平均等待</th><th>最近出错</th><th>累计充值</th></tr></thead><tbody>` +
+      provs.map(p => {
+        const rc = rcSum(p.provider);
+        return `<tr>
+        <td class="mono">${esc(p.provider)}${p.model ? ' · ' + esc(p.model) : ''}</td>
         <td>${num(p.requests)}</td>
         <td>${num(p.replies)}</td>
         <td>${p.retries > 0 ? `<span class="tag warn">${num(p.retries)}</span>` : '0'}</td>
         <td>${num(p.tokens)}</td>
         <td>${ms(p.avgMs)}</td>
         <td class="mono">${esc(p.lastErr || '—')}</td>
-      </tr>`).join('') + '</tbody></table>';
+        <td>${rc > 0 ? '¥' + esc(String(rc)) : '—'}</td>
+      </tr>`; }).join('') + '</tbody></table>';
   };
 
   const draw = () => {
@@ -137,7 +142,7 @@ async function renderObserve(root) {
 
       <div class="sect">
         <h3>模型通道明细 <span class="tag">本次启动以来</span></h3>
-        <div class="sub">"平均等待"里含重试等待：它回答的是"等这一步到底花了多久"。</div>
+        <div class="sub">"平均等待"里含重试等待：它回答的是"等这一步到底花了多久"。"累计充值"来自配置里的记账（只记金额、不做换算）。</div>
         ${provTable(rep.providers)}
       </div>
 
@@ -163,12 +168,16 @@ async function renderObserve(root) {
   };
 
   const load = async () => {
-    const r = await API.get('/api/agent/observability?window=' + encodeURIComponent(win));
+    const [r, rc] = await Promise.all([
+      API.get('/api/agent/observability?window=' + encodeURIComponent(win)),
+      API.get('/api/agent/providers/recharge'),
+    ]);
     if (!r.ok) {
       $i('obBody').innerHTML = `<div class="empty err">读不到观测面：${esc(r.error || '')}</div>`;
       return;
     }
     rep = r.data || {};
+    recharges = (rc.ok && rc.data && rc.data.recharges) || {};
     draw();
   };
 

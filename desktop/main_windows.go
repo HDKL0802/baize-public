@@ -3,9 +3,9 @@
 // 白泽 · Windows 桌面端
 //
 // 架构（对齐手机端「内核 + WebView」，只是这里用桌面 WebView2）：
-//   1) 本机回环 HTTP 服务：内嵌界面 + 把 /api/be/* 原样代理到 NAS 后端
-//      （配对令牌只留在原生侧，不进网页，也绕开跨源限制）；
-//   2) 一个 WebView2 原生窗口指向它。
+//  1. 本机回环 HTTP 服务：内嵌界面 + 把 /api/be/* 原样代理到 NAS 后端
+//     （配对令牌只留在原生侧，不进网页，也绕开跨源限制）；
+//  2. 一个 WebView2 原生窗口指向它。
 //
 // 为什么不用 Tauri/QwenPaw 那套：本机没有 Rust 工具链。Go + 纯 Go 的 WebView2 绑定
 // 同样能做到「原生窗口 + WebView2 + 同一套 Web 界面」，且无 cgo / 无 Node。
@@ -85,6 +85,7 @@ func main() {
 	go func() { _ = http.Serve(ln, buildHandler()) }()
 
 	url := "http://" + ln.Addr().String() + "/"
+	localBaseURL = "http://" + ln.Addr().String() // 悬浮球用它读「待审批」状态
 	log.Printf("白泽桌面端启动：%s", url)
 
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
@@ -104,6 +105,8 @@ func main() {
 
 	// 常驻三件套：托盘图标 + 「关窗=隐藏到后台」（失败只警告，不影响启动）
 	installShell(w)
+	// 悬浮球（B1）：常驻桌面的轻量入口（失败只记日志）
+	startFloatingBall()
 
 	w.Run()
 	os.Exit(0)

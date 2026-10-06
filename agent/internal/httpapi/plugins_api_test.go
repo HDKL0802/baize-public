@@ -105,16 +105,22 @@ func TestPluginsMarketFlow(t *testing.T) {
 		t.Fatalf("插件源没加上：%+v", add.Sources)
 	}
 
-	// 逛市场
+	// 逛市场：用户源在前、内置官方源在后
 	var m marketResp
 	if code := e.do("GET", "/api/agent/plugins", nil, true, &m); code != 200 {
 		t.Fatalf("读市场失败：HTTP %d", code)
 	}
-	if len(m.Sources) != 1 || m.Sources[0].Error != "" || m.Sources[0].Count != 1 {
-		t.Fatalf("源状态不对：%+v", m.Sources)
+	if len(m.Sources) != 2 {
+		t.Fatalf("应当有 2 个源（用户源 + 内置官方源），实际 %d：%+v", len(m.Sources), m.Sources)
 	}
-	if len(m.Available) != 1 || m.Available[0].Installed {
-		t.Fatalf("货架不对：%+v", m.Available)
+	if m.Sources[0].Error != "" || m.Sources[0].Count != 1 || m.Sources[0].Builtin {
+		t.Fatalf("用户源状态不对：%+v", m.Sources[0])
+	}
+	if !m.Sources[1].Builtin || m.Sources[1].Error != "" || m.Sources[1].Count == 0 {
+		t.Fatalf("内置官方源状态不对：%+v", m.Sources[1])
+	}
+	if demo := findAvail(m, "demo"); demo == nil || demo.Installed || demo.Builtin {
+		t.Fatalf("用户源里那格货架不对：%+v", demo)
 	}
 	if len(m.Installed) != 0 {
 		t.Fatalf("还没装就有已装记录：%+v", m.Installed)
@@ -150,8 +156,11 @@ func TestPluginsMarketFlow(t *testing.T) {
 	if code := e.do("GET", "/api/agent/plugins", nil, true, &m); code != 200 {
 		t.Fatal("二次读市场失败")
 	}
-	if len(m.Installed) != 1 || !m.Available[0].Installed {
-		t.Fatalf("已装状态没反映出来：installed=%+v available=%+v", m.Installed, m.Available)
+	if len(m.Installed) != 1 {
+		t.Fatalf("已装记录没反映出来：%+v", m.Installed)
+	}
+	if demo := findAvail(m, "demo"); demo == nil || !demo.Installed {
+		t.Fatalf("货架上的已装状态没更新：%+v", demo)
 	}
 
 	// 停用 → 技能从技能目录挪走、MCP 关掉
@@ -199,19 +208,54 @@ func TestPluginsMarketFlow(t *testing.T) {
 	}
 }
 
-func TestPluginsInstallFromLocalPathAndEmptyMarket(t *testing.T) {
+// findAvail 在货架里按 id 找一格
+func findAvail(m marketResp, id string) *plugins.Available {
+	for i := range m.Available {
+		if m.Available[i].ID == id {
+			return &m.Available[i]
+		}
+	}
+	return nil
+}
+
+func TestPluginsBuiltinSourceAndDirectInstall(t *testing.T) {
 	e, svc := newAgentEnv(t)
 
-	// 没配源时逛市场：不该报错，只是空的（界面据此提示"去加个源"）
+	// 没配任何用户源时，市场里也一定有内置官方源（随后端分发，开箱有内容、离线可用）
 	var m marketResp
 	if code := e.do("GET", "/api/agent/plugins", nil, true, &m); code != 200 {
-		t.Fatalf("空市场读失败：HTTP %d", code)
+		t.Fatalf("读市场失败：HTTP %d", code)
 	}
-	if len(m.Sources) != 0 || len(m.Available) != 0 {
-		t.Fatalf("空市场不该有内容：%+v", m)
+	if len(m.Sources) != 1 || !m.Sources[0].Builtin || m.Sources[0].Error != "" {
+		t.Fatalf("应当只有内置官方源且不报错：%+v", m.Sources)
+	}
+	if len(m.Available) == 0 {
+		t.Fatal("内置官方源的货架是空的")
+	}
+	if len(m.Installed) != 0 {
+		t.Fatalf("还没装就有已装记录：%+v", m.Installed)
 	}
 	if m.Dir == "" {
 		t.Fatal("市场接口应当回报插件目录位置")
+	}
+	first := m.Available[0]
+
+	// 装一个内置插件：技能要真的落进技能目录
+	var inst pluginActResp
+	if code := e.do("POST", "/api/agent/plugins", map[string]any{"action": "install", "id": first.ID}, true, &inst); code != 200 {
+		t.Fatalf("装内置插件失败：HTTP %d %s", code, inst.Error)
+	}
+	if inst.Plugin.ID != first.ID || len(inst.Plugin.Skills) == 0 {
+		t.Fatalf("内置插件装出来不对：%+v", inst.Plugin)
+	}
+	if _, err := os.Stat(filepath.Join(svc.DataDir(), "skills", inst.Plugin.Skills[0], "SKILL.md")); err != nil {
+		t.Fatalf("内置插件的技能没落盘：%v", err)
+	}
+	// 内置源随后端分发，不许手动往配置里加（加了会出现重复的源）
+	if code := e.do("POST", "/api/agent/plugins", map[string]any{
+		"action": "addSource", "name": "重加内置", "url": "builtin:official",
+	}, true, nil); code != 400 {
+		t.Fatalf("手动添加内置源应当 400，实际 %d", code)
 	}
 
 	// 直接用本地 zip 路径装
@@ -219,7 +263,6 @@ func TestPluginsInstallFromLocalPathAndEmptyMarket(t *testing.T) {
 	if err := writeFile(zipPath, string(pluginPkg(t, "direct", "direct-helper"))); err != nil {
 		t.Fatal(err)
 	}
-	var inst pluginActResp
 	if code := e.do("POST", "/api/agent/plugins", map[string]any{"action": "install", "url": zipPath}, true, &inst); code != 200 {
 		t.Fatalf("本地包装失败：HTTP %d %s", code, inst.Error)
 	}

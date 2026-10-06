@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "daily-brief",
+  "name": "每日简报",
+  "version": "1.0.0",
+  "description": "挂一个每天定点的任务，把待办与关注的事汇总成一篇固定路径的简报笔记。",
+  "author": "白泽",
+  "homepage": "https://github.com/HDKL0802/baize-public",
+  "license": "MIT",
+  "tags": ["定时", "简报", "待办"],
+  "minBaize": "0.9.20"
+}

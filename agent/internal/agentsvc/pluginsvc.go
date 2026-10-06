@@ -59,13 +59,17 @@ func (s *Service) PluginSources() []config.PluginSource {
 	return append([]config.PluginSource{}, s.Config().PluginSources...)
 }
 
-// pluginSources 把配置里的源转成 plugins 包认识的形状
+// pluginSources 把配置里的源转成 plugins 包认识的形状，并在**末尾**接上内置官方源。
+//
+// 为什么放末尾：取插件时按顺序找，先命中先用 —— 用户自己加的源优先于官方源，
+// 与"插件的优先级永远低于用户自己那摊"这条口径一致；官方源只是**兜底**（开箱有内容、离线可用）。
 func (s *Service) pluginSources() []plugins.Source {
 	cfg := s.PluginSources()
-	out := make([]plugins.Source, 0, len(cfg))
+	out := make([]plugins.Source, 0, len(cfg)+1)
 	for _, c := range cfg {
 		out = append(out, plugins.Source{Name: c.Name, URL: c.URL, Enabled: c.Enabled})
 	}
+	out = append(out, plugins.Source{Name: plugins.BuiltinSourceName, URL: plugins.BuiltinSourceURL, Enabled: true})
 	return out
 }
 
@@ -110,6 +114,9 @@ func (s *Service) PluginAddSource(name, url string, enabled *bool) ([]config.Plu
 	url = strings.TrimSpace(url)
 	if url == "" {
 		return nil, errors.New("插件源的地址不能为空（给 index.json 的 http(s) 地址或本机路径）")
+	}
+	if plugins.IsBuiltinSource(url) {
+		return nil, errors.New("内置官方源是随后端一起分发的，不用手动添加（它一定在源列表里）")
 	}
 	cfg := s.Config()
 	on := true

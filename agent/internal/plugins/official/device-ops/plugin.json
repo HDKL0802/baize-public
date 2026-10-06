@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "device-ops",
+  "name": "跨端派活",
+  "version": "1.0.0",
+  "description": "把任务派到你自己的电脑或手机执行，并把回执如实带回来。",
+  "author": "白泽",
+  "homepage": "https://github.com/HDKL0802/baize-public",
+  "license": "MIT",
+  "tags": ["设备", "跨端", "运维"],
+  "minBaize": "0.9.20"
+}

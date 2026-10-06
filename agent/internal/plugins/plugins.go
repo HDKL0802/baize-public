@@ -111,16 +111,18 @@ type SourceView struct {
 	IndexName string `json:"indexName,omitempty"`
 	Updated   string `json:"updated,omitempty"`
 	Count     int    `json:"count"`
-	Error     string `json:"error,omitempty"` // 拉不到就如实报（网络/路径/格式），不装作"这个源是空的"
+	Builtin   bool   `json:"builtin,omitempty"` // 内置官方源：随后端分发，删不掉也不用管
+	Error     string `json:"error,omitempty"`   // 拉不到就如实报（网络/路径/格式），不装作"这个源是空的"
 }
 
 // Available 货架上的一格（源里的元数据 + 是否已装/能否更新）。
 type Available struct {
 	Meta
-	Source      string `json:"source"` // 来自哪个源
+	Source      string `json:"source"`                // 来自哪个源
 	Installed   bool   `json:"installed"`
 	InstVersion string `json:"instVersion,omitempty"` // 已装版本（有更新时用来对比）
 	HasUpdate   bool   `json:"hasUpdate"`
+	Builtin     bool   `json:"builtin,omitempty"` // 来自内置官方源
 }
 
 // InstallRequest 安装请求：三种来源任选其一。

@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "web-research",
+  "name": "联网调研",
+  "version": "1.0.0",
+  "description": "给一个题目，联网查、抓正文、交叉核对，整理成一篇带来源的笔记。",
+  "author": "白泽",
+  "homepage": "https://github.com/HDKL0802/baize-public",
+  "license": "MIT",
+  "tags": ["调研", "搜索", "笔记"],
+  "minBaize": "0.9.20"
+}

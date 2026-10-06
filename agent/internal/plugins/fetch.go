@@ -60,8 +60,20 @@ func isRemote(ref string) bool {
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https")
 }
 
-// readRef 读一个地址：http(s) 走网络，其余当本地文件。返回内容和"最终解析到的地址"。
+// readRef 读一个地址：内置源走内嵌内容，http(s) 走网络，其余当本地文件。
+// 返回内容和"最终解析到的地址"。
 func readRef(ctx context.Context, hc *http.Client, ref, base string, limit int64) ([]byte, string, error) {
+	// 内置官方源：索引与插件包都在内存里现场生成，不走网络也不走磁盘
+	if IsBuiltinSource(ref) {
+		return readBuiltin(ref)
+	}
+	if IsBuiltinSource(base) {
+		target := strings.TrimSpace(base)
+		if r := strings.TrimSpace(ref); r != "" && !IsBuiltinSource(r) {
+			target = strings.TrimSuffix(target, "/") + "/" + r
+		}
+		return readBuiltin(target)
+	}
 	target := resolveRef(base, ref)
 	if target == "" {
 		return nil, "", fmt.Errorf("地址为空")

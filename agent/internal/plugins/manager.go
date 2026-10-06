@@ -95,7 +95,7 @@ func (m *Manager) Catalog(ctx context.Context, sources []Source) Catalog {
 	seenID := map[string]bool{}
 	for _, raw := range sources {
 		src := NormalizeSource(raw)
-		sv := SourceView{Source: src}
+		sv := SourceView{Source: src, Builtin: IsBuiltinSource(src.URL)}
 		if strings.TrimSpace(src.URL) == "" {
 			sv.Error = "这个源没有填地址"
 			out.Sources = append(out.Sources, sv)
@@ -121,7 +121,7 @@ func (m *Manager) Catalog(ctx context.Context, sources []Source) Catalog {
 				continue // 多个源有同名插件：以先出现的源为准，不重复列
 			}
 			seenID[meta.ID] = true
-			av := Available{Meta: meta, Source: src.Name}
+			av := Available{Meta: meta, Source: src.Name, Builtin: IsBuiltinSource(meta.URL)}
 			if it, ok := byID[meta.ID]; ok {
 				av.Installed = true
 				av.InstVersion = it.Version

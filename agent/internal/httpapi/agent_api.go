@@ -32,6 +32,10 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	s.registerChannels(mux)
 	// 记忆星图（笔记 + 双向链接 + 图谱）
 	s.registerNotes(mux)
+	// 多用户底座（登录 / 账号 / 用户组）
+	s.registerAccounts(mux)
+	// 用户组共享文档（组内成员互相可见）
+	s.registerSharing(mux)
 	mux.HandleFunc("GET /api/agent/state", s.api(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, a.State())
 	}))
@@ -128,7 +132,12 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	//   diverse     是否 MMR 去重（默认 1）；库里同一次任务往往落好几条几乎一样的记录
 	//   namespace / category / days  过滤
 	mux.HandleFunc("GET /api/agent/memory", s.api(func(w http.ResponseWriter, r *http.Request) {
-		store := a.Memory()
+		// 记忆库按登录身份路由：登录了就看他自己的分区，没登录就是默认主体
+		store, err := s.memOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		urlq := r.URL.Query()
 		q := urlq.Get("q")
 		limit := atoiDefault(urlq.Get("limit"), 8)
@@ -181,13 +190,18 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	}))
 
 	mux.HandleFunc("GET /api/agent/memory/tree", s.api(func(w http.ResponseWriter, r *http.Request) {
-		nodes, err := a.Memory().Tree(atoiDefault(r.URL.Query().Get("limit"), 40))
+		mem, err := s.memOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		nodes, err := mem.Tree(atoiDefault(r.URL.Query().Get("limit"), 40))
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		// 顺手告诉界面"有几天摘要还没跟上"：不然节点列表里空空如也，说不清是没记忆还是没摘要
-		stale, err := a.Memory().StaleDays(8)
+		stale, err := mem.StaleDays(8)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
@@ -201,7 +215,7 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agent/memory/tree/rebuild", s.api(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		n, err := a.RebuildMemoryTree(ctx)
+		n, err := a.RebuildMemoryTreeFor(ctx, s.principal(r))
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
@@ -212,7 +226,12 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	// 整理重复记忆：同类回执 / 同一目标的重复结论，每组只留最新的一条。
 	// 这是删除操作，所以只提供手动接口，绝不自动跑。
 	mux.HandleFunc("POST /api/agent/memory/compact", s.api(func(w http.ResponseWriter, r *http.Request) {
-		res, err := a.Memory().CompactDuplicates()
+		mem, err := s.memOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		res, err := mem.CompactDuplicates()
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
@@ -233,7 +252,12 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		res, err := a.Memory().Ingest(req.Content, memory.IngestOptions{
+		mem, err := s.memOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		res, err := mem.Ingest(req.Content, memory.IngestOptions{
 			Source: "user", Kind: req.Kind, Title: req.Title, Importance: req.Importance,
 		})
 		if err != nil {

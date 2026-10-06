@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"baize/internal/accounts"
 	"baize/internal/activity"
 	"baize/internal/agentrt"
 	"baize/internal/backup"
@@ -113,7 +114,14 @@ type State struct {
 	Backups      []backup.Archive    `json:"backups"`
 	LastRun      *agentrt.RunResult  `json:"lastRun,omitempty"`
 	Activity     activity.Snapshot   `json:"activity"`
+	Accounts     AccountsInfo        `json:"accounts"`        // 多用户概览（用户数 / 用户组数）
 	Issue        string              `json:"issue,omitempty"` // 配置层面的问题（例如没有任何可用模型）
+}
+
+// AccountsInfo 多用户底座概览
+type AccountsInfo struct {
+	Users  int `json:"users"`
+	Groups int `json:"groups"`
 }
 
 // Detail 单次运行的详情
@@ -134,9 +142,13 @@ type Service struct {
 	skills    *skills.Library
 	skillMgr  *skills.Manager
 
-	mem         *memory.Store
-	embedder    llm.Embedder // 可选：记忆的向量化通道
-	embedErr    string       // 配了但用不了时的原因（要显示出来，不能静默失效）
+	mem      *memory.Store
+	embedder llm.Embedder // 可选：记忆的向量化通道
+	embedErr string       // 配了但用不了时的原因（要显示出来，不能静默失效）
+	accounts *accounts.Registry
+	// partMu/parts 多用户数据分区（用户/用户组各自的记忆库+知识库），按需打开并缓存
+	partMu      sync.Mutex
+	parts       map[string]*partition
 	runs        *agentrt.Store
 	ck          *agentrt.CheckpointManager
 	ws          *tools.Workspace
@@ -229,6 +241,17 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 		runs.Close()
 		return nil, err
 	}
+	// 多用户底座：本地账号 + 用户组（各自的记忆库/知识库分区按需打开）。
+	// 首启会自动建一个 admin 账号，口令写在 <数据目录>/admin-password.txt。
+	accts, err := accounts.Open(dataDir, lg)
+	if err != nil {
+		mem.Close()
+		runs.Close()
+		return nil, err
+	}
+	if n := accts.CleanupSessions(); n > 0 {
+		lg.Info("已清理过期登录会话", "count", n)
+	}
 	// 人设文件：首次初始化落一份默认模板（之后用户改/删都不再自动重建）
 	personaLib := persona.New(filepath.Join(dataDir, "persona"))
 	if created, err := personaLib.EnsureTemplates(); err != nil {
@@ -240,9 +263,10 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 	s := &Service{
 		dataDir: dataDir, lg: lg, cfg: cfg,
 		mem: mem, runs: runs, ck: ck, ws: ws, skills: lib, skillMgr: skills.NewManager(lib), kbs: kbs,
-		persona: personaLib,
-		mcp:     mcp.NewManager(lg, cfg.AllowRemote),
-		hooks:   hooks.NewBus(), approvals: NewApprovalQueue(200),
+		accounts: accts,
+		persona:  personaLib,
+		mcp:      mcp.NewManager(lg, cfg.AllowRemote),
+		hooks:    hooks.NewBus(), approvals: NewApprovalQueue(200),
 		approvedTools: map[string]bool{},
 		activity:      activity.New(50),
 		schedStop:     make(chan struct{}),
@@ -280,6 +304,10 @@ func (s *Service) Close() {
 		br.Close() // 自己拉起的浏览器会在这里被收掉
 	}
 	s.mcp.Close()
+	s.closePartitions()
+	if s.accounts != nil {
+		s.accounts.Close()
+	}
 	s.mem.Close()
 	s.runs.Close()
 }
@@ -662,6 +690,8 @@ func (s *Service) rebuildEmbedder() {
 	if s.mem != nil {
 		s.mem.SetEmbedder(e)
 	}
+	// 已打开的用户/组分区也要跟着换通道（否则它们会一直以为没配 embedding）
+	s.applyEmbedderToPartitions(e)
 }
 
 // embeddingInfo 向量通道状态（没配就明说"未启用"，别让界面以为语义检索在工作）
@@ -1369,6 +1399,14 @@ func (s *Service) State() State {
 	}
 	if s.mcp != nil {
 		st.MCP = s.mcp.Status()
+	}
+	if s.accounts != nil {
+		if us, err := s.accounts.Users(); err == nil {
+			st.Accounts.Users = len(us)
+		}
+		if gs, err := s.accounts.Groups(); err == nil {
+			st.Accounts.Groups = len(gs)
+		}
 	}
 	if list, err := backup.List(s.dataDir); err == nil {
 		st.Backups = list

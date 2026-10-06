@@ -14,6 +14,9 @@ import (
 //
 // 笔记正本存在记忆库（memory.db）里：source='note' 的分块，关系存 note_links / note_tags。
 // 这样笔记天然继承记忆的语义检索与向量通道，「自动连边」直接用同一份向量。
+//
+// **多用户**：记忆库按登录身份路由（登录 = 该用户的分区，未登录 = 默认主体），
+// 所以每个人的笔记、星图、标签云天然隔离开，互不可见。
 func (s *Server) registerNotes(mux *http.ServeMux) {
 	if s.agent == nil {
 		return
@@ -30,20 +33,25 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 
 	// 笔记列表（可按标签 / 关键词过滤）+ 标签云 + 概览
 	mux.HandleFunc("GET /api/agent/notes", s.api(func(w http.ResponseWriter, r *http.Request) {
+		mem, err := s.memOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		urlq := r.URL.Query()
 		ns := nsOf(urlq.Get("namespace"))
-		notes, err := a.Memory().ListNotes(ns, urlq.Get("tag"), urlq.Get("q"),
+		notes, err := mem.ListNotes(ns, urlq.Get("tag"), urlq.Get("q"),
 			atoiDefault(urlq.Get("limit"), 50), atoiDefault(urlq.Get("offset"), 0))
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		tags, err := a.Memory().Tags(ns)
+		tags, err := mem.Tags(ns)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		stats, err := a.Memory().NoteStats(ns)
+		stats, err := mem.NoteStats(ns)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
@@ -57,6 +65,11 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 	//   namespace 分区；limit 最多几个点；auto=0 关掉自动边；minWeight 自动边相似度下限
 	//   root 以某篇笔记为中心看局部图；hops 跳数（默认 1）
 	mux.HandleFunc("GET /api/agent/notes/graph", s.api(func(w http.ResponseWriter, r *http.Request) {
+		mem, err := s.memOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		urlq := r.URL.Query()
 		ns := nsOf(urlq.Get("namespace"))
 		auto := urlq.Get("auto") != "0"
@@ -66,7 +79,7 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 				minW = f
 			}
 		}
-		g, err := a.Memory().Graph(memory.GraphOptions{
+		g, err := mem.Graph(memory.GraphOptions{
 			Namespace:   ns,
 			Limit:       atoiDefault(urlq.Get("limit"), 300),
 			IncludeAuto: auto,
@@ -83,9 +96,14 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 
 	// 单篇笔记：正文 + 出链 + 反向链接（界面右侧两栏就靠它）
 	mux.HandleFunc("GET /api/agent/notes/{key}", s.api(func(w http.ResponseWriter, r *http.Request) {
+		mem, err := s.memOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		ns := nsOf(r.URL.Query().Get("namespace"))
 		key := strings.TrimSpace(r.PathValue("key"))
-		note, ok, err := a.Memory().GetNote(ns, key)
+		note, ok, err := mem.GetNote(ns, key)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
@@ -94,12 +112,12 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 			writeErr(w, http.StatusNotFound, "没有这篇笔记："+key)
 			return
 		}
-		out, err := a.Memory().Outlinks(ns, key)
+		out, err := mem.Outlinks(ns, key)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		bl, err := a.Memory().Backlinks(ns, key)
+		bl, err := mem.Backlinks(ns, key)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
@@ -122,9 +140,14 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		mem, err := s.memOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 		defer cancel()
-		note, err := a.Memory().WriteNote(ctx, memory.WriteNoteOptions{
+		note, err := mem.WriteNote(ctx, memory.WriteNoteOptions{
 			Namespace: nsOf(req.Namespace), Path: req.Path, Title: req.Title,
 			Content: req.Content, Tags: req.Tags,
 		})
@@ -149,16 +172,21 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 			writeErr(w, http.StatusBadRequest, "files 不能为空")
 			return
 		}
+		mem, err := s.memOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		ns := nsOf(req.Namespace)
-		res, err := a.Memory().ImportNotes(ctx, ns, req.Files)
+		res, err := mem.ImportNotes(ctx, ns, req.Files)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		// 导入完统一解析一次链接（跨文件的 [[双链]] 这时才都能接上）
-		if n, err := a.Memory().ResolveLinks(ns); err == nil {
+		if n, err := mem.ResolveLinks(ns); err == nil {
 			res.Links = n
 		}
 		writeJSON(w, http.StatusOK, res)
@@ -172,9 +200,14 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 			MinSim    float64 `json:"minSim"`
 		}
 		_ = decodeBody(r, &req)
+		mem, err := s.memOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
-		res, err := a.Memory().AutoLink(ctx, memory.AutoLinkOptions{
+		res, err := mem.AutoLink(ctx, memory.AutoLinkOptions{
 			Namespace: nsOf(req.Namespace), TopK: req.TopK, MinSim: req.MinSim,
 		})
 		if err != nil {
@@ -190,8 +223,13 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 			Namespace string `json:"namespace"`
 		}
 		_ = decodeBody(r, &req)
+		mem, err := s.memOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		ns := nsOf(req.Namespace)
-		n, err := a.Memory().ResolveLinks(ns)
+		n, err := mem.ResolveLinks(ns)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
@@ -201,8 +239,13 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 
 	// 删除一篇笔记（连同它的链接）
 	mux.HandleFunc("POST /api/agent/notes/{key}/forget", s.api(func(w http.ResponseWriter, r *http.Request) {
+		mem, err := s.memOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		ns := nsOf(r.URL.Query().Get("namespace"))
-		n, err := a.Memory().ForgetNote(ns, strings.TrimSpace(r.PathValue("key")))
+		n, err := mem.ForgetNote(ns, strings.TrimSpace(r.PathValue("key")))
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return

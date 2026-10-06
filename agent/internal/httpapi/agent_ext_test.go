@@ -49,6 +49,7 @@ func newAgentEnv(t *testing.T) (*env, *agentsvc.Service) {
 
 	s := httpapi.New(h, lg, logx.NewRing(200), "test")
 	s.SetAgent(svc)
+	s.SetKB(svc.KB()) // 与 cmd/backend 的装配一致：知识库接口也要挂上
 	srv := httptest.NewServer(s.Handler())
 	t.Cleanup(srv.Close)
 	return &env{t: t, srv: srv, hub: h, store: st, token: testToken}, svc

@@ -22,10 +22,14 @@ func (s *Server) registerKB(mux *http.ServeMux) {
 	if s.kb == nil {
 		return
 	}
-	k := s.kb
 
 	// 快照：直接回 Snapshot 本体（手机内核的 Remote.State 就按这个形状解）
 	mux.HandleFunc("GET /api/kb/state", s.api(func(w http.ResponseWriter, r *http.Request) {
+		k, err := s.kbOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		snap, err := k.State()
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, "读知识库失败："+err.Error())
@@ -42,6 +46,11 @@ func (s *Server) registerKB(mux *http.ServeMux) {
 		}
 		if err := decodeBody(r, &req); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		k, err := s.kbOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		data, err := k.Do(req.Op, req.Args)
@@ -67,6 +76,11 @@ func (s *Server) registerKB(mux *http.ServeMux) {
 			writeErr(w, http.StatusBadRequest, "组装导入请求失败："+err.Error())
 			return
 		}
+		k, err := s.kbOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		data, err := k.Do("kb.import", raw)
 		if err != nil {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
@@ -77,12 +91,22 @@ func (s *Server) registerKB(mux *http.ServeMux) {
 
 	// 控制台概览
 	mux.HandleFunc("GET /api/kb/stats", s.api(func(w http.ResponseWriter, r *http.Request) {
+		k, err := s.kbOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		writeJSON(w, http.StatusOK, k.Stats())
 	}))
 
 	/* ---- 附件：手机上不留文件，附件统一存这儿 ---- */
 
 	mux.HandleFunc("GET /api/kb/files", s.api(func(w http.ResponseWriter, r *http.Request) {
+		k, err := s.kbOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		list, err := k.Files().List(atoiDefault(r.URL.Query().Get("limit"), 200))
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, "读附件列表失败："+err.Error())
@@ -108,6 +132,11 @@ func (s *Server) registerKB(mux *http.ServeMux) {
 			writeErr(w, http.StatusBadRequest, "附件内容不是合法的 base64："+err.Error())
 			return
 		}
+		k, err := s.kbOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		info, err := k.Files().Put(req.Name, req.Kind, req.Mime, data)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
@@ -118,6 +147,11 @@ func (s *Server) registerKB(mux *http.ServeMux) {
 
 	// 下载：同样回 base64，手机端拿得到就能落成本地文件再打开
 	mux.HandleFunc("GET /api/kb/files/{id}", s.api(func(w http.ResponseWriter, r *http.Request) {
+		k, err := s.kbOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		info, data, err := k.Files().Get(r.PathValue("id"))
 		if err != nil {
 			writeErr(w, http.StatusNotFound, err.Error())
@@ -130,6 +164,11 @@ func (s *Server) registerKB(mux *http.ServeMux) {
 
 	mux.HandleFunc("DELETE /api/kb/files/{id}", s.api(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
+		k, err := s.kbOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		if err := k.Files().Remove(id); err != nil {
 			writeErr(w, http.StatusNotFound, err.Error())
 			return

@@ -602,30 +602,120 @@ async function renderDevices(root) {
   refresh();
 }
 
-/* ---------------- 对话 ---------------- */
+/* ---------------- 对话（工作 / 聊天 双模式 + 「最近运行」侧栏） ----------------
+   两种用法分开：
+     · 聊天：一句一句说，像对话一样把来回摊在消息流里；
+     · 工作：把「目标」写清楚再派活，跑的过程与当前状态在下面实时看。
+   右侧「最近运行」是常驻的，聊天/工作两种模式都看得到最近跑了什么、什么状态。 */
 async function renderChat(root) {
   root.innerHTML = `
     <div style="padding:14px 16px">
-      <h3>跟白泽说话</h3>
-      <div class="sub">一句话派活，跑完结果落到下面。危险操作会在「待审批」里等你放行。</div>
-      <textarea id="chGoal" placeholder="例如：看看手机上还有哪些待办"></textarea>
-      <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
-        <button class="btn" id="chSend">派给白泽</button>
-        <span id="chState" class="sub" style="margin:0"></span>
-      </div>
+      <div class="chat-wrap">
+        <div class="chat-main">
+          <div class="tabs" id="chTabs">
+            <button data-m="chat" class="on">聊天</button>
+            <button data-m="work">工作</button>
+          </div>
 
-      <div class="sect">
-        <h3>当前状态</h3>
-        <div id="chNow" class="pre">—</div>
-      </div>
-      <div class="sect">
-        <h3>最近运行</h3>
-        <div id="chRuns"></div>
+          <div id="chChat">
+            <div class="cmsgs" id="chMsgs" data-ph="说一句话就行 —— 比如「看看手机上还有哪些待办」。危险操作会在「任务与审批」里等你放行。"></div>
+            <textarea id="chGoal" style="min-height:58px" placeholder="说一句要做什么…（Ctrl+Enter 发送）"></textarea>
+            <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+              <button class="btn" id="chSend">发送</button>
+              <span id="chState" class="sub" style="margin:0"></span>
+            </div>
+          </div>
+
+          <div id="chWork" hidden>
+            <div class="sect" style="margin-top:0">
+              <h3>派活</h3>
+              <div class="sub">把目标写清楚，白泽会拆步骤去跑；跑的过程与当前状态在下面实时看。</div>
+              <div class="fields" style="grid-template-columns:1fr;margin-top:0">
+                <div><label>目标</label>
+                  <textarea id="wkGoal" style="min-height:76px" placeholder="例如：整理本周待办并按优先级排序，结果写进知识库"></textarea></div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <button class="btn" id="wkSend">派给白泽</button>
+                <span class="sub" id="wkState" style="margin:0"></span>
+              </div>
+            </div>
+            <div class="sect">
+              <h3>当前状态</h3>
+              <div id="chNow" class="pre">—</div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="chat-rail">
+          <div class="rail-h">最近运行</div>
+          <div id="chRuns"><div class="empty" style="padding:6px 0">读取中…</div></div>
+        </aside>
       </div>
     </div>`;
 
   const $i = id => root.querySelector('#' + id);
   let timer = null;
+  let mode = 'chat';
+
+  const setMode = m => {
+    mode = m;
+    root.querySelectorAll('#chTabs button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+    $i('chChat').hidden = m !== 'chat';
+    $i('chWork').hidden = m !== 'work';
+    const t = $i(m === 'chat' ? 'chGoal' : 'wkGoal');
+    if (t) setTimeout(() => t.focus(), 30);
+  };
+  root.querySelectorAll('#chTabs button').forEach(b => { b.onclick = () => setMode(b.dataset.m); });
+
+  const addMsg = (cls, text) => {
+    const d = document.createElement('div');
+    d.className = 'cmsg ' + cls;
+    d.textContent = text;
+    $i('chMsgs').appendChild(d);
+    $i('chMsgs').scrollTop = $i('chMsgs').scrollHeight;
+    return d;
+  };
+
+  // send 派活；reply 直接落进消息流（魔法命令 / 失败原因都能看见）
+  const send = async (raw, stateEl) => {
+    const goal = (raw || '').trim();
+    if (!goal) { stateEl.innerHTML = '<span class="err">先写一句要做什么</span>'; return false; }
+    if (mode === 'chat') addMsg('me', goal);
+    stateEl.textContent = '已派发，跑着…';
+    const r = await API.post('/api/agent/run', { goal, wait: false });
+    if (!r.ok) {
+      if (mode === 'chat') addMsg('ai', '派发失败：' + (r.error || '未知'));
+      stateEl.innerHTML = `<span class="err">${esc(r.error || '派发失败')}</span>`;
+      return false;
+    }
+    const d = r.data || {};
+    // 魔法命令（以 / 开头）：后端直接回执，不派活也不占运行记录
+    if (d.command) {
+      if (mode === 'chat') addMsg('ai', d.reply || '（命令已执行）');
+      stateEl.innerHTML = '<span class="ok">魔法命令 /' + esc(d.name || '') +
+        (d.action ? '（动作：' + esc(d.action) + '）' : '') + '</span>';
+      return true;
+    }
+    const id = d.runId || d.id || '';
+    if (mode === 'chat') addMsg('ai', '已派发' + (id ? ' · ' + id : '') + '，跑完我把结果放这儿。');
+    stateEl.innerHTML = `<span class="ok">已派发${id ? ' · ' + esc(id) : ''}</span>`;
+    load();
+    return true;
+  };
+
+  $i('chSend').onclick = async () => {
+    const ta = $i('chGoal');
+    const ok = await send(ta.value, $i('chState'));
+    if (ok) ta.value = '';
+  };
+  $i('wkSend').onclick = async () => {
+    const ta = $i('wkGoal');
+    const ok = await send(ta.value, $i('wkState'));
+    if (ok) ta.value = '';
+  };
+  $i('chGoal').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $i('chSend').click(); }
+  });
 
   const load = async () => {
     const st = await API.get('/api/agent/state');
@@ -640,42 +730,29 @@ async function renderChat(root) {
       $i('chNow').innerHTML = `<span class="err">读不到运行状态：${esc(st.error || '')}</span>`;
     }
 
-    const runs = await API.get('/api/agent/runs?limit=8');
+    const runs = await API.get('/api/agent/runs?limit=12');
     if (runs.ok) {
       const list = (runs.data && (runs.data.runs || runs.data.items)) || (Array.isArray(runs.data) ? runs.data : []);
-      $i('chRuns').innerHTML = list.length ? list.map(r => `
-        <div class="row">
-          <div class="who"><b>${esc(r.goal || r.title || '(无目标)')}</b>
-          <span class="mono">${esc(r.id || '')} · ${esc(r.status || '')} · ${esc(r.steps ?? '?')} 步 · ${esc(r.totalTokens ?? '?')} token</span></div>
-          <div class="tags"><span class="tag ${r.status === 'done' ? 'on' : (r.status === 'failed' ? 'warn' : '')}">${esc(r.status || '')}</span></div>
-        </div>`).join('') : '<div class="empty">还没有运行记录</div>';
+      $i('chRuns').innerHTML = list.length ? list.map(r => {
+        const goal = r.goal || r.title || '(无目标)';
+        return `<div class="rail-item" title="${esc(goal)}">
+          <b>${esc(goal)}</b>
+          <span>${esc(r.status || '?')} · ${esc(r.steps ?? '?')} 步 · ${esc(r.totalTokens ?? '?')} token</span>
+          <span>${esc(fmtTime(r.at || r.createdAt))}</span>
+        </div>`;
+      }).join('') : '<div class="empty" style="padding:6px 0">还没有运行记录</div>';
+      // 点侧栏里的一条 → 切到「工作」模式看当前状态
+      $i('chRuns').querySelectorAll('.rail-item').forEach(el => {
+        el.style.cursor = 'pointer';
+        el.onclick = () => setMode('work');
+      });
     } else {
-      $i('chRuns').innerHTML = `<div class="empty err">读不到运行记录：${esc(runs.error || '')}</div>`;
+      $i('chRuns').innerHTML = `<div class="empty err" style="padding:6px 0">读不到运行记录：${esc(runs.error || '')}</div>`;
     }
-  };
-
-  $i('chSend').onclick = async () => {
-    const goal = $i('chGoal').value.trim();
-    if (!goal) { $i('chState').innerHTML = '<span class="err">先写一句要做什么</span>'; return; }
-    $i('chState').textContent = '已派发，跑着…';
-    const r = await API.post('/api/agent/run', { goal, wait: false });
-    if (!r.ok) { $i('chState').innerHTML = `<span class="err">${esc(r.error || '派发失败')}</span>`; return; }
-    const d = r.data || {};
-    // 魔法命令（以 / 开头）：后端直接回执，不派活也不占运行记录，把回复原样贴出来即可
-    if (d.command) {
-      $i('chState').innerHTML = '<span class="ok">魔法命令 /' + esc(d.name || '') +
-        (d.action ? '（动作：' + esc(d.action) + '）' : '') + '</span><br>' +
-        '<span class="pre" style="white-space:pre-wrap">' + esc(d.reply || '（命令已执行）') + '</span>';
-      $i('chGoal').value = '';
-      return;
-    }
-    const id = d.runId || d.id || '';
-    $i('chState').innerHTML = `<span class="ok">已派发${id ? ' · ' + esc(id) : ''}</span>`;
-    $i('chGoal').value = '';
-    load();
   };
 
   await load();
   timer = setInterval(load, 3000);
   root.addEventListener('shell:closed', () => clearInterval(timer));
+  setTimeout(() => { const t = $i('chGoal'); if (t) t.focus(); }, 40);
 }

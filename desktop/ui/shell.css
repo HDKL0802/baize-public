@@ -67,11 +67,15 @@ body{
 .dot{width:6px;height:6px;border-radius:999px;background:var(--ok);flex:none}
 .dot.warn{background:var(--warn)} .dot.off{background:var(--text-3)} .dot.err{background:var(--danger)}
 
-/* ---------- 通用 UI（各应用共用） ---------- */
-h3{margin:0 0 2px;font-size:15px;font-weight:600}
-.sub{color:var(--text-3);font-size:12px;margin-bottom:12px}
-.sect{margin-top:18px}
-.row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)}
+/* ---------- 通用 UI（各应用共用） ----------
+   审美基准：8px 间距栅格 · 三档字色（正文/次/弱）· 2px 直角 · 1px 描边。
+   「卡片化」是这里的主要手法：每个 .sect 是一个有底有边的分组，靠留白与分组替掉一堆分割线。 */
+h3{margin:0 0 3px;font-size:15px;font-weight:600;letter-spacing:.01em}
+.sub{color:var(--text-3);font-size:12px;line-height:1.7;margin-bottom:10px}
+.sect{margin-top:16px;padding:14px 16px;background:var(--surface);border:1px solid var(--border)}
+.sect>h3:first-child{margin-top:0}
+.sect>.sub:last-child{margin-bottom:0}
+.row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)}
 .row:first-of-type{border-top:0}
 .row .who{min-width:0;flex:1}
 .row .who b{display:block;font-size:13px;font-weight:600}
@@ -81,9 +85,9 @@ h3{margin:0 0 2px;font-size:15px;font-weight:600}
 .tag.on{border-color:var(--accent);color:var(--accent)}
 .tag.off{color:var(--text-3)}
 .tag.warn{border-color:var(--warn);color:var(--warn)}
-.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
-label{display:block;font-size:11px;color:var(--text-3);margin-bottom:3px}
-select,input:not([type=checkbox]):not([type=radio]),textarea{width:100%;padding:6px 8px;font:inherit;font-size:13px;color:var(--text);
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+label{display:block;font-size:11px;color:var(--text-3);margin-bottom:4px}
+select,input:not([type=checkbox]):not([type=radio]),textarea{width:100%;padding:7px 9px;font:inherit;font-size:13px;color:var(--text);
   background:var(--surface-2);border:1px solid var(--border);border-radius:0}
 /* 复选框/单选框别吃 width:100%（否则会把同行文本挤成一字一行） */
 input[type=checkbox],input[type=radio]{width:auto;padding:0;margin:0;accent-color:var(--accent);cursor:pointer;flex:none}
@@ -95,11 +99,11 @@ textarea{resize:vertical;min-height:64px}
 .btn.ghost{background:var(--surface-2);color:var(--text-2);border-color:var(--border);font-weight:500}
 .btn.ghost:hover{color:var(--text);border-color:var(--border-strong)}
 .btn.sm{padding:3px 9px;font-size:12px}
-.empty{color:var(--text-3);font-size:13px;padding:14px 0}
+.empty{color:var(--text-3);font-size:13px;line-height:1.75;padding:14px 0}
 .err{color:var(--danger);font-size:12px}
 .ok{color:var(--ok);font-size:12px}
-.pre{white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:12px;
-  background:var(--surface-2);border:1px solid var(--border);padding:8px;max-height:220px;overflow:auto}
+.pre{white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:12px;line-height:1.7;
+  background:var(--surface-2);border:1px solid var(--border);padding:10px;max-height:220px;overflow:auto}
 
 /* ---------- 提示 ---------- */
 .toasts{position:fixed;right:16px;bottom:16px;z-index:90;display:grid;gap:8px;justify-items:end}
@@ -201,6 +205,23 @@ textarea{resize:vertical;min-height:64px}
 .am-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
 .am-actions .btn{min-width:104px}
 .am-foot{margin-top:9px;font-size:11px;color:var(--text-3);border-top:1px dashed var(--border);padding-top:7px}
+
+/* ---------- 对话页：工作 / 聊天 双模式 + 「最近运行」侧栏 ---------- */
+.chat-wrap{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:16px;align-items:start}
+.chat-main{min-width:0}
+.chat-rail{border:1px solid var(--border);background:var(--surface);padding:12px 14px}
+.chat-rail .rail-h{font-size:10px;letter-spacing:.16em;color:var(--text-3);margin-bottom:6px}
+.rail-item{padding:9px 0;border-top:1px solid var(--border)}
+.rail-item:first-of-type{border-top:0}
+.rail-item b{display:block;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rail-item span{display:block;color:var(--text-3);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmsgs{max-height:360px;min-height:150px;overflow:auto;padding:10px;background:var(--surface);
+  border:1px solid var(--border);display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.cmsgs:empty::before{content:attr(data-ph);color:var(--text-3);padding:4px}
+.cmsg{max-width:86%;padding:8px 11px;font-size:13px;line-height:1.65;border:1px solid var(--border);word-break:break-word}
+.cmsg.me{align-self:flex-end;background:var(--accent-soft);border-color:var(--border-strong)}
+.cmsg.ai{align-self:flex-start;background:var(--surface-2)}
+.cmsg .meta{display:block;margin-top:5px;color:var(--text-3);font-size:11px}
 
 /* ---------- 迷你对话小窗（左键点悬浮球） ----------
    原生侧把主窗口缩成置顶小窗并跳到 #chat；这里只留对话区，藏掉侧栏 / 顶栏 / 大板块。 */

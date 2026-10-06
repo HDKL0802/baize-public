@@ -24,6 +24,8 @@ window.VzVoice = (function () {
   /* ---------- 内核：在不在、端口是多少 ---------- */
   /** 返回 {ok, port, why}。why 是"为什么用不了"，直接能读给用户听。 */
   function kernel() {
+    // 网页版：没有本机内核，音频直接从「后端这个源」取（同源，连跨源/CORS 都不涉及）
+    if (window.__bzWeb) return { ok: true, origin: location.origin };
     const nb = native();
     if (!nb || typeof nb.bzCoreStatus !== 'function') {
       return { ok: false, why: '当前入口不是手机 App（网页版没有本机内核，语音走不通）' };
@@ -94,7 +96,8 @@ window.VzVoice = (function () {
       toast('这段有点长，先念前 ' + MAX_READ + ' 个字', 3200);
     }
     const voice = opts.voice || st.voice || '';
-    let url = 'http://127.0.0.1:' + k.port + '/api/agent/voice/tts?text=' + encodeURIComponent(text2);
+    const base = k.origin || ('http://127.0.0.1:' + k.port);
+    let url = base + '/api/agent/voice/tts?text=' + encodeURIComponent(text2);
     if (voice) url += '&voice=' + encodeURIComponent(voice);
 
     // 媒体跨源加载不要求 CORS（所以不用给内核加跨源头），直接交给 <audio>

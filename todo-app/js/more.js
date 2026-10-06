@@ -590,15 +590,13 @@ window.More = (function () {
     onebot:   { hint: 'QQ OneBot V11 反向 WS：让 NapCat / go-cqhttp 连 /api/channels/{id}/ws?access_token=令牌。必须设令牌。', fields: ['token'] },
     feishu:   { hint: '飞书：出站 OpenAPI（要 appId/appSecret）；入站填验证令牌或配轮询会话（免公网）。', fields: ['appId', 'appSecret', 'token', 'domain', 'chatIds', 'pollSec'] },
     dingtalk: { hint: '钉钉：后台建应用→加「机器人」→消息接收选 Stream 模式，取 Client ID / Client Secret。白泽主动连出去，免公网。', fields: ['appId', 'appSecret', 'domain'] },
-    qq:       { hint: 'QQ 官方机器人（入驻要实名）：取 AppID / ClientSecret。', fields: ['appId', 'appSecret', 'domain'] },
-    xiaoyi:   { hint: '华为小艺：取 AK / SK / Agent ID（AK→appId，SK→appSecret）。', fields: ['appId', 'appSecret', 'agentId', 'domain'] },
     yuanbao:  { hint: '腾讯元宝：填 app_id（appId）/ app_secret（appSecret）；接入点一般不用改。', fields: ['appId', 'appSecret', 'domain', 'outboundUrl'] },
     wechat:   { hint: '个人微信：首次需在后端日志里扫码登录（登录后凭证落盘）。一般不用填令牌。', fields: ['token', 'domain'] },
   };
 
   function openChannelForm(kinds) {
     const ks = (kinds && kinds.length) ? kinds
-      : ['webhook', 'onebot', 'feishu', 'dingtalk', 'qq', 'xiaoyi', 'yuanbao', 'wechat'];
+      : ['webhook', 'onebot', 'feishu', 'dingtalk', 'yuanbao', 'wechat'];
     const html = `
       <div class="f-block">
         <label class="f-label">频道 id<span class="req">*</span></label>

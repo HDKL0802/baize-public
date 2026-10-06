@@ -10,10 +10,9 @@
    - onebot   QQ OneBot V11 反向 WS：NapCat / go-cqhttp 连进来。
    - feishu   飞书：出站 OpenAPI；入站二选一（事件回调填验证令牌 / 轮询会话免公网）。
    - dingtalk 钉钉 Stream 长连接（白泽主动连出去，免公网）——QwenPaw 的推荐频道。
-   - qq       QQ 官方机器人（AccessToken + WS 网关 + OpenAPI；入驻需实名）。
-   - xiaoyi   华为小艺（A2A over WebSocket，AK/SK 签名 + Agent ID）。
    - yuanbao  腾讯元宝（protobuf over WebSocket + sign-token）。
-   - wechat   个人微信（官方 iLink Bot：首次扫码登录，凭证落盘）。 */
+   - wechat   个人微信（官方 iLink Bot：首次扫码登录，凭证落盘）。
+   （另有 qq / xiaoyi 两个适配器，源码保留但「有源码打不开」——需要实名/开发者账号，故界面不给入口。） */
 'use strict';
 
 const CH_KIND_META = {
@@ -21,8 +20,6 @@ const CH_KIND_META = {
   onebot:   { hint: 'QQ OneBot V11 反向 WebSocket：让 NapCat / go-cqhttp 连到 <span class="mono">/api/channels/{id}/ws?access_token=令牌</span>。必须设入站令牌，否则谁都能连进来派活。', fields: ['token'] },
   feishu:   { hint: '飞书：出站走 OpenAPI（要 appId/appSecret）。入站二选一 —— 事件回调（填「验证令牌」，需公网），或填「轮询会话 chatIds」由白泽主动拉（免公网）。', fields: ['appId', 'appSecret', 'token', 'domain', 'chatIds', 'pollSec'] },
   dingtalk: { hint: '钉钉 Stream 长连接：钉钉开发者后台建应用 → 加「机器人」→ 消息接收选 <b>Stream 模式</b> → 取 Client ID / Client Secret。白泽主动连出去，免公网；回复走消息里的 sessionWebhook。', fields: ['appId', 'appSecret', 'domain'] },
-  qq:       { hint: 'QQ 官方机器人：QQ 开放平台建机器人取 AppID / ClientSecret（入驻要实名，白泽只做机器人本身）。', fields: ['appId', 'appSecret', 'domain'] },
-  xiaoyi:   { hint: '华为小艺：小艺开放平台建 Agent，取 AK / SK / Agent ID。AK 填 appId、SK 填 appSecret。', fields: ['appId', 'appSecret', 'agentId', 'domain'] },
   yuanbao:  { hint: '腾讯元宝：protobuf over WebSocket + sign-token。填 app_id（appId）/ app_secret（appSecret）；接入点缺省用官方，一般不用改。', fields: ['appId', 'appSecret', 'domain', 'outboundUrl'] },
   wechat:   { hint: '个人微信：官方 iLink Bot。首次要在后端日志里扫码登录（登录后凭证落盘，之后自动收发）。一般不用填令牌；换自建/测试地址才填 domain。', fields: ['token', 'domain'] },
 };

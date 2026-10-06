@@ -156,6 +156,144 @@ window.Shell = (function () {
     }
   }
 
+  /* ---------------- 授权 / 审批弹窗（B4）----------------
+     危险操作执行前，置顶弹一个确认框：操作描述 / 目标 / 影响范围 / 建议 + 确认·拒绝。
+     无论当前在哪个应用里都会弹；一次只处理一条，其余排队。超时由后端按「拒绝」处理，
+     这里只如实显示倒计时并说明「超时按拒绝」。批准依据分两类：
+       - 工具调用（/api/agent/approvals）：可顺带「本会话不再问 / 永久放行」
+       - 跨端任务（/api/state 里 pending_approval）：直接批 / 驳 */
+  let approvalKey = null;      // 当前弹窗锁定的 item 键（kind:id）
+  let approvalTick = null;     // 倒计时
+  const decidedKeys = new Set(); // 本次会话已处理过的，避免重复弹
+
+  function ensureApprovalModal() {
+    let m = document.getElementById('approvalModal');
+    if (m) return m;
+    m = document.createElement('div');
+    m.id = 'approvalModal';
+    m.hidden = true;
+    m.innerHTML = `
+      <div class="am-box" role="dialog" aria-modal="true" aria-label="危险操作确认">
+        <div class="am-head">
+          <span class="am-badge">需要你确认</span>
+          <span class="am-kind" id="amKind"></span>
+          <span class="am-count" id="amCount"></span>
+        </div>
+        <h3 class="am-title" id="amTitle">—</h3>
+        <div class="am-desc" id="amDesc"></div>
+        <div class="am-args mono" id="amArgs"></div>
+        <div class="am-meta">
+          <div><b>影响范围</b><span id="amImpact">—</span></div>
+          <div><b>建议</b><span id="amAdvice">—</span></div>
+          <div><b>剩余时间</b><span id="amLeft">—</span></div>
+        </div>
+        <label class="am-remember" id="amRememberWrap" hidden>
+          <span><input type="checkbox" id="amRememberSession"> 本会话内不再问这个工具</span>
+          <span><input type="checkbox" id="amRememberAlways"> 永久放行（写进配置，可撤）</span>
+        </label>
+        <div class="am-actions">
+          <button class="btn ghost" id="amReject">拒绝</button>
+          <button class="btn" id="amApprove">批准并执行</button>
+        </div>
+        <div class="am-foot" id="amFoot">批准之前，什么都不会发生。超时未确认按「拒绝」处理，后端会记录在案。</div>
+      </div>`;
+    document.body.appendChild(m);
+    $('amApprove').onclick = () => decideApproval(true);
+    $('amReject').onclick = () => decideApproval(false);
+    return m;
+  }
+
+  function showApproval(kind, it, total) {
+    const m = ensureApprovalModal();
+    approvalKey = kind + ':' + it.id;
+    $('amKind').textContent = kind === 'task' ? '跨端任务' : '工具调用';
+    $('amCount').textContent = total > 1 ? ('还有 ' + (total - 1) + ' 条排队') : '';
+    if (kind === 'task') {
+      $('amTitle').textContent = it.action || '（无动作名）';
+      $('amDesc').textContent = '来源 ' + (it.origin || 'agent') + ' · 目标设备 ' + (it.deviceId || '?') + ' · ' + fmtTime(it.createdAt);
+      $('amImpact').textContent = '这条动作会真的下发到设备「' + (it.deviceId || '?') + '」执行';
+      $('amAdvice').textContent = '确认这台设备与这个动作是你派的，再放行；拿不准就拒绝';
+    } else {
+      $('amTitle').textContent = it.tool || '（未知工具）';
+      $('amDesc').textContent = '白泽想调用这个工具' + (it.runId ? ' · 运行 ' + it.runId : '');
+      $('amImpact').textContent = '只影响这台 NAS 上的后端（执行工具「' + it.tool + '」本身）';
+      $('amAdvice').textContent = '看清参数是不是你要的；拿不准就拒绝，白泽会当成「你不许这么做」';
+    }
+    $('amArgs').textContent = JSON.stringify(it.args || {}, null, 2);
+    $('amRememberWrap').hidden = (kind === 'task');
+    $('amRememberSession').checked = false;
+    $('amRememberAlways').checked = false;
+    m.hidden = false;
+    $('amApprove').disabled = false;
+    $('amReject').disabled = false;
+    startCountdown(it.expiresAt);
+  }
+
+  function startCountdown(expiresAt) {
+    clearInterval(approvalTick);
+    const el = $('amLeft');
+    const tick = () => {
+      if (!expiresAt) { el.textContent = '不限时（等你确认）'; el.classList.remove('err'); return; }
+      const left = expiresAt - Date.now();
+      if (left <= 0) { el.textContent = '已超时（后端按拒绝处理）'; el.classList.add('err'); return; }
+      const s = Math.floor(left / 1000);
+      el.classList.remove('err');
+      el.textContent = s >= 60 ? (Math.floor(s / 60) + ' 分 ' + String(s % 60).padStart(2, '0') + ' 秒') : (s + ' 秒');
+    };
+    tick();
+    approvalTick = setInterval(tick, 1000);
+  }
+
+  function closeApproval() {
+    const m = document.getElementById('approvalModal');
+    if (m) m.hidden = true;
+  }
+
+  async function decideApproval(ok) {
+    const [kind, id] = String(approvalKey || '').split(':');
+    if (!kind || !id) return;
+    $('amApprove').disabled = true;
+    $('amReject').disabled = true;
+    let r;
+    if (kind === 'task') {
+      r = ok
+        ? await API.post('/api/tasks/' + encodeURIComponent(id) + '/approve', { by: '桌面端' })
+        : await API.post('/api/tasks/' + encodeURIComponent(id) + '/reject', { by: '桌面端', reason: '桌面端驳回' });
+    } else {
+      const remember = $('amRememberAlways').checked ? 'always' : ($('amRememberSession').checked ? 'session' : '');
+      r = ok
+        ? await API.post('/api/agent/approvals/' + encodeURIComponent(id) + '/approve', { by: '桌面端', remember: remember })
+        : await API.post('/api/agent/approvals/' + encodeURIComponent(id) + '/reject', { by: '桌面端', reason: '桌面端拒绝' });
+    }
+    clearInterval(approvalTick);
+    decidedKeys.add(kind + ':' + id);
+    approvalKey = null;
+    closeApproval();
+    if (!r.ok) toast('操作失败：' + r.error, 'err');
+    else if (kind === 'agent' && ok && $('amRememberAlways') && $('amRememberAlways').checked) toast('已批准，并永久放行该工具', 'ok');
+    else toast(ok ? '已批准' : '已拒绝', ok ? 'ok' : 'warn');
+    pollApprovals();
+  }
+
+  async function pollApprovals() {
+    if (approvalKey) return; // 已经有弹窗在等，不抢
+    const [r1, r2] = await Promise.all([API.get('/api/agent/approvals'), API.get('/api/state')]);
+    const queue = [];
+    if (r1.ok) {
+      ((r1.data && r1.data.approvals) || [])
+        .filter(a => a.status === 'pending' && !decidedKeys.has('agent:' + a.id))
+        .forEach(a => queue.push({ kind: 'agent', it: a }));
+    }
+    if (r2.ok) {
+      ((r2.data && r2.data.tasks) || [])
+        .filter(t => t.status === 'pending_approval' && !decidedKeys.has('task:' + t.id))
+        .forEach(t => queue.push({ kind: 'task', it: t }));
+    }
+    if (!queue.length) return;
+    queue.sort((a, b) => (a.it.at || a.it.createdAt || 0) - (b.it.at || b.it.createdAt || 0)); // 先到先确认
+    showApproval(queue[0].kind, queue[0].it, queue.length);
+  }
+
   function clock() {
     const d = new Date(), p = n => String(n).padStart(2, '0');
     $('clock').textContent = p(d.getHours()) + ':' + p(d.getMinutes());
@@ -163,10 +301,11 @@ window.Shell = (function () {
 
   /* ---------------- 启动 ---------------- */
   function boot() {
-    buildNav(); clock(); conn(); pollPending();
+    buildNav(); clock(); conn(); pollPending(); pollApprovals();
     setInterval(clock, 20000);
     setInterval(conn, 8000);
     setInterval(pollPending, 12000);
+    setInterval(pollApprovals, 4000); // 审批弹窗：4 秒一次，尽量不让危险操作等太久
 
     /* 深链 #appid 直接打开某个应用；否则默认开「设备」 */
     const want = (location.hash || '').replace(/^#/, '').trim();

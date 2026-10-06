@@ -38,7 +38,7 @@
 
 | 项目（版本） | 许可证 | 我们怎么用 |
 |---|---|---|
-| **QwenPaw** `2.2.2b4`（agentscope-ai） | **Apache-2.0** | 参考其「Web 控制台 + 桌面端外壳」的交互与功能划分；桌面端外壳为本项目自写（Go + 原生 HTML/CSS/JS）。<br>**功能移植**（2026-10-05 起）：persona（人设）/ heartbeat（心跳）/ 魔法命令 / channels（IM 渠道）等能力参照其设计与文档，**用 Go 重写**；Apache-2.0 允许此类衍用，本文件保留其署名与许可。 |
+| **QwenPaw** `2.2.2b4`（agentscope-ai） | **Apache-2.0** | 参考其「Web 控制台 + 桌面端外壳」的交互与功能划分；桌面端外壳为本项目自写（Go + 原生 HTML/CSS/JS）。<br>**功能移植**（2026-10-05 起）：persona（人设）/ heartbeat（心跳）/ 魔法命令 / channels（IM 渠道）等能力参照其设计与文档，**用 Go 重写**；其中频道自 0.9.25 起含 `webhook` / `onebot` / `feishu` / `dingtalk`（钉钉 Stream）/ `qq`（QQ 官方）/ `xiaoyi`（小艺 A2A）/ `yuanbao`（元宝 protobuf）/ `wechat`（微信 iLink Bot）。Apache-2.0 允许此类衍用，本文件保留其署名与许可。 |
 | **Hermes-Agent** `0.0.0`（pyproject 占位版本；Nous Research） | **MIT** | 「创造技能」能力参考其设计，已**用 Go 重写**为 `agent/internal/skills` |
 | **PicoClaw** `dev`（构建期由 ldflags 注入，源码里无固定版本号） | **MIT** | 渠道/工具设计参考 |
 | **OpenHuman** `0.63.33` ⚠️ | **GPL-3.0** | 记忆术 / 语音路由参考其设计，并**用 Go 重写**为 `agent/internal/memory`、`agent/internal/voice` —— **见 §3** |

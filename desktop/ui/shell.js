@@ -15,7 +15,7 @@ window.Shell = (function () {
     { title: '核心', ids: ['chat', 'devices', 'tasks'] },
     { title: '知识', ids: ['kb', 'memory', 'activity'] },
     { title: '协作', ids: ['accounts', 'conflicts'] },
-    { title: '能力', ids: ['providers', 'mcp', 'external', 'skills', 'plugins', 'persona', 'cron'] },
+    { title: '能力', ids: ['providers', 'mcp', 'channels', 'external', 'skills', 'plugins', 'persona', 'cron'] },
     { title: '系统', ids: ['observe', 'backup', 'settings'] },
   ];
 
@@ -31,6 +31,7 @@ window.Shell = (function () {
     providers: '<path d="M13.5 3 5.5 13.5H11l-1 7.5 8.5-10.5H13z"/>',
     mcp: '<path d="M9 3.5v4M15 3.5v4"/><path d="M6.5 7.5h11v3.5a5.5 5.5 0 0 1-11 0z"/><path d="M12 16.5v4"/>',
     external: '<circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="6" r="2.6"/><circle cx="18" cy="18" r="2.6"/><path d="M8.3 10.9 15.7 7.2M8.3 13.1l7.4 3.7"/>',
+    channels: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/>',
     skills: '<path d="M12 3.2l2 5.3 5.3 2-5.3 2-2 5.3-2-5.3-5.3-2 5.3-2z"/><path d="M18.5 16.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
     plugins: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.4"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.4"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.4"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.4"/>',
     persona: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10.6" r="2.1"/><path d="M5.7 16.4c.6-1.6 1.8-2.4 3.3-2.4s2.7.8 3.3 2.4"/><path d="M15 10.2h3.6M15 13.4h3.6"/>',

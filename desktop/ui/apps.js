@@ -136,6 +136,7 @@ window.APPS = [
   { id: 'providers', name: '模型通道', icon: '✨', w: 860, h: 560 },
   { id: 'mcp', name: 'MCP 服务', icon: '🔌', w: 820, h: 560 },
   { id: 'external', name: '外部 Agent', icon: '🤖', w: 1000, h: 700 },
+  { id: 'channels', name: '频道', icon: '📻', w: 1040, h: 700 },
   { id: 'skills', name: '技能', icon: '🧩', w: 820, h: 560 },
   { id: 'plugins', name: '插件市场', icon: '📦', w: 1000, h: 660 },
   { id: 'persona', name: '人设', icon: '🎭', w: 940, h: 640 },

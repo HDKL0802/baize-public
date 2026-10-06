@@ -38,6 +38,8 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	s.registerSharing(mux)
 	// 冲突协商（同名两版的对照/聊天/定稿 + 音视频信令中转）
 	s.registerConflicts(mux)
+	// 插件市场（静态源 + 插件包 → 技能目录 / MCP 配置）
+	s.registerPlugins(mux)
 	mux.HandleFunc("GET /api/agent/state", s.api(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, a.State())
 	}))

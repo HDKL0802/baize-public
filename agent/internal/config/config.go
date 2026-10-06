@@ -162,6 +162,15 @@ type Search struct {
 	MaxResults int    `json:"maxResults,omitempty"`
 }
 
+// PluginSource 一个插件源（插件市场从它的 index.json 拉货架）。
+// URL 可以是 http(s) 地址（静态托管即可，比如 GitHub raw / Pages），也可以是本机路径
+// （离线安装 / 自建源 / 开发插件时用）。插件包本身也是静态文件，所以整套东西**零成本**。
+type PluginSource struct {
+	Name    string `json:"name"`
+	URL     string `json:"url"`
+	Enabled bool   `json:"enabled"`
+}
+
 // Config 后端 Agent 配置
 type Config struct {
 	AllowRemote bool       `json:"allowRemote"` // 是否允许非本机模型地址 / 远端 MCP 服务
@@ -185,17 +194,18 @@ type Config struct {
 	// DeviceRemarks 设备备注（key = 设备 id）。这是用户的标注而不是设备上报的状态，
 	// 所以放在配置里：设备重装、换网络都不会把备注弄丢。
 	DeviceRemarks  map[string]string  `json:"deviceRemarks,omitempty"`
-	AutoRunOnStart bool               `json:"autoRunOnStart"` // 启动时是否立刻跑一次定时任务检查
-	MCPServers     []mcp.ServerConfig `json:"mcpServers"`     // MCP 外部服务（热插拔）
-	BackupKeep     int                `json:"backupKeep"`     // 自动备份保留份数，默认 10
-	Embedding      Embedding          `json:"embedding"`      // 向量化通道（记忆语义检索）
-	Memory         Memory             `json:"memory"`         // 记忆术设置
-	Voice          Voice              `json:"voice"`          // 语音通道（说话 / 听写）
-	Persona        Persona            `json:"persona"`        // 人设文件（Markdown 进系统提示）
-	Heartbeat      HeartbeatConfig    `json:"heartbeat"`      // 心跳任务（定期运行 agent）
-	Channels       []ChannelConfig    `json:"channels"`       // 频道（IM / webhook 接入）
-	Browser        Browser            `json:"browser"`        // 浏览器工具（打开网页 / 跑 JS / 截图）
-	Search         Search             `json:"search"`         // 联网搜索通道（web_search 工具）
+	AutoRunOnStart bool               `json:"autoRunOnStart"`          // 启动时是否立刻跑一次定时任务检查
+	MCPServers     []mcp.ServerConfig `json:"mcpServers"`              // MCP 外部服务（热插拔）
+	BackupKeep     int                `json:"backupKeep"`              // 自动备份保留份数，默认 10
+	Embedding      Embedding          `json:"embedding"`               // 向量化通道（记忆语义检索）
+	Memory         Memory             `json:"memory"`                  // 记忆术设置
+	Voice          Voice              `json:"voice"`                   // 语音通道（说话 / 听写）
+	Persona        Persona            `json:"persona"`                 // 人设文件（Markdown 进系统提示）
+	Heartbeat      HeartbeatConfig    `json:"heartbeat"`               // 心跳任务（定期运行 agent）
+	Channels       []ChannelConfig    `json:"channels"`                // 频道（IM / webhook 接入）
+	Browser        Browser            `json:"browser"`                 // 浏览器工具（打开网页 / 跑 JS / 截图）
+	Search         Search             `json:"search"`                  // 联网搜索通道（web_search 工具）
+	PluginSources  []PluginSource     `json:"pluginSources,omitempty"` // 插件源（插件市场）
 }
 
 // 记忆检索的权重档位（非法值一律回落到 balanced）
@@ -439,6 +449,23 @@ func (c *Config) normalize() {
 		cleanedCh = append(cleanedCh, ch)
 	}
 	c.Channels = cleanedCh
+	// 插件源：去空白、丢空 url、按 url 去重；名字留空就拿 url 顶上（市场里总得有个显示名）。
+	// 与频道一样，**不自动新建**——没配就是没配，市场会明确说"还没有可用的插件源"。
+	cleanedSrc := make([]PluginSource, 0, len(c.PluginSources))
+	seenSrc := map[string]bool{}
+	for _, s := range c.PluginSources {
+		s.Name = strings.TrimSpace(s.Name)
+		s.URL = strings.TrimSpace(s.URL)
+		if s.URL == "" || seenSrc[s.URL] {
+			continue
+		}
+		seenSrc[s.URL] = true
+		if s.Name == "" {
+			s.Name = s.URL
+		}
+		cleanedSrc = append(cleanedSrc, s)
+	}
+	c.PluginSources = cleanedSrc
 }
 
 // 语音通道支持的协议

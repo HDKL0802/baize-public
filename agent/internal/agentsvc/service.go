@@ -29,6 +29,7 @@ import (
 	"baize/internal/mcp"
 	"baize/internal/memory"
 	"baize/internal/persona"
+	"baize/internal/plugins"
 	"baize/internal/skills"
 	"baize/internal/tools"
 )
@@ -154,6 +155,7 @@ type Service struct {
 	ws          *tools.Workspace
 	mcp         *mcp.Manager
 	kbs         *kb.Service
+	plugins     *plugins.Manager
 	persona     *persona.Library
 	chans       *channels.Manager
 	chansCancel context.CancelFunc    // 轮询型频道的取消器（重建/关闭时停）
@@ -273,6 +275,9 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 	}
 	// 活动追踪始终开启：挂到同一根事件总线上，运行时的每一步都会实时反映出来
 	s.activity.Attach(s.hooks)
+	// 插件市场：装插件 = 往技能目录落技能 + 往配置里加 MCP 服务，所以它需要上面那几个口子。
+	// 构造放在 Service 建好之后（hooks 里要回调 s）。
+	s.plugins = s.newPluginManager(dataDir)
 	for _, opt := range opts {
 		opt(s)
 	}

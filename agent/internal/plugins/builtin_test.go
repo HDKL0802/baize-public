@@ -65,12 +65,23 @@ func TestOfficialSourceContentIsValid(t *testing.T) {
 	}
 
 	seenSkill := map[string]string{}
-	for _, id := range ids {
-		root := "official/" + id
+	for _, meta := range idx.Plugins {
+		id := meta.ID
+		// 板块/阶段/分类：目录结构决定，且必须是认得出的值
+		if meta.Channel != ChannelOfficial {
+			t.Errorf("%s：内置插件的 channel 应当是 %s，实际 %q", id, ChannelOfficial, meta.Channel)
+		}
+		if meta.Stage != StageStable && meta.Stage != StageBeta {
+			t.Errorf("%s：阶段只能是 %s 或 %s，实际 %q", id, StageStable, StageBeta, meta.Stage)
+		}
+		if strings.TrimSpace(meta.Category) == "" {
+			t.Errorf("%s：分类不能为空（板块内要能归类）", id)
+		}
+		root := "official/" + meta.Stage + "/" + meta.Category + "/" + id
 
 		raw, err := fs.ReadFile(officialFS, root+"/plugin.json")
 		if err != nil {
-			t.Fatalf("读 %s 的清单失败：%v", id, err)
+			t.Fatalf("读 %s 的清单失败（按目录 %s）：%v", id, root, err)
 		}
 		var m Manifest
 		if err := json.Unmarshal(raw, &m); err != nil {
@@ -207,6 +218,15 @@ func TestBuiltinSourceCatalog(t *testing.T) {
 		}
 		if a.Name == "" || a.Description == "" {
 			t.Errorf("%s：货架上信息不全（name/description 都要有）", a.ID)
+		}
+		if a.Channel != ChannelOfficial {
+			t.Errorf("%s：内置源的插件应当是官方板块，实际 %q", a.ID, a.Channel)
+		}
+		if a.Stage != StageStable && a.Stage != StageBeta {
+			t.Errorf("%s：阶段不对：%q", a.ID, a.Stage)
+		}
+		if a.Category == "" {
+			t.Errorf("%s：没分类（界面按 板块·阶段·分类 分组，会落到「未分类」）", a.ID)
 		}
 	}
 }

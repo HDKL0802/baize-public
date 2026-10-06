@@ -117,6 +117,35 @@ func TestNormalizeIndexDropsBadEntries(t *testing.T) {
 	}
 }
 
+func TestIndexChannelAndStageDefaults(t *testing.T) {
+	idx := normalizeIndex(Index{Plugins: []Meta{
+		{ID: "a", URL: "a.zip"}, // 什么都没标
+		{ID: "b", URL: "b.zip", Channel: "official", Stage: "beta", Category: " 调研 "},
+		{ID: "c", URL: "c.zip", Channel: "官方", Stage: "测试版"},
+		{ID: "d", URL: "d.zip", Channel: "whatever", Stage: "weird"},
+	}})
+	byID := map[string]Meta{}
+	for _, m := range idx.Plugins {
+		byID[m.ID] = m
+	}
+	// 这是条"不能替别人宣称官方"的口径：没标注一律按社区
+	if got := byID["a"].Channel; got != ChannelCommunity {
+		t.Errorf("没标板块应当按社区处理，实际 %q", got)
+	}
+	if got := byID["a"].Stage; got != StageStable {
+		t.Errorf("没标阶段应当按正式版处理，实际 %q", got)
+	}
+	if byID["b"].Channel != ChannelOfficial || byID["b"].Stage != StageBeta || byID["b"].Category != "调研" {
+		t.Errorf("显式标注没保留（分类应当去掉首尾空白）：%+v", byID["b"])
+	}
+	if byID["c"].Channel != ChannelOfficial || byID["c"].Stage != StageBeta {
+		t.Errorf("中文别名没认出来：%+v", byID["c"])
+	}
+	if byID["d"].Channel != ChannelCommunity || byID["d"].Stage != StageStable {
+		t.Errorf("乱写的值应当保守回落：%+v", byID["d"])
+	}
+}
+
 func TestResolveRef(t *testing.T) {
 	cases := []struct{ base, ref, want string }{
 		{"https://example.com/market/index.json", "pkgs/a.zip", "https://example.com/market/pkgs/a.zip"},

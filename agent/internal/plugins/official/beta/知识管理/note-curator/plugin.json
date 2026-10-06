@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "note-curator",
+  "name": "星图整理",
+  "version": "0.1.0",
+  "description": "定期整理记忆星图：补上悬空的双链、按语义把同主题笔记连起来、清掉重复。",
+  "author": "白泽",
+  "homepage": "https://github.com/HDKL0802/baize-plugins",
+  "license": "MIT",
+  "tags": ["笔记", "星图", "整理"],
+  "minBaize": "0.9.22"
+}

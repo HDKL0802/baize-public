@@ -35,7 +35,7 @@ import (
 	"baize/shared/proto"
 )
 
-const version = "0.9.21"
+const version = "0.9.22"
 
 func main() {
 	var (

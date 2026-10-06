@@ -18,9 +18,13 @@ import (
 // 内置官方源：随后端二进制一起分发（go:embed），所以**不需要任何外部托管**就能开箱用，
 // 也天生离线可用。它落在数据目录之外，因此不写进 config —— 换机器、换数据目录都不会失效。
 //
-// 与远端源的**唯一差别只在"从哪儿取字节"**：索引与插件包都在内存里现场生成，
-// 之后走的还是同一条路（下载 → 校验 sha256 → 解包 → 落技能目录 + 登记 MCP）。
-// 换句话说：内置源是一份"格式完全合规的示例源"，模板仓里要发布的那种源与它同构。
+// 内嵌目录结构与线上插件仓（`baize-plugins`）**同一套规矩**：
+//
+//	official/<阶段 stable|beta>/<分类>/<插件id>/plugin.json
+//
+// 内置源整份都是官方，所以不需要 community 那一层。与远端源的**唯一差别只在"从哪儿取字节"**：
+// 索引与插件包都在内存里现场生成，之后走的还是同一条路（下载 → 校验 sha256 → 解包 →
+// 落技能目录 + 登记 MCP）。换句话说：内置源是一份"格式完全合规的示例源"。
 const (
 	// BuiltinSourceURL 内置官方源的地址（索引）
 	BuiltinSourceURL = "builtin:official"
@@ -48,71 +52,113 @@ var (
 	builtinErr  error
 )
 
-// loadBuiltin 扫一遍内嵌目录：每个 <id>/ 一份插件，读清单、打 zip、算摘要。
-// 任何一处不对（清单缺字段、目录名与 id 对不上、JSON 坏了）都**整源报错**，
-// 而不是悄悄少一个插件 —— 内置内容是随二进制发的，出错就是发布事故，必须吵出来。
+// builtinEntry 内嵌源里找到的一个插件（阶段/分类由目录决定）
+type builtinEntry struct {
+	stage    string
+	category string
+	id       string
+	root     string // "official/<阶段>/<分类>/<id>"
+}
+
+// loadBuiltin 扫一遍内嵌目录：目录结构决定"阶段/分类"，清单决定其余元数据。
+//
+// 任何一处不对（层级不对、阶段目录不认识、清单缺字段、目录名与 id 对不上、JSON 坏了）都
+// **整源报错**，而不是悄悄少一个插件 —— 内置内容是随二进制发的，出错就是发布事故，必须吵出来。
 func loadBuiltin() {
 	builtinPkgs = map[string][]byte{}
-	entries, err := fs.ReadDir(officialFS, "official")
+
+	found := []builtinEntry{}
+	err := fs.WalkDir(officialFS, "official", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.EqualFold(d.Name(), "plugin.json") {
+			return nil
+		}
+		parts := strings.Split(strings.TrimPrefix(p, "official/"), "/")
+		if len(parts) != 4 {
+			return fmt.Errorf("内置插件的目录必须是 official/<阶段>/<分类>/<插件id>/plugin.json，收到：%s", p)
+		}
+		stage, category, id := parts[0], parts[1], parts[2]
+		if stage != StageStable && stage != StageBeta {
+			return fmt.Errorf("%s：阶段目录只能是 %s 或 %s，收到 %q", p, StageStable, StageBeta, stage)
+		}
+		if strings.TrimSpace(category) == "" || strings.HasPrefix(category, ".") {
+			return fmt.Errorf("%s：分类目录名不合法", p)
+		}
+		if !ValidID(id) {
+			return fmt.Errorf("%s：插件目录名 %q 不合法（%s）", p, id, idRule)
+		}
+		found = append(found, builtinEntry{
+			stage: stage, category: category, id: id,
+			root: "official/" + stage + "/" + category + "/" + id,
+		})
+		return nil
+	})
 	if err != nil {
-		builtinErr = fmt.Errorf("内置官方源读不到（二进制里没有 official/）：%w", err)
+		builtinErr = fmt.Errorf("内置官方源读不到：%w", err)
 		return
 	}
-	ids := []string{}
-	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		id := e.Name()
-		if !ValidID(id) {
-			builtinErr = fmt.Errorf("内置官方源里有个目录名不合法：%q（%s）", id, idRule)
-			return
-		}
-		if !fileExistsInFS(officialFS, "official/"+id+"/plugin.json") {
-			builtinErr = fmt.Errorf("内置插件 %s 没有 plugin.json（每个插件目录都得有清单）", id)
-			return
-		}
-		ids = append(ids, id)
+	if len(found) == 0 {
+		builtinErr = fmt.Errorf("内置官方源里一个插件都没有")
+		return
 	}
-	sort.Strings(ids)
+	// 顺序写死：正式版在前 → 分类 → id（索引与界面顺序都稳定，也方便 diff）
+	sort.Slice(found, func(i, j int) bool {
+		if found[i].stage != found[j].stage {
+			return found[i].stage == StageStable
+		}
+		if found[i].category != found[j].category {
+			return found[i].category < found[j].category
+		}
+		return found[i].id < found[j].id
+	})
 
+	seen := map[string]bool{}
 	idx := Index{Schema: SchemaVersion, Name: BuiltinSourceName, Plugins: []Meta{}}
-	for _, id := range ids {
-		raw, err := fs.ReadFile(officialFS, "official/"+id+"/plugin.json")
+	for _, e := range found {
+		if seen[e.id] {
+			builtinErr = fmt.Errorf("内置官方源里插件 id 重名：%s", e.id)
+			return
+		}
+		seen[e.id] = true
+
+		raw, err := fs.ReadFile(officialFS, e.root+"/plugin.json")
 		if err != nil {
-			builtinErr = fmt.Errorf("内置插件 %s 的 plugin.json 读不到：%w", id, err)
+			builtinErr = fmt.Errorf("内置插件 %s 的 plugin.json 读不到：%w", e.id, err)
 			return
 		}
 		var m Manifest
 		if err := json.Unmarshal(raw, &m); err != nil {
-			builtinErr = fmt.Errorf("内置插件 %s 的 plugin.json 不是合法 JSON：%w", id, err)
+			builtinErr = fmt.Errorf("内置插件 %s 的 plugin.json 不是合法 JSON：%w", e.id, err)
 			return
 		}
-		if strings.TrimSpace(m.Name) == "" || strings.TrimSpace(m.Version) == "" {
-			builtinErr = fmt.Errorf("内置插件 %s 的清单缺少 name 或 version（内置内容必须写全）", id)
+		if strings.TrimSpace(m.Name) == "" || strings.TrimSpace(m.Version) == "" || strings.TrimSpace(m.Description) == "" {
+			builtinErr = fmt.Errorf("内置插件 %s 的清单缺少 name / version / description（内置内容必须写全）", e.id)
 			return
 		}
 		norm, err := normalizeManifest(m)
 		if err != nil {
-			builtinErr = fmt.Errorf("内置插件 %s 的清单不合法：%w", id, err)
+			builtinErr = fmt.Errorf("内置插件 %s 的清单不合法：%w", e.id, err)
 			return
 		}
-		if norm.ID != id {
-			builtinErr = fmt.Errorf("内置插件目录名 %s 与清单里的 id %q 对不上", id, norm.ID)
+		if norm.ID != e.id {
+			builtinErr = fmt.Errorf("内置插件目录名 %s 与清单里的 id %q 对不上", e.id, norm.ID)
 			return
 		}
-		pkg, err := zipEmbedDir("official/" + id)
+		pkg, err := zipEmbedDir(e.root)
 		if err != nil {
-			builtinErr = fmt.Errorf("打包内置插件 %s 失败：%w", id, err)
+			builtinErr = fmt.Errorf("打包内置插件 %s 失败：%w", e.id, err)
 			return
 		}
 		sum := sha256.Sum256(pkg)
-		builtinPkgs[id] = pkg
+		builtinPkgs[e.id] = pkg
 		idx.Plugins = append(idx.Plugins, Meta{
 			ID: norm.ID, Name: norm.Name, Version: norm.Version,
 			Description: norm.Description, Author: norm.Author, Homepage: norm.Homepage,
 			License: norm.License, Tags: norm.Tags, MinBaize: norm.MinBaize,
-			URL: builtinPkgPrefix + id + ".zip", SHA256: hex.EncodeToString(sum[:]), Size: int64(len(pkg)),
+			Channel: ChannelOfficial, Stage: e.stage, Category: e.category,
+			URL: builtinPkgPrefix + e.id + ".zip", SHA256: hex.EncodeToString(sum[:]), Size: int64(len(pkg)),
 		})
 	}
 	builtinIdx = idx
@@ -203,12 +249,6 @@ func zipEmbedDir(root string) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
-}
-
-// fileExistsInFS 内嵌文件系统里这个文件在不在
-func fileExistsInFS(fsys fs.FS, p string) bool {
-	fi, err := fs.Stat(fsys, p)
-	return err == nil && !fi.IsDir()
 }
 
 // OfficialFS 内置官方源的只读文件系统（给测试与将来的"发布脚本"复用）

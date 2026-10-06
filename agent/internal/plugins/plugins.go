@@ -51,6 +51,13 @@ type Meta struct {
 	License     string   `json:"license,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 	MinBaize    string   `json:"minBaize,omitempty"`
+	// Channel 板块：official（官方）/ community（社区）。
+	// **缺省按 community 处理** —— 没标注来源的东西，不替它宣称"官方"。
+	Channel string `json:"channel,omitempty"`
+	// Stage 阶段：stable（正式版）/ beta（测试版）。官方板块必须分这两种，社区也可以标。
+	Stage string `json:"stage,omitempty"`
+	// Category 分类：板块内再分（如 调研写作 / 跨端设备 / 自动化）。空 = 未分类。
+	Category string `json:"category,omitempty"`
 	// URL 插件包（.zip）地址。可以是绝对地址，也可以相对 index.json ——
 	// 相对路径让整套东西能整体搬运（换域名/换目录都不用改）。
 	URL    string `json:"url"`
@@ -118,7 +125,7 @@ type SourceView struct {
 // Available 货架上的一格（源里的元数据 + 是否已装/能否更新）。
 type Available struct {
 	Meta
-	Source      string `json:"source"`                // 来自哪个源
+	Source      string `json:"source"` // 来自哪个源
 	Installed   bool   `json:"installed"`
 	InstVersion string `json:"instVersion,omitempty"` // 已装版本（有更新时用来对比）
 	HasUpdate   bool   `json:"hasUpdate"`
@@ -146,6 +153,39 @@ var (
 func ValidID(s string) bool {
 	s = strings.TrimSpace(s)
 	return s != "" && len(s) <= 64 && idRe.MatchString(s)
+}
+
+// 板块与阶段。板块决定"谁做的、背书到哪一步"，阶段决定"能不能上生产"。
+const (
+	// ChannelOfficial 官方板块（白泽自己出的插件）
+	ChannelOfficial = "official"
+	// ChannelCommunity 社区板块（第三方投稿）
+	ChannelCommunity = "community"
+	// StageStable 正式版
+	StageStable = "stable"
+	// StageBeta 测试版
+	StageBeta = "beta"
+)
+
+// NormalizeChannel 收敛板块名。**认不出来的一律当社区** ——
+// 索引是别人写的文件，缺字段/写错时不能替它宣称"官方"。
+func NormalizeChannel(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case ChannelOfficial, "官方":
+		return ChannelOfficial
+	default:
+		return ChannelCommunity
+	}
+}
+
+// NormalizeStage 收敛阶段名：只有明确写成 beta/测试版 才算测试版，其余按正式版。
+func NormalizeStage(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case StageBeta, "测试版", "测试":
+		return StageBeta
+	default:
+		return StageStable
+	}
 }
 
 // NormalizeSource 归一一个源：去空白、补名字、按 url 判空。
@@ -178,6 +218,9 @@ func normalizeIndex(idx Index) Index {
 		if m.Version == "" {
 			m.Version = "0"
 		}
+		m.Channel = NormalizeChannel(m.Channel)
+		m.Stage = NormalizeStage(m.Stage)
+		m.Category = strings.TrimSpace(m.Category)
 		out.Plugins = append(out.Plugins, m)
 	}
 	return out

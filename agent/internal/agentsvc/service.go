@@ -56,6 +56,8 @@ type ProviderInfo struct {
 	Model     string   `json:"model"`
 	Kinds     []string `json:"kinds,omitempty"`
 	Fallback  bool     `json:"fallback"`
+	Cost      string   `json:"cost,omitempty"`
+	Privacy   string   `json:"privacy,omitempty"`
 	HasAPIKey bool     `json:"hasApiKey"`
 	Usable    bool     `json:"usable"`
 	Err       string   `json:"error,omitempty"`
@@ -666,6 +668,7 @@ func (s *Service) rebuildProviders() {
 		info := ProviderInfo{
 			Name: p.Name, Protocol: p.Protocol, BaseURL: p.BaseURL, Model: p.Model,
 			Kinds: p.Kinds, Fallback: p.Fallback, HasAPIKey: p.APIKey != "",
+			Cost: p.Cost, Privacy: p.Privacy,
 		}
 		if info.Name == "" {
 			info.Name = p.Protocol + ":" + p.Model
@@ -675,6 +678,13 @@ func (s *Service) rebuildProviders() {
 			APIKey: p.APIKey, Model: p.Model, TimeoutSec: p.TimeoutSec,
 		}
 		info.Local = isLocalBase(cfg.BaseURL)
+		if info.Privacy == "" { // 没标就按 local 自动填，界面不显示空白
+			if info.Local {
+				info.Privacy = "本地，不出机器"
+			} else {
+				info.Privacy = "公网云端"
+			}
+		}
 		switch {
 		case strings.TrimSpace(cfg.BaseURL) == "":
 			info.Err = "缺少 baseUrl"

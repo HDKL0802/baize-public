@@ -2,8 +2,12 @@ package agentsvc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -42,6 +46,8 @@ func (s *Service) ProviderSave(one config.Provider, allowRemote bool) ([]Provide
 	one.BaseURL = strings.TrimSpace(one.BaseURL)
 	one.Model = strings.TrimSpace(one.Model)
 	one.APIKey = strings.TrimSpace(one.APIKey)
+	one.Cost = strings.TrimSpace(one.Cost)
+	one.Privacy = strings.TrimSpace(one.Privacy)
 	if one.Name == "" {
 		return nil, errors.New("通道必须有 name")
 	}
@@ -166,4 +172,151 @@ func (s *Service) ProviderTest(ctx context.Context, name string) (ProviderTestRe
 		PromptTokens: resp.Usage.PromptTokens, CompletionTokens: resp.Usage.CompletionTokens,
 		TotalTokens: resp.Usage.TotalTokens, LatencyMs: time.Since(start).Milliseconds(),
 	}, nil
+}
+
+// ProviderDiscoverResult 模型发现结果
+type ProviderDiscoverResult struct {
+	Source string   `json:"source"` // 从哪儿读到的（给界面如实显示）
+	Models []string `json:"models"`
+}
+
+// ProviderDiscover 从一个端点「自动发现」可用模型名：
+//   - OpenAI 兼容：GET {base}/models
+//   - Ollama 原生：GET {base 去掉 /v1}/api/tags
+//
+// 只读（不改任何配置）；地址不是本机时同样要 allowRemote —— 与「本地优先」同一条规矩。
+func (s *Service) ProviderDiscover(ctx context.Context, protocol, baseURL, apiKey string, allowRemote bool) (ProviderDiscoverResult, error) {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		return ProviderDiscoverResult{}, errors.New("先填 Base URL，再去发现模型")
+	}
+	if protocol == "" {
+		protocol = "openai"
+	}
+	s.mu.RLock()
+	allow := s.cfg.AllowRemote || allowRemote
+	s.mu.RUnlock()
+	if err := llm.NewRouter(allow).CheckEndpoint(llm.Config{Name: "discover", BaseURL: baseURL}); err != nil {
+		return ProviderDiscoverResult{}, err
+	}
+	client := &http.Client{Timeout: 15 * time.Second}
+	found := map[string]bool{}
+	var sources []string
+	var lastErr error
+
+	if ids, err := fetchOpenAIModels(ctx, client, baseURL, apiKey); err == nil && len(ids) > 0 {
+		for _, id := range ids {
+			found[id] = true
+		}
+		sources = append(sources, "GET "+strings.TrimRight(baseURL, "/")+"/models")
+	} else if err != nil {
+		lastErr = err
+	}
+	// Ollama 原生口径（它同时提供 OpenAI 兼容与原生 /api/tags）
+	if ids, err := fetchOllamaTags(ctx, client, baseURL); err == nil && len(ids) > 0 {
+		for _, id := range ids {
+			found[id] = true
+		}
+		sources = append(sources, "GET "+ollamaRoot(baseURL)+"/api/tags")
+	} else if err != nil && lastErr == nil {
+		lastErr = err
+	}
+
+	if len(found) == 0 {
+		if lastErr != nil {
+			return ProviderDiscoverResult{}, fmt.Errorf("没发现任何模型：%w", lastErr)
+		}
+		return ProviderDiscoverResult{}, errors.New("端点没给出模型清单（有些服务不提供 /models，请手动填模型名）")
+	}
+	models := make([]string, 0, len(found))
+	for m := range found {
+		models = append(models, m)
+	}
+	sort.Strings(models)
+	s.lg.Info("模型发现完成", "baseUrl", baseURL, "models", len(models))
+	return ProviderDiscoverResult{Source: strings.Join(sources, " + "), Models: models}, nil
+}
+
+// fetchOpenAIModels 读 OpenAI 兼容的 /models
+func fetchOpenAIModels(ctx context.Context, client *http.Client, base, apiKey string) ([]string, error) {
+	u := strings.TrimRight(strings.TrimSpace(base), "/") + "/models"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(apiKey) != "" {
+		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(apiKey))
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("%s 返回 http %d", u, resp.StatusCode)
+	}
+	var out struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(out.Data))
+	for _, d := range out.Data {
+		if s := strings.TrimSpace(d.ID); s != "" {
+			ids = append(ids, s)
+		}
+	}
+	return ids, nil
+}
+
+// fetchOllamaTags 读 Ollama 原生的 /api/tags
+func fetchOllamaTags(ctx context.Context, client *http.Client, base string) ([]string, error) {
+	u := ollamaRoot(base) + "/api/tags"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("%s 返回 http %d", u, resp.StatusCode)
+	}
+	var out struct {
+		Models []struct {
+			Name  string `json:"name"`
+			Model string `json:"model"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(out.Models))
+	for _, m := range out.Models {
+		if s := firstNonEmptyStr(m.Name, m.Model); s != "" {
+			ids = append(ids, s)
+		}
+	}
+	return ids, nil
+}
+
+// ollamaRoot 把 OpenAI 兼容地址还原成 Ollama 根地址（去掉结尾的 /v1）
+func ollamaRoot(base string) string {
+	root := strings.TrimRight(strings.TrimSpace(base), "/")
+	root = strings.TrimSuffix(root, "/v1")
+	return strings.TrimRight(root, "/")
+}
+
+func firstNonEmptyStr(vals ...string) string {
+	for _, v := range vals {
+		if s := strings.TrimSpace(v); s != "" {
+			return s
+		}
+	}
+	return ""
 }

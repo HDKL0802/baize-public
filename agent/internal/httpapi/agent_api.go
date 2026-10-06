@@ -11,6 +11,7 @@ import (
 	"baize/internal/agentsvc"
 	"baize/internal/backup"
 	"baize/internal/config"
+	"baize/internal/llm"
 	"baize/internal/mcp"
 	"baize/internal/memory"
 )
@@ -381,7 +382,11 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/agent/providers", s.api(func(w http.ResponseWriter, r *http.Request) {
 		cfg := a.Config()
-		writeJSON(w, http.StatusOK, map[string]any{"providers": a.Providers(), "allowRemote": cfg.AllowRemote})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"providers":   a.Providers(),
+			"allowRemote": cfg.AllowRemote,
+			"presets":     llm.Presets(), // 预置模板（界面「从模板新建」用）
+		})
 	}))
 
 	// 模型通道的加/改/删/探活：action=upsert|remove|test
@@ -391,6 +396,9 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 			Name        string           `json:"name"`
 			Config      *config.Provider `json:"config"`
 			AllowRemote bool             `json:"allowRemote"`
+			Protocol    string           `json:"protocol"`
+			BaseURL     string           `json:"baseUrl"`
+			APIKey      string           `json:"apiKey"`
 		}
 		if err := decodeBody(r, &req); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
@@ -432,8 +440,30 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 				out["error"] = err.Error()
 			}
 			writeJSON(w, http.StatusOK, out)
+		case "discover":
+			// 自动发现模型名（只读）：读 OpenAI 兼容 /models，Ollama 另读 /api/tags
+			proto, base, key := req.Protocol, req.BaseURL, req.APIKey
+			if req.Config != nil {
+				if proto == "" {
+					proto = req.Config.Protocol
+				}
+				if base == "" {
+					base = req.Config.BaseURL
+				}
+				if key == "" {
+					key = req.Config.APIKey
+				}
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			res, err := a.ProviderDiscover(ctx, proto, base, key, req.AllowRemote)
+			out := map[string]any{"models": res.Models, "source": res.Source}
+			if err != nil {
+				out["error"] = err.Error()
+			}
+			writeJSON(w, http.StatusOK, out)
 		default:
-			writeErr(w, http.StatusBadRequest, "不支持的 action："+action+"（可用 upsert | remove | test）")
+			writeErr(w, http.StatusBadRequest, "不支持的 action："+action+"（可用 upsert | remove | test | discover）")
 		}
 	}))
 

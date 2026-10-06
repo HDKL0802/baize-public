@@ -2,6 +2,8 @@ package agentsvc
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -92,5 +94,83 @@ func TestProviderManagement(t *testing.T) {
 	}
 	if _, err := s.ProviderRemove(""); err == nil {
 		t.Fatal("不给 name 必须报错")
+	}
+}
+
+// 模型发现（只读）：读 OpenAI 兼容 /models + Ollama /api/tags；本地优先同一条规矩；端点不表态就明确报错
+func TestProviderDiscover(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"m2"},{"id":"m1"},{"id":""}]}`))
+	})
+	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"models":[{"name":"qwen2.5:7b"},{"model":"llama3"}]}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	s := newService(t, nil, nil)
+	got, err := s.ProviderDiscover(context.Background(), "openai", srv.URL+"/v1", "sk-x", false)
+	if err != nil {
+		t.Fatalf("发现失败：%v", err)
+	}
+	want := []string{"llama3", "m1", "m2", "qwen2.5:7b"}
+	if strings.Join(got.Models, ",") != strings.Join(want, ",") {
+		t.Fatalf("模型清单不对：%+v", got.Models)
+	}
+	if got.Source == "" {
+		t.Fatal("应如实给出读取来源")
+	}
+
+	// 空地址 → 报错
+	if _, err := s.ProviderDiscover(context.Background(), "openai", "", "", false); err == nil {
+		t.Fatal("空 Base URL 必须报错")
+	}
+	// 远端地址未放行 → 报错并指路（与本地优先同一条规矩）
+	if _, err := s.ProviderDiscover(context.Background(), "openai", "https://api.deepseek.com/v1", "", false); err == nil {
+		t.Fatal("远端未放行必须报错")
+	} else if !strings.Contains(err.Error(), "allow") {
+		t.Fatalf("错误信息要告诉用户怎么放行：%v", err)
+	}
+	// 端点不提供清单 → 明确报错，不假装"发现到了 0 个"
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }))
+	defer bad.Close()
+	if _, err := s.ProviderDiscover(context.Background(), "openai", bad.URL+"/v1", "", false); err == nil {
+		t.Fatal("端点不给模型清单时必须报错")
+	}
+}
+
+// 成本与隐私标注：存得下、读得出；没标 privacy 时按 local 自动填
+func TestProviderCostPrivacy(t *testing.T) {
+	f := newFakeLLM(t, func(map[string]any) map[string]any { return sayBody("能通") })
+	s := newService(t, nil, nil)
+
+	list, err := s.ProviderSave(config.Provider{
+		Name: "p1", Protocol: "openai", BaseURL: f.srv.URL + "/v1", Model: "m",
+		Cost: "免费（本地）", Privacy: "本地，不出机器",
+	}, false)
+	if err != nil {
+		t.Fatalf("保存失败：%v", err)
+	}
+	if list[0].Cost != "免费（本地）" || list[0].Privacy != "本地，不出机器" {
+		t.Fatalf("成本/隐私没回显：%+v", list[0])
+	}
+
+	// 不标 privacy：本地地址自动填「本地，不出机器」
+	list, err = s.ProviderSave(config.Provider{
+		Name: "p2", Protocol: "openai", BaseURL: f.srv.URL + "/v1", Model: "m",
+	}, false)
+	if err != nil {
+		t.Fatalf("保存失败：%v", err)
+	}
+	var p2 *ProviderInfo
+	for i := range list {
+		if list[i].Name == "p2" {
+			p2 = &list[i]
+		}
+	}
+	if p2 == nil || p2.Privacy == "" {
+		t.Fatalf("没标 privacy 时应自动填：%+v", list)
 	}
 }

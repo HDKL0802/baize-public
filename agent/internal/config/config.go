@@ -22,6 +22,8 @@ type Provider struct {
 	Model      string   `json:"model"`
 	Kinds      []string `json:"kinds,omitempty"`    // 该通道负责的任务类型；空=通吃
 	Fallback   bool     `json:"fallback,omitempty"` // 是否作为回退通道
+	Cost       string   `json:"cost,omitempty"`     // 成本标注（人话，如「免费（本地）」「按量计费」）
+	Privacy    string   `json:"privacy,omitempty"`  // 隐私标注（如「本地，不出机器」「公网云端」）；留空按 local 自动填
 	TimeoutSec int      `json:"timeoutSec,omitempty"`
 }
 

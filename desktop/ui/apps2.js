@@ -864,19 +864,33 @@ async function renderProviders(root) {
 
       <div class="sect">
         <h3>加 / 改一条</h3>
+        <div class="fields" style="grid-template-columns:1fr 130px">
+          <div><label>从模板新建（选一个自动填地址与示例模型）</label><select id="pvPreset"><option value="">（自己填）</option></select></div>
+          <div><label>&nbsp;</label><button class="btn sm ghost" id="pvDiscover">模型发现</button></div>
+        </div>
+        <div id="pvPresetNote" class="sub" style="margin:2px 0 6px"></div>
         <div class="fields" style="grid-template-columns:130px 120px 1fr 150px">
           <div><label>名字</label><input id="pvName" placeholder="deepseek"></div>
           <div><label>协议</label><select id="pvProto"><option value="openai">openai</option><option value="anthropic">anthropic</option></select></div>
           <div><label>Base URL</label><input id="pvBase" placeholder="https://api.deepseek.com/v1"></div>
-          <div><label>模型</label><input id="pvModel" placeholder="deepseek-chat"></div>
+          <div><label>模型</label><input id="pvModel" placeholder="deepseek-chat" list="pvModelList"><datalist id="pvModelList"></datalist></div>
         </div>
         <div class="fields" style="grid-template-columns:1fr 150px">
           <div><label>API Key（留空 = 保留原 key）</label><input id="pvKey" type="password"></div>
           <div><label>&nbsp;</label>
             <label class="sub" style="margin:0"><input type="checkbox" id="pvRemote" style="margin-right:6px">允许远程</label></div>
         </div>
+        <div class="fields" style="grid-template-columns:1fr 1fr 1fr">
+          <div><label>任务类型（逗号分隔，空 = 通吃）</label><input id="pvKinds" placeholder="chat, summarize"></div>
+          <div><label>成本标注（人话）</label><input id="pvCost" placeholder="免费（本地）/ 按量计费"></div>
+          <div><label>隐私标注</label><input id="pvPrivacy" placeholder="本地，不出机器 / 公网云端"></div>
+        </div>
+        <div class="fields" style="grid-template-columns:1fr">
+          <div><label class="sub" style="margin:0"><input type="checkbox" id="pvFallback" style="margin-right:6px">作为回退通道（主通道失败时按顺序兜底）</label></div>
+        </div>
         <div style="display:flex;gap:10px;align-items:center">
           <button class="btn" id="pvSave">保存</button>
+          <button class="btn ghost" id="pvClear">清空</button>
           <span class="sub" id="pvMsg" style="margin:0"></span>
         </div>
       </div>
@@ -898,6 +912,13 @@ async function renderProviders(root) {
     const r = await API.get('/api/agent/providers');
     if (!r.ok) { showErr($i('pvList'), r); return; }
     const ps = (r.data && r.data.providers) || [];
+    const presets = (r.data && r.data.presets) || [];
+    const selP = $i('pvPreset');
+    if (selP && selP.options.length <= 1) {
+      selP.innerHTML = '<option value="">（自己填）</option>' +
+        presets.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+      selP.dataset.presets = JSON.stringify(presets);
+    }
     $i('pvList').innerHTML = ps.length ? ps.map(p => `
       <div class="row">
         <div class="who"><b>${esc(p.name)}</b>
@@ -906,6 +927,9 @@ async function renderProviders(root) {
           ${p.hasApiKey ? '<span class="tag on">有 key</span>' : '<span class="tag warn">无 key</span>'}
           ${p.usable ? '<span class="tag on">可用</span>' : '<span class="tag off">不可用</span>'}
           ${p.local ? '<span class="tag">本地</span>' : ''}
+          ${p.privacy ? `<span class="tag">${esc(p.privacy)}</span>` : ''}
+          ${p.cost ? `<span class="tag">${esc(p.cost)}</span>` : ''}
+          ${(p.kinds || []).length ? `<span class="tag">管 ${esc(p.kinds.join('/'))}</span>` : ''}
           ${p.fallback ? '<span class="tag">兜底</span>' : ''}
           <button class="btn sm ghost" data-test="${esc(p.name)}">探活</button>
           <button class="btn sm ghost" data-rm="${esc(p.name)}">删除</button>
@@ -935,19 +959,60 @@ async function renderProviders(root) {
     }
   };
 
+  $i('pvPreset').onchange = () => {
+    const list = JSON.parse($i('pvPreset').dataset.presets || '[]');
+    const p = list.find(x => x.id === $i('pvPreset').value);
+    const note = $i('pvPresetNote');
+    if (!p) { note.textContent = ''; return; }
+    $i('pvName').value = p.id;
+    $i('pvProto').value = p.protocol;
+    $i('pvBase').value = p.baseUrl || '';
+    $i('pvModel').value = p.model || '';
+    $i('pvCost').value = p.cost || '';
+    $i('pvPrivacy').value = p.privacy || '';
+    $i('pvRemote').checked = p.region !== 'local';
+    $i('pvMsg').textContent = '';
+    note.innerHTML = (p.note ? esc(p.note) : '')
+      + (p.docUrl ? ` <a href="${esc(p.docUrl)}" target="_blank" rel="noreferrer">文档</a>` : '');
+  };
+
+  $i('pvDiscover').onclick = async () => {
+    const base = $i('pvBase').value.trim();
+    if (!base) { $i('pvMsg').textContent = '先填 Base URL'; return; }
+    $i('pvMsg').textContent = '发现模型中…';
+    const r = await API.post('/api/agent/providers', {
+      action: 'discover', protocol: $i('pvProto').value, baseUrl: base,
+      apiKey: $i('pvKey').value.trim(), allowRemote: $i('pvRemote').checked,
+    });
+    if (!r.ok) { $i('pvMsg').textContent = '发现失败：' + r.error; return; }
+    if (r.data && r.data.error) { $i('pvMsg').textContent = '发现失败：' + r.data.error; return; }
+    const ms = (r.data && r.data.models) || [];
+    $i('pvModelList').innerHTML = ms.map(m => `<option value="${esc(m)}"></option>`).join('');
+    if (!$i('pvModel').value && ms.length) $i('pvModel').value = ms[0];
+    $i('pvMsg').textContent = `发现 ${ms.length} 个模型（${(r.data && r.data.source) || ''}）—— 点「模型」输入框挑一个`;
+  };
+
   $i('pvSave').onclick = async () => {
     const name = $i('pvName').value.trim();
     if (!name) { $i('pvMsg').textContent = '名字不能为空'; return; }
     const key = $i('pvKey').value.trim();
+    const kinds = $i('pvKinds').value.split(',').map(s => s.trim()).filter(Boolean);
     const cfg = {
       name: name, protocol: $i('pvProto').value,
       baseUrl: $i('pvBase').value.trim(), model: $i('pvModel').value.trim(),
+      kinds: kinds, fallback: $i('pvFallback').checked,
+      cost: $i('pvCost').value.trim(), privacy: $i('pvPrivacy').value.trim(),
     };
     if (key) cfg.apiKey = key;
     $i('pvMsg').textContent = '保存中…';
     const r = await API.post('/api/agent/providers', { action: 'upsert', config: cfg, allowRemote: $i('pvRemote').checked });
     $i('pvMsg').textContent = r.ok ? '已保存' : ('失败：' + r.error);
     if (r.ok) { $i('pvKey').value = ''; await refresh(); }
+  };
+  $i('pvClear').onclick = () => {
+    ['pvName', 'pvBase', 'pvModel', 'pvKey', 'pvKinds', 'pvCost', 'pvPrivacy'].forEach(k => { $i(k).value = ''; });
+    $i('pvFallback').checked = false; $i('pvRemote').checked = false;
+    $i('pvPreset').value = ''; $i('pvPresetNote').textContent = ''; $i('pvMsg').textContent = '';
   };
   $i('pvEmbTest').onclick = async () => {
     $i('pvEmbMsg').textContent = '探测中…';

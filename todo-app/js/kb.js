@@ -436,6 +436,7 @@ window.KBExt = (function () {
   let provList = [];
   let embInfo = {};
   let allowRemote = false;
+  let presets = [];
 
   function loadKeys() {
     const warn = $('keyWarn');
@@ -458,6 +459,7 @@ window.KBExt = (function () {
     warn.hidden = true;
     provList = Array.isArray(r.providers) ? r.providers : [];
     allowRemote = !!r.allowRemote;
+    presets = Array.isArray(r.presets) ? r.presets : [];
     const c = call('/api/agent/config', 'GET');
     embInfo = (c && c.embedding) ? c.embedding : {};
     renderKeys();
@@ -482,6 +484,7 @@ window.KBExt = (function () {
       </div>
       <div class="vc-line kb-code">${esc(p.baseUrl || '（没填 baseURL）')}</div>
       <div class="vc-sub" style="margin-top:4px">${esc(p.protocol || 'openai')} · ${esc(p.model || '（没填模型 ID）')} · Key ${p.hasApiKey ? '已配置' : '未配置'}${p.local ? ' · 本机' : ''}</div>
+      ${(p.cost || p.privacy || (p.kinds || []).length || p.fallback) ? `<div class="vc-line">${p.privacy ? esc(p.privacy) : ''}${p.cost ? ' · ' + esc(p.cost) : ''}${(p.kinds || []).length ? ' · 管 ' + esc(p.kinds.join('/')) : ''}${p.fallback ? ' · 兜底' : ''}</div>` : ''}
       ${p.error ? `<div class="vc-line" style="color:var(--rose)">${esc(p.error)}</div>` : ''}
       <div class="vc-actions">
         <button class="btn ghost sm" data-test style="flex:1">测连通</button>
@@ -537,7 +540,14 @@ window.KBExt = (function () {
 
   function openKeyForm(p) {
     const one = p || {};
+    const presetOpts = '<option value="">（自己填）</option>' +
+      presets.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
     const html = `
+      <div class="f-block">
+        <label class="f-label">从模板新建</label>
+        <select class="f-input" id="kp-preset">${presetOpts}</select>
+        <div class="f-note" id="kp-presetnote"></div>
+      </div>
       <div class="f-block">
         <label class="f-label">名称<span class="req">*</span></label>
         <input class="f-input" id="kp-name" value="${esc(one.name || '')}" placeholder="例如：阿里云百炼 / DeepSeek 主力">
@@ -559,32 +569,92 @@ window.KBExt = (function () {
       </div>
       <div class="f-block">
         <label class="f-label">模型 ID</label>
-        <input class="f-input" id="kp-model" value="${esc(one.model || '')}" placeholder="qwen-plus">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="f-input" id="kp-model" value="${esc(one.model || '')}" placeholder="qwen-plus" list="kp-modellist" style="flex:1">
+          <button class="btn ghost sm" id="kp-discover" style="flex:none">发现</button>
+        </div>
+        <datalist id="kp-modellist"></datalist>
+        <div class="f-note" id="kp-dmsg"></div>
+      </div>
+      <div class="f-block">
+        <label class="f-label">任务类型（逗号分隔，空 = 通吃）</label>
+        <input class="f-input" id="kp-kinds" value="${esc((one.kinds || []).join(','))}" placeholder="chat, summarize">
+      </div>
+      <div class="f-block">
+        <label class="f-label">成本标注（人话）</label>
+        <input class="f-input" id="kp-cost" value="${esc(one.cost || '')}" placeholder="免费（本地）/ 按量计费">
+      </div>
+      <div class="f-block">
+        <label class="f-label">隐私标注</label>
+        <input class="f-input" id="kp-privacy" value="${esc(one.privacy || '')}" placeholder="本地，不出机器 / 公网云端">
+      </div>
+      <div class="f-block">
+        <div class="switch-row">
+          <div class="sr-main"><div class="sr-name">作为回退通道</div><div class="sr-desc">主通道失败时按顺序兜底</div></div>
+          <button class="toggle${one.fallback ? ' on' : ''}" id="kp-fallback"><span></span></button>
+        </div>
       </div>
       <p class="f-note">地址不是本机时必须允许远端模型地址（「其他功能 → 设置 → 安全开关」里有开关），否则会明确报错。</p>
       <button class="btn-block" id="kp-save">保存</button>`;
     UI.openTool(p ? '编辑模型站' : '新增模型站', html, () => {
+      let fallback = !!one.fallback;
       const grp = document.getElementById('kp-proto');
+      const curProto = () => { const b = grp.querySelector('.chip-opt.on'); return b ? b.dataset.v : 'openai'; };
       grp.addEventListener('click', (e) => {
         const b = e.target.closest('.chip-opt');
         if (!b) return;
         grp.querySelectorAll('.chip-opt').forEach(x => x.classList.toggle('on', x === b));
+      });
+      const fbBtn = document.getElementById('kp-fallback');
+      fbBtn.addEventListener('click', () => { fallback = !fallback; fbBtn.classList.toggle('on', fallback); });
+      document.getElementById('kp-preset').addEventListener('change', (e) => {
+        const pr = presets.find(x => x.id === e.target.value);
+        const note = document.getElementById('kp-presetnote');
+        if (!pr) { note.textContent = ''; return; }
+        document.getElementById('kp-name').value = pr.id;
+        const target = grp.querySelector('.chip-opt[data-v="' + pr.protocol + '"]');
+        if (target) grp.querySelectorAll('.chip-opt').forEach(x => x.classList.toggle('on', x === target));
+        document.getElementById('kp-base').value = pr.baseUrl || '';
+        document.getElementById('kp-model').value = pr.model || '';
+        document.getElementById('kp-cost').value = pr.cost || '';
+        document.getElementById('kp-privacy').value = pr.privacy || '';
+        note.textContent = pr.note || '';
+      });
+      document.getElementById('kp-discover').addEventListener('click', () => {
+        const base = document.getElementById('kp-base').value.trim();
+        const dmsg = document.getElementById('kp-dmsg');
+        if (!base) { dmsg.textContent = '先填 baseURL'; return; }
+        dmsg.textContent = '发现中…';
+        const r = call('/api/agent/providers', 'POST', JSON.stringify({
+          action: 'discover', protocol: curProto(), baseUrl: base,
+          apiKey: document.getElementById('kp-key').value, allowRemote: true,
+        }));
+        const why = errOf(r);
+        if (why) { dmsg.textContent = '发现失败：' + why; return; }
+        if (r.error) { dmsg.textContent = '发现失败：' + r.error; return; }
+        const ms = Array.isArray(r.models) ? r.models : [];
+        document.getElementById('kp-modellist').innerHTML = ms.map(m => `<option value="${esc(m)}"></option>`).join('');
+        if (!document.getElementById('kp-model').value && ms.length) document.getElementById('kp-model').value = ms[0];
+        dmsg.textContent = `发现 ${ms.length} 个（${r.source || ''}）`;
       });
       const save = () => {
         const name = document.getElementById('kp-name').value.trim();
         const base = document.getElementById('kp-base').value.trim();
         if (!name) { toast('名称不能为空'); return; }
         if (!base) { toast('baseURL 不能为空'); return; }
-        const picked = grp.querySelector('.chip-opt.on');
         const body = {
           action: 'upsert',
           allowRemote: true,
           config: {
             name,
-            protocol: picked ? picked.dataset.v : 'openai',
+            protocol: curProto(),
             baseUrl: base,
             apiKey: document.getElementById('kp-key').value,
             model: document.getElementById('kp-model').value.trim(),
+            kinds: document.getElementById('kp-kinds').value.split(',').map(s => s.trim()).filter(Boolean),
+            fallback: fallback,
+            cost: document.getElementById('kp-cost').value.trim(),
+            privacy: document.getElementById('kp-privacy').value.trim(),
           },
         };
         const r = call('/api/agent/providers', 'POST', JSON.stringify(body));

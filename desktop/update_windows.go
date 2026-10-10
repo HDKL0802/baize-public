@@ -48,6 +48,8 @@ func init() {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "hotkeys": ballHotkeyStatus()})
 		})
 	}
+	// 标题栏跟主题（dwm_windows.go 的实现；改主题 / 定时轮询时各刷一次）
+	titleBarRefresh = refreshTitleBar
 }
 
 func newBackendRequest(method, path string) (*http.Request, error) {

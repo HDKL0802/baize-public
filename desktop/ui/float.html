@@ -93,6 +93,17 @@
   .dot.ok{background:var(--ok)}
   .dot.err{background:var(--err)}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  /* 对话浮窗里的「对话 / 进展」页签（把运行状态从聊天里拆出去） */
+  .ctabs{flex:0 0 auto;display:flex;gap:4px;padding:8px 12px 0}
+  .ctabs button{
+    border:1px solid var(--border);background:var(--surface);color:var(--text-2);
+    border-radius:5px;padding:4px 12px;font:inherit;font-size:12px;cursor:pointer;
+  }
+  .ctabs button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+  .progline{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;
+    font-size:12.5px;line-height:1.5}
+  .progline .g{color:var(--text);display:block;word-break:break-word}
+  .progline .s{color:var(--text-3);font-size:11px}
 
   /* ---------- 语音转写（dictate） ---------- */
   .recbar{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:12px 12px 8px}
@@ -200,14 +211,27 @@
     </div>
   </div>
 
-  <!-- 对话（临时对话 / 问问白泽） -->
+  <!-- 对话（临时对话 / 问问白泽）：「对话」只聊天，「进展」看运行状态，不混在一块 -->
   <div class="body" id="vChat" hidden>
-    <div class="msgs" id="msgs">
-      <div class="msg ai">你好，我是白泽。说一句话就行。<span class="meta"><span class="dot" id="chatDot"></span><span id="chatStat">就绪</span></span></div>
+    <div class="ctabs">
+      <button id="ctChat" class="on">对话</button>
+      <button id="ctProg">进展</button>
     </div>
-    <div class="composer">
-      <textarea id="goal" placeholder="说一句要做什么…（Ctrl+Enter 发送）"></textarea>
-      <div class="send"><button class="btn primary" id="send">发送</button></div>
+    <div id="cvChat" style="flex:1;min-height:0;display:flex;flex-direction:column">
+      <div class="msgs" id="msgs">
+        <div class="msg ai">你好，我是白泽。说一句话就行。</div>
+      </div>
+      <div class="composer">
+        <div class="send" style="margin:0 0 8px">
+          <button class="btn primary" id="send">发送</button>
+        </div>
+        <textarea id="goal" placeholder="说一句要做什么…（Enter 发送，Shift+Enter 换行）"></textarea>
+      </div>
+    </div>
+    <div id="cvProg" hidden style="flex:1;min-height:0;overflow:auto;padding:12px">
+      <div class="msg ai" id="progNow"><span class="dot" id="chatDot"></span><span id="chatStat">就绪</span></div>
+      <div id="progList" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"></div>
+      <div class="sub" style="margin-top:10px;color:var(--text-3)">每 3 秒刷新一次；这里是「白泽在干什么」，聊天在「对话」页。</div>
     </div>
   </div>
 
@@ -337,7 +361,9 @@ let pinned = false;
 let lang = 'zh';
 
 /* ---------- 主题：亮 / 暗 / 跟随系统（跟主程序同一份配置） ---------- */
+let curThemePref = '';
 function applyTheme(theme) {
+  curThemePref = theme || 'system';
   const sysLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
   const t = theme === 'light' || theme === 'dark' ? theme : (sysLight ? 'light' : 'dark');
   document.documentElement.setAttribute('data-theme', t);
@@ -347,9 +373,17 @@ function applyTheme(theme) {
   const th = (c && c.config && c.config.theme) || (c && c.theme) || 'system';
   applyTheme(th);
   if (window.matchMedia) {
-    try { window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => applyTheme(th)); } catch (e) { /* 老 Edge 忽略 */ }
+    try { window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => applyTheme(curThemePref)); } catch (e) { /* 老 Edge 忽略 */ }
   }
 })();
+// 浮窗是独立进程，主窗口改了主题它不知道 → 4 秒对一次配置，变了立刻刷（不用关窗重开）
+setInterval(async () => {
+  try {
+    const c = await local('/config');
+    const th = (c && c.config && c.config.theme) || (c && c.theme) || 'system';
+    if (th !== curThemePref) applyTheme(th);
+  } catch (e) { /* 本机关了就不刷 */ }
+}, 4000);
 
 /* ---------- 顶部按钮 ---------- */
 function paintPin() {
@@ -453,6 +487,47 @@ function setDot(cls, text) {
   $('chatDot').className = 'dot' + (cls ? ' ' + cls : '');
   $('chatStat').textContent = text;
 }
+
+/* 「对话 / 进展」页签：运行状态从聊天里拆出去，互不挤 */
+function switchChatView(chat) {
+  $('ctChat').classList.toggle('on', chat);
+  $('ctProg').classList.toggle('on', !chat);
+  $('cvChat').hidden = !chat;
+  $('cvProg').hidden = chat;
+  if (chat) $('goal').focus();
+}
+$('ctChat').onclick = () => switchChatView(true);
+$('ctProg').onclick = () => switchChatView(false);
+
+// 「进展」页里的运行条目
+function addProgLine(goalText, runId) {
+  const d = document.createElement('div');
+  d.className = 'progline';
+  d.dataset.run = runId || '';
+  d.innerHTML = '<span class="g"></span><span class="s">已派发，跑着…</span>';
+  d.querySelector('.g').textContent = goalText || '（无目标）';
+  $('progList').insertBefore(d, $('progList').firstChild);
+  while ($('progList').children.length > 8) $('progList').removeChild($('progList').lastChild);
+}
+async function refreshProg() {
+  const r = await api('/api/agent/runs?limit=8');
+  if (!r.ok) return;
+  const list = (r.data && (r.data.runs || r.data.items)) || (Array.isArray(r.data) ? r.data : []);
+  list.forEach(it => {
+    const node = $('progList').querySelector('[data-run="' + (it.id || it.runId || '') + '"]');
+    if (!node) return;
+    const s = node.querySelector('.s');
+    s.textContent = (it.status || '?') + ' · ' + (it.steps ?? '?') + ' 步 · ' + (it.totalTokens ?? '?') + ' token';
+    if (it.status === 'done') s.style.color = 'var(--ok)';
+    else if (it.status === 'failed') s.style.color = 'var(--err)';
+  });
+  const anyRunning = list.some(x => x.status === 'running');
+  const busy = !list.length || anyRunning;
+  setDot(anyRunning ? 'busy' : (list[0] && list[0].status === 'done' ? 'ok' : (list[0] && list[0].status === 'failed' ? 'err' : '')),
+    anyRunning ? '运行中…' : (list.length ? '当前空闲 · 最近 ' + list[0].status : '就绪'));
+  void busy;
+}
+
 async function send() {
   const ta = $('goal'), goal = ta.value.trim();
   if (!goal) return;
@@ -468,32 +543,14 @@ async function send() {
     return;
   }
   const id = d.runId || d.id || '';
-  const m = addMsg('ai', '已派发' + (id ? ' · ' + id : '') + '，跑完我把结果放这儿。');
-  setDot('busy', '运行中…');
-  pollRun(id, m);
-}
-async function pollRun(id, node) {
-  let n = 0;
-  const tick = async () => {
-    n++;
-    const r = await api('/api/agent/runs?limit=8');
-    if (r.ok) {
-      const list = (r.data && (r.data.runs || r.data.items)) || (Array.isArray(r.data) ? r.data : []);
-      const it = id ? list.find(x => (x.id || x.runId) === id) : list[0];
-      if (it) {
-        node.textContent = (it.goal || it.title || '') + '\n状态：' + (it.status || '?') +
-          ' · ' + (it.steps ?? '?') + ' 步 · ' + (it.totalTokens ?? '?') + ' token';
-        if (it.status === 'done') { setDot('ok', '完成'); return; }
-        if (it.status === 'failed') { setDot('err', '失败'); return; }
-      }
-    }
-    if (n < 100) setTimeout(tick, 3000); else setDot('', '超时未回');
-  };
-  setTimeout(tick, 2500);
+  addMsg('ai', '已派发' + (id ? ' · ' + id : '') + '，进展页可以盯状态。');
+  addProgLine(goal, id);
+  refreshProg();
 }
 $('send').onclick = send;
 $('goal').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
+  // Enter 发送（豆包那套习惯）；Shift+Enter 换行；Ctrl+Enter 保留
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
 
 // askPrefill 「问问白泽」：把截图里的文字读出来填进输入框，用户接着问
@@ -502,7 +559,7 @@ async function askPrefill() {
   if (!ta) return;
   ta.placeholder = '正在读出截图里的文字…';
   const v = await visionText('extract');
-  ta.placeholder = '说一句要做什么…（Ctrl+Enter 发送）';
+  ta.placeholder = '说一句要做什么…（Enter 发送，Shift+Enter 换行）';
   if (v && v.text) {
     ta.value = v.text;
     addMsg('ai', '已把截图里的文字带进来了，接着问就行。');
@@ -1166,6 +1223,8 @@ window.addEventListener('pagehide', () => {
     $('vChat').hidden = false;
     $('title').textContent = '白泽 · 对话';
     if (m && m.hasImage) await askPrefill(); else $('goal').focus();
+    refreshProg();
+    setInterval(refreshProg, 3000); // 「进展」页 3 秒刷一次（对话页也刷，切过去就是新的）
   }
 
   // 主进程推来新图 → rev 变 → 重跑（提取/翻译出结果；对话则把文字填进输入框）

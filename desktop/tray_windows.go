@@ -13,6 +13,7 @@ package main
 import (
 	"log"
 	"syscall"
+	"time"
 	"unsafe"
 
 	webview2 "github.com/jchv/go-webview2"
@@ -132,7 +133,15 @@ func installShell(w webview2.WebView) {
 		return
 	}
 	mainHWND = hwnd
-	applyDarkTitleBar(hwnd) // 原生标题栏默认是白条，改成深色（对齐界面）
+	applyDarkTitleBar(hwnd) // 原生标题栏默认是白条，按当前主题刷一次
+	// 「跟随系统」时 Windows 侧外观随时可能变（用户切了个性化里的深浅色）：
+	// 每 20 秒对一遍，变了就重刷（成本极低；不这么做标题栏颜色就永远停在旧值）
+	go func() {
+		for {
+			time.Sleep(20 * time.Second)
+			refreshTitleBar()
+		}
+	}()
 
 	// 窗口图标：WebView2 的窗口类没带图标，不显式设的话标题栏/任务栏会画成
 	// 系统默认那张白纸（跟 exe 里嵌的图标完全无关）。

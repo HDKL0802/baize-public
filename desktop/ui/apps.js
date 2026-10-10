@@ -736,7 +736,7 @@ async function renderChat(root) {
 
           <div id="chChat">
             <div class="cmsgs" id="chMsgs" data-ph="说一句话就行 —— 比如「看看手机上还有哪些待办」。危险操作会在「任务与审批」里等你放行。"></div>
-            <textarea id="chGoal" style="min-height:58px" placeholder="说一句要做什么…（Ctrl+Enter 发送）"></textarea>
+            <textarea id="chGoal" style="min-height:58px" placeholder="说一句要做什么…（Enter 发送，Shift+Enter 换行；↑↓ 翻历史）"></textarea>
             <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
               <button class="btn" id="chSend">发送</button>
               <span id="chState" class="sub" style="margin:0"></span>
@@ -774,6 +774,18 @@ async function renderChat(root) {
   let timer = null;
   let mode = 'chat';
 
+  // 历史命令（会话内，最多 30 条）：↑ 往回翻、↓ 往前翻；只在该行为空或光标在行首时触发
+  const hist = [];
+  let histIdx = -1; // -1 = 不在翻历史（正在写新的一句）
+  const histAdd = (t) => {
+    if (!t || hist[0] === t) return; // 连续重复不记
+    hist.unshift(t);
+    if (hist.length > 30) hist.pop();
+    histIdx = -1;
+  };
+  // 文本域里一句话有没有换行（有换行的多行输入不抢 ↑↓）
+  const singleLine = (ta) => ta.value.indexOf('\n') < 0;
+
   const setMode = m => {
     mode = m;
     root.querySelectorAll('#chTabs button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
@@ -798,6 +810,7 @@ async function renderChat(root) {
     const goal = (raw || '').trim();
     if (!goal) { stateEl.innerHTML = '<span class="err">先写一句要做什么</span>'; return false; }
     if (mode === 'chat') addMsg('me', goal);
+    histAdd(goal);
     stateEl.textContent = '已派发，跑着…';
     const r = await API.post('/api/agent/run', { goal, wait: false });
     if (!r.ok) {
@@ -831,8 +844,30 @@ async function renderChat(root) {
     if (ok) ta.value = '';
   };
   $i('chGoal').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $i('chSend').click(); }
+    // Enter 发送（豆包习惯）；Shift+Enter 换行；Ctrl+Enter 也保留
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $i('chSend').click(); return; }
+    keyHist(e, $i('chGoal'));
   });
+  $i('wkGoal').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $i('wkSend').click(); }
+  });
+
+  // keyHist ↑/↓ 翻历史（单行输入时生效）
+  function keyHist(e, ta) {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    if (!singleLine(ta)) return;
+    if (!hist.length) return;
+    if (e.key === 'ArrowUp') {
+      if (histIdx >= hist.length - 1) return;
+      histIdx++;
+    } else {
+      if (histIdx < 0) return;
+      histIdx--;
+    }
+    e.preventDefault();
+    ta.value = histIdx < 0 ? '' : hist[histIdx];
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+  }
 
   const load = async () => {
     const st = await API.get('/api/agent/state');

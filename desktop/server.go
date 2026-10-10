@@ -27,6 +27,8 @@ var (
 	appQuit      = func() {}
 	// 平台专属路由（Windows 的自动更新接口就挂在这儿）
 	registerPlatformRoutes = func(mux *http.ServeMux) {}
+	// 标题栏跟主题刷新（Windows 有原生标题栏要改色；其它平台是空操作）
+	titleBarRefresh = func() {}
 )
 
 // 代理到 NAS 后端的 HTTP 客户端：Agent 派活/附件可能跑一会儿，给足超时。
@@ -145,6 +147,7 @@ func buildHandler() http.Handler {
 			}
 			_ = json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&req)
 			setTheme(req.Theme)
+			titleBarRefresh() // 原生标题栏跟着主题走（不改它的话亮色下一直挂着深条）
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "theme": themeNow()})
 	})

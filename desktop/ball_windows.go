@@ -43,8 +43,10 @@ const (
 	wsExNoActivate  = 0x08000000 // 点了也不激活（字幕条这种覆盖层用）
 	lwaAlpha        = 0x00000002
 	swpNoSize       = 0x0001
+	swpNoMove       = 0x0002
 	swpNoZOrder     = 0x0004
 	swpNoActivate   = 0x0010
+	swpFrameChanged = 0x0020 // 只强制重画边框/标题栏（改完 DWM 颜色属性要用它刷新）
 	swpShowWindow   = 0x0040
 	smCxScreen      = 0
 	smCyScreen      = 1

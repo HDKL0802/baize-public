@@ -29,7 +29,7 @@ import (
 	"baize/shared/proto"
 )
 
-const desktopAppVersion = "0.5.26"
+const desktopAppVersion = "0.5.27"
 
 /* ---------------- 本机信息（与 agent/internal/sysinfo 同一口径） ---------------- */
 
@@ -276,6 +276,16 @@ func runAction(action string, args map[string]any) (map[string]any, error) {
 	if err := permGate(action, gatePaths); err != nil {
 		return nil, err
 	}
+	// 执行命令：闸门过了还要逐条校验命令本身（白名单 + 拒绝元字符）
+	if action == proto.ActionSysExec {
+		raw := strings.TrimSpace(fmt.Sprint(args["cmd"]))
+		if raw == "" {
+			return nil, errors.New("缺少参数 cmd")
+		}
+		if err := shellGate(raw); err != nil {
+			return nil, err
+		}
+	}
 
 	switch action {
 	case proto.ActionPing:
@@ -300,6 +310,18 @@ func runAction(action string, args map[string]any) (map[string]any, error) {
 			return nil, err
 		}
 		return listPaths(paths), nil
+	case proto.ActionSysExec:
+		cwd := strings.TrimSpace(fmt.Sprint(args["cwd"]))
+		to := 0
+		if v, ok := args["timeoutSec"]; ok {
+			switch n := v.(type) {
+			case float64:
+				to = int(n)
+			case int:
+				to = n
+			}
+		}
+		return runShellCommand(strings.TrimSpace(fmt.Sprint(args["cmd"])), cwd, to), nil
 	case proto.ActionFsDelete:
 		paths, err := pathsFrom(args)
 		if err != nil {
@@ -307,8 +329,9 @@ func runAction(action string, args map[string]any) (map[string]any, error) {
 		}
 		return deletePaths(paths), nil
 	default:
-		return nil, fmt.Errorf("本端不支持的动作：%s（支持：ping / %s / %s / %s / %s / %s）",
-			action, proto.ActionSysInfo, proto.ActionWindowNow, proto.ActionFsStat, proto.ActionFsList, proto.ActionFsDelete)
+		return nil, fmt.Errorf("本端不支持的动作：%s（支持：ping / %s / %s / %s / %s / %s / %s）",
+			action, proto.ActionSysInfo, proto.ActionWindowNow, proto.ActionFsStat,
+			proto.ActionFsList, proto.ActionSysExec, proto.ActionFsDelete)
 	}
 }
 

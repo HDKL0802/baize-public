@@ -220,6 +220,25 @@ async function renderSettings(root) {
       </div>
 
       <div class="sect">
+        <h3>允许执行命令（电脑控制第 2 档 · 高危）</h3>
+        <div class="sub">打开后白泽可以<b>在这台电脑上执行命令</b>。三重闸门缺一不可：
+          ① 这里显式开启；② 命令名必须在下面的白名单里（<b>空 = 一条都不许跑</b>，
+          且拒绝管道 / 重定向 / 串联 / 命令替换）；③ 每次派下来都要你在弹窗里点「批准并执行」。
+          <b>默认关闭</b>。</div>
+        <label class="sub" style="display:flex;gap:6px;align-items:flex-start;margin:10px 0">
+          <input type="checkbox" id="shOn" style="margin-top:3px">
+          <span>允许执行命令（我清楚风险：这等于把这台电脑的命令行交给智能体，后果自负）</span></label>
+        <div class="fields" style="grid-template-columns:1fr">
+          <div><label>命令白名单（每行一条，只写命令名，例如 dir / ipconfig / git）</label>
+            <textarea id="shCmds" style="min-height:70px" placeholder="dir&#10;ipconfig&#10;git"></textarea></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn" id="shSave">保存命令执行设置</button>
+          <span class="sub" id="shMsg" style="margin:0"></span>
+        </div>
+      </div>
+
+      <div class="sect">
         <h3>数据目录</h3>
         <div class="sub">桌面端的配置与日志放哪儿。<b>不是必须放 C 盘</b> —— 默认在
           <span class="mono" id="ddDefault">…</span>，你可以改到 D 盘或任意文件夹（改完立即搬过去）。
@@ -441,6 +460,34 @@ async function renderSettings(root) {
     refresh();
   };
 
+  /* ---------- 允许执行命令（电脑控制第 2 档） ---------- */
+  const paintShell = (on, cmds) => {
+    $i('shOn').checked = !!on;
+    $i('shCmds').value = (cmds || []).join('\n');
+    $i('shMsg').innerHTML = on
+      ? '<span class="warn">已开启：可以在本机执行白名单里的命令（每次仍需人工审批）</span>'
+      : '<span class="sub">未开启（默认）—— 智能体不能在本机执行任何命令</span>';
+  };
+  const loadShell = async () => {
+    const r = await API.localGet('/shell');
+    if (!r || r.ok === false) return;
+    paintShell(r.on, r.cmds);
+  };
+  $i('shSave').onclick = async () => {
+    const on = $i('shOn').checked;
+    const cmds = $i('shCmds').value.split('\n').map(s => s.trim()).filter(Boolean);
+    if (on && !cmds.length) {
+      $i('shMsg').innerHTML = '<span class="err">开了开关就至少写一条命令（空清单 = 一条都不许跑，等于没开）</span>';
+      return;
+    }
+    if (on && !confirm('真的要允许白泽在这台电脑上执行命令吗？\n这等于把这台电脑的命令行交给它（白名单 + 每次审批仍在）。')) return;
+    $i('shMsg').textContent = '保存中…';
+    const r = await API.localPost('/shell', { on: on, cmds: cmds, ack: on });
+    if (!r || r.ok === false) { $i('shMsg').innerHTML = `<span class="err">${esc((r && r.error) || '保存失败')}</span>`; return; }
+    paintShell(r.on, r.cmds);
+    if (on && !permState.disclaimerAck) permState.disclaimerAck = true;
+  };
+
   /* ---------- 数据目录 ---------- */
   const loadDataDir = async () => {
     const r = await API.localGet('/datadir');
@@ -619,6 +666,7 @@ async function renderSettings(root) {
   };
 
   await loadPerm();
+  await loadShell();
   await loadDataDir();
   refresh();
 }

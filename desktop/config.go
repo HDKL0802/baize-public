@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,12 @@ type Config struct {
 	GuiScopes []string `json:"guiScopes,omitempty"`
 	// DisclaimerAck 是否已确认风险免责声明（level>=3 以及首次运行都要求先确认）
 	DisclaimerAck bool `json:"disclaimerAck"`
+	// GuiShell 是否允许智能体在本机执行命令（电脑控制第 2 档）。**默认关**；
+	// 开了之后仍要过命令白名单（GuiShellAllowCmds），且每条命令还要过后端人工审批。
+	GuiShell bool `json:"guiShell,omitempty"`
+	// GuiShellAllowCmds 允许执行的命令名白名单（**空 = 一个都不允许**，与"空=不限制"的惯例相反：
+	// 执行命令是高危能力，宁可默认谁都跑不了，也不要一开就全放开）。
+	GuiShellAllowCmds []string `json:"guiShellAllowCmds,omitempty"`
 	// DataDir 数据目录（桌面端的配置与日志；留空 = 默认 %APPDATA%\白泽）
 	DataDir string `json:"dataDir,omitempty"`
 
@@ -115,6 +122,7 @@ func localConfigSnapshot() map[string]any {
 	return map[string]any{
 		"server": cfg.Server, "tokenSet": cfg.Token != "",
 		"guiPerm": cfg.GuiPerm, "guiScopes": append([]string{}, cfg.GuiScopes...),
+		"guiShell": cfg.GuiShell, "guiShellAllowCmds": append([]string{}, cfg.GuiShellAllowCmds...),
 		"disclaimerAck": cfg.DisclaimerAck,
 		"dataDir":       dataDir(), "dataDirDefault": defaultDataDir(),
 		"configPath": cfgPath,
@@ -255,6 +263,48 @@ func ackDisclaimer() {
 	cfg.DisclaimerAck = true
 	saveConfigLocked()
 	cfgMu.Unlock()
+}
+
+// setGuiShell 开关「允许执行命令」+ 改命令白名单。
+// 开启时必须已确认免责（与高权限档同一个 ack）；关掉时白名单留着不动（下次开还在）。
+func setGuiShell(on bool, cmds []string, ack bool) error {
+	if on && !ack {
+		return errors.New("开启「允许执行命令」前要先确认风险提示")
+	}
+	cleaned := cleanCmdList(cmds)
+	if on && len(cleaned) == 0 {
+		return errors.New("至少要写一条允许执行的命令（空清单 = 一条都不允许，等于没开）")
+	}
+	cfgMu.Lock()
+	cfg.GuiShell = on
+	cfg.GuiShellAllowCmds = cleaned
+	if ack {
+		cfg.DisclaimerAck = true
+	}
+	saveConfigLocked()
+	cfgMu.Unlock()
+	// 能力变了要重连：caps 与 hello 都得重新上报，否则后端还按旧能力派活
+	deviceRestart(baseCtx, "命令执行能力变更")
+	return nil
+}
+
+// cleanCmdList 归一命令白名单：去空、去重、只留命令名本身（取 basename、去 .exe）
+func cleanCmdList(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := map[string]bool{}
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		s = normalizeCmdName(s)
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
 }
 
 // setDataDir 改数据目录：把现有 desktop.json 搬到新目录，之后配置与日志都在那儿。

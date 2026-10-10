@@ -148,22 +148,42 @@ func scopesNow() []string {
 	return s
 }
 
+// shellEnabled 是否允许在本机执行命令（电脑控制第 2 档）
+func shellEnabled() bool {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	return cfg.GuiShell && len(cfg.GuiShellAllowCmds) > 0
+}
+
+// shellAllowList 当前允许的命令名白名单（副本）
+func shellAllowList() []string {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	return append([]string{}, cfg.GuiShellAllowCmds...)
+}
+
 // permCaps 按当前权限算出该上报给后端的能力标记。
 //
 // 这里直接决定后端能派什么活 —— 权限不够的能力**根本不上报**，
 // 后端也就不会派这类任务过来（比"派过来再拒绝"更干净）。
 func permCaps() []string {
 	perm, _ := currentPerm()
+	var caps []string
 	switch {
 	case perm <= PermOff:
 		return []string{}
 	case perm == PermReadOnly:
-		return []string{proto.CapWindow}
+		caps = []string{proto.CapWindow}
 	case perm == PermFullAccess:
-		return []string{proto.CapWindow, proto.CapFs, proto.CapFsDelete}
+		caps = []string{proto.CapWindow, proto.CapFs, proto.CapFsDelete}
 	default:
-		return []string{proto.CapWindow, proto.CapFs}
+		caps = []string{proto.CapWindow, proto.CapFs}
 	}
+	// 命令执行是独立开关（与文件权限档位不是一条轴）：开了才上报
+	if shellEnabled() {
+		caps = append(caps, proto.CapShell)
+	}
+	return caps
 }
 
 // permGate 桌面控制的总闸门：动作能不能执行、路径合不合法。
@@ -177,6 +197,14 @@ func permGate(action string, paths []string) error {
 	// ping 是探活，任何等级都放行：禁掉它只会让后端一直显示"设备掉线"，
 	// 而它本身不泄露任何信息、也不改任何东西。
 	if action == proto.ActionPing {
+		return nil
+	}
+	// 执行命令是**独立开关**（不看文件权限档位，免得"想跑条命令还得先把整个盘放开"）：
+	// 只认「允许执行命令」这个开关，命令本身逐条在校验（shellGate，要拿到命令文本）。
+	if action == proto.ActionSysExec {
+		if !shellEnabled() {
+			return fmt.Errorf("本机没开「允许执行命令」（设置 → 桌面控制 → 允许执行命令）；这是高危能力，默认关闭")
+		}
 		return nil
 	}
 	switch perm {
@@ -261,6 +289,27 @@ func volumeOf(p string) string {
 		return strings.ToLower(vol)
 	}
 	return "/"
+}
+
+// normalizeCmdName 命令名归一：小写、去引号、带路径取 basename、去 .exe/.cmd/.bat。
+// 与后端 shell 白名单同一口径（`/bin/echo` → `echo`、`DIR.EXE` → `dir`）。
+func normalizeCmdName(s string) string {
+	s = strings.TrimSpace(strings.Trim(strings.TrimSpace(s), `"'`))
+	if s == "" {
+		return ""
+	}
+	s = strings.ReplaceAll(s, "/", `\`)
+	if i := strings.LastIndex(s, `\`); i >= 0 {
+		s = s[i+1:]
+	}
+	s = strings.ToLower(s)
+	for _, ext := range []string{".exe", ".cmd", ".bat", ".com"} {
+		if strings.HasSuffix(s, ext) {
+			s = strings.TrimSuffix(s, ext)
+			break
+		}
+	}
+	return s
 }
 
 // listVolumes 列出本机可选的盘（给界面下拉用）。取不到就返回空，不假装有。

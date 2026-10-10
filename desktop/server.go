@@ -200,6 +200,27 @@ func buildHandler() http.Handler {
 	// 从本机文件夹导入 Markdown 笔记（Obsidian 库）
 	mux.HandleFunc("/api/local/notes/import", handleLocalNotesImport)
 
+	// 「允许执行命令」（电脑控制第 2 档）：开关 + 命令白名单。
+	// ⚠️ 这是高危能力：开启要过风险确认（ack），空清单会被拒（等于不许跑任何命令）。
+	mux.HandleFunc("/api/local/shell", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req struct {
+				On   bool     `json:"on"`
+				Cmds []string `json:"cmds"`
+				Ack  bool     `json:"ack"`
+			}
+			_ = json.NewDecoder(io.LimitReader(r.Body, 1<<14)).Decode(&req)
+			if err := setGuiShell(req.On, req.Cmds, req.Ack); err != nil {
+				writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+				return
+			}
+		}
+		cfgMu.RLock()
+		on, cmds := cfg.GuiShell, append([]string{}, cfg.GuiShellAllowCmds...)
+		cfgMu.RUnlock()
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "on": on, "cmds": cmds})
+	})
+
 	// 平台专属路由（Windows：自动更新）
 	registerPlatformRoutes(mux)
 

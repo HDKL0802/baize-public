@@ -3,7 +3,7 @@
 // 本机设备能力：桌面端自己也注册成「设备」，可以被 NAS 派活。
 //
 // 复用共享契约 baize/shared（与手机内核、agent/cmd/desktop 同一份协议），
-// 但**只实现只读动作**：ping / sys.info / window.now / fs.stat。
+// 但**只实现只读动作**：ping / sys.info / window.now / fs.stat / fs.list。
 // 故意不声明 fs.delete —— 删除类动作要护栏 + 审批，本端不做，宁可如实拒绝。
 package main
 
@@ -18,6 +18,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -28,7 +29,7 @@ import (
 	"baize/shared/proto"
 )
 
-const desktopAppVersion = "0.5.25"
+const desktopAppVersion = "0.5.26"
 
 /* ---------------- 本机信息（与 agent/internal/sysinfo 同一口径） ---------------- */
 
@@ -181,6 +182,54 @@ func statPaths(paths []string) map[string]any {
 	return map[string]any{"count": len(items), "items": items}
 }
 
+// listPaths 列目录条目（电脑控制第 1 档）。单个目录最多回 500 条，子目录不递归；
+// 排序「目录在前、其余按名字」。权限不够时**根本走不到这里**（permGate 已拦）。
+func listPaths(paths []string) map[string]any {
+	const maxEntries = 500
+	out := make([]map[string]any, 0, len(paths))
+	for _, p := range paths {
+		item := map[string]any{"path": p, "ok": false}
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			item["error"] = "路径不合法"
+			out = append(out, item)
+			continue
+		}
+		item["abs"] = abs
+		entries, err := os.ReadDir(abs)
+		if err != nil {
+			item["error"] = err.Error()
+			out = append(out, item)
+			continue
+		}
+		list := make([]map[string]any, 0, len(entries))
+		for _, e := range entries {
+			sub := map[string]any{"name": e.Name(), "isDir": e.IsDir()}
+			if info, err := e.Info(); err == nil {
+				sub["size"] = info.Size()
+				sub["modTime"] = info.ModTime().UnixMilli()
+			}
+			list = append(list, sub)
+			if len(list) >= maxEntries {
+				break
+			}
+		}
+		sort.SliceStable(list, func(i, j int) bool {
+			di, dj := list[i]["isDir"] == true, list[j]["isDir"] == true
+			if di != dj {
+				return di
+			}
+			return strings.ToLower(fmt.Sprint(list[i]["name"])) < strings.ToLower(fmt.Sprint(list[j]["name"]))
+		})
+		item["ok"] = true
+		item["count"] = len(list)
+		item["truncated"] = len(entries) > maxEntries
+		item["entries"] = list
+		out = append(out, item)
+	}
+	return map[string]any{"count": len(out), "dirs": out}
+}
+
 func pathsFrom(args map[string]any) ([]string, error) {
 	raw, ok := args["paths"]
 	if !ok {
@@ -219,7 +268,7 @@ func runAction(action string, args map[string]any) (map[string]any, error) {
 	// 桌面控制权限闸门：**先过闸门再动手**。fs 类动作先把 paths 抽出来给闸门看范围，
 	// 越权直接在这儿被挡下（错误信息会如实回给后端与用户）。
 	var gatePaths []string
-	if action == proto.ActionFsStat || action == proto.ActionFsDelete {
+	if action == proto.ActionFsStat || action == proto.ActionFsList || action == proto.ActionFsDelete {
 		if ps, err := pathsFrom(args); err == nil {
 			gatePaths = ps
 		}
@@ -245,6 +294,12 @@ func runAction(action string, args map[string]any) (map[string]any, error) {
 			return nil, err
 		}
 		return statPaths(paths), nil
+	case proto.ActionFsList:
+		paths, err := pathsFrom(args)
+		if err != nil {
+			return nil, err
+		}
+		return listPaths(paths), nil
 	case proto.ActionFsDelete:
 		paths, err := pathsFrom(args)
 		if err != nil {
@@ -252,8 +307,8 @@ func runAction(action string, args map[string]any) (map[string]any, error) {
 		}
 		return deletePaths(paths), nil
 	default:
-		return nil, fmt.Errorf("本端不支持的动作：%s（支持：ping / %s / %s / %s / %s）",
-			action, proto.ActionSysInfo, proto.ActionWindowNow, proto.ActionFsStat, proto.ActionFsDelete)
+		return nil, fmt.Errorf("本端不支持的动作：%s（支持：ping / %s / %s / %s / %s / %s）",
+			action, proto.ActionSysInfo, proto.ActionWindowNow, proto.ActionFsStat, proto.ActionFsList, proto.ActionFsDelete)
 	}
 }
 

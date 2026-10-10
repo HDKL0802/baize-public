@@ -130,6 +130,7 @@ async function localDeviceId() { return (await localDeviceInfo()).deviceId || ''
 window.APPS = [
   { id: 'chat', name: '对话', icon: '💬', w: 900, h: 620, render: renderChat },
   { id: 'devices', name: '设备', icon: '🖥️', w: 1000, h: 620, render: renderDevices },
+  { id: 'files', name: '电脑文件', icon: '🗂️', w: 1000, h: 640 },
   { id: 'settings', name: '设置', icon: '⚙️', w: 720, h: 540, render: renderSettings },
 
   { id: 'tasks', name: '任务与审批', icon: '📋', w: 900, h: 600 },

@@ -193,7 +193,7 @@ func permGate(action string, paths []string) error {
 	switch action {
 	case proto.ActionSysInfo, proto.ActionWindowNow:
 		return nil
-	case proto.ActionFsStat:
+	case proto.ActionFsStat, proto.ActionFsList:
 		if len(paths) == 0 {
 			return errors.New("缺少参数 paths")
 		}

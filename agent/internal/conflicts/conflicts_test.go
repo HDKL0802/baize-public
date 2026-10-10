@@ -1,6 +1,8 @@
 package conflicts
 
 import (
+	"database/sql"
+	"path/filepath"
 	"testing"
 )
 
@@ -154,5 +156,93 @@ func TestMissingSessionErrors(t *testing.T) {
 	}
 	if _, err := st.OpenSession("", "x", "A", nil); err == nil {
 		t.Fatal("空 groupID 应当报错")
+	}
+}
+
+// 「回复AI」确认闸：每一版的作者都确认了才放行；单人确认如实回"还差谁"。
+func TestConfirmAI(t *testing.T) {
+	st, _ := Open(t.TempDir())
+	defer st.Close()
+
+	s, _ := st.OpenSession("g", "方案.md", "A", []DocVersion{
+		{DocID: "docA", OwnerID: "A"}, {DocID: "docB", OwnerID: "B"},
+	})
+	all, missing, err := st.ConfirmAI(s.ID, "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all || len(missing) != 1 || missing[0] != "B" {
+		t.Fatalf("A 确认后还差 B：all=%v missing=%v", all, missing)
+	}
+	all, missing, err = st.ConfirmAI(s.ID, "B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !all || len(missing) != 0 {
+		t.Fatalf("两人都确认了应当放行：all=%v missing=%v", all, missing)
+	}
+	// 幂等：同一人再点一次不变
+	confirmers, err := st.AIConfirmers(s.ID)
+	if err != nil || len(confirmers) != 2 {
+		t.Fatalf("应记 2 个确认人，实得 %v / %v", confirmers, err)
+	}
+	if _, _, err = st.ConfirmAI(s.ID, "B"); err != nil {
+		t.Fatal(err)
+	}
+	if confirmers, _ = st.AIConfirmers(s.ID); len(confirmers) != 2 {
+		t.Fatalf("重复确认不该多记：%v", confirmers)
+	}
+}
+
+// 作者缺失的老数据：任何人确认一次就放行（不能卡在补不回来的确认上）
+func TestConfirmAINoOwners(t *testing.T) {
+	st, _ := Open(t.TempDir())
+	defer st.Close()
+	s, _ := st.OpenSession("g", "老文档.txt", "A", []DocVersion{
+		{DocID: "docA"}, {DocID: "docB"},
+	})
+	all, missing, err := st.ConfirmAI(s.ID, "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !all || len(missing) != 0 {
+		t.Fatalf("没记作者的会话一人确认即放行：all=%v missing=%v", all, missing)
+	}
+}
+
+// 状态读写 + 老库迁移：手工造一份没有 ai_status 列的老 schema，Open 后照常能用
+func TestAIStatusAndOldSchemaMigration(t *testing.T) {
+	dir := t.TempDir()
+	// 老库：只建早期那几张表（sessions 里没有 ai_status / ai_note）
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(filepath.Join(dir, "conflicts.db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = db.Exec(`CREATE TABLE sessions(id TEXT PRIMARY KEY, group_id TEXT NOT NULL,
+		name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open',
+		opened_by TEXT NOT NULL DEFAULT '', resolved_doc TEXT NOT NULL DEFAULT '',
+		resolved_by TEXT NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0)`)
+	_ = db.Close()
+
+	st, err := Open(dir)
+	if err != nil {
+		t.Fatalf("老库应当能打开（迁移补列）：%v", err)
+	}
+	defer st.Close()
+	s, err := st.OpenSession("g", "迁移.md", "A", []DocVersion{{DocID: "d1", OwnerID: "A"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.AIStatus != "" || s.AINote != "" {
+		t.Fatalf("新列默认值应为空：%+v", s)
+	}
+	got, err := st.SetAIStatus(s.ID, "running", "")
+	if err != nil || got.AIStatus != "running" {
+		t.Fatalf("写状态失败：%+v / %v", got, err)
+	}
+	got, err = st.SetAIStatus(s.ID, "done", "AI 判定：保留 B 版")
+	if err != nil || got.AIStatus != "done" || got.AINote == "" {
+		t.Fatalf("完成态不对：%+v / %v", got, err)
 	}
 }

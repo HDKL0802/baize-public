@@ -279,24 +279,10 @@ func (s *Server) conflictSession(groupID, sid string) (*conflicts.Store, conflic
 }
 
 // pruneFork 定稿后把同名文档的其它版本删掉，只留正本。
-// 返回被删掉的 docId 列表。删不动不算致命（文件可能已不在），如实回传即可。
+// 实现挪到 agentsvc（AI 判定那半边也要用同一份语义，别写两遍）。
 func (s *Server) pruneFork(groupID, name, keepDocID string) []string {
-	store, err := s.agent.GroupDocs(accounts.GroupPrincipal(groupID))
-	if err != nil {
+	if s.agent == nil {
 		return nil
 	}
-	list, err := store.List(0)
-	if err != nil {
-		return nil
-	}
-	removed := []string{}
-	for _, f := range list {
-		if f.Name != name || f.ID == keepDocID {
-			continue
-		}
-		if err := store.Remove(f.ID); err == nil {
-			removed = append(removed, f.ID)
-		}
-	}
-	return removed
+	return s.agent.PruneFork(groupID, name, keepDocID)
 }

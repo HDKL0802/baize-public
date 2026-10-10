@@ -52,6 +52,9 @@ type Session struct {
 	MessageN    int    `json:"messageCount"`
 	CreatedAt   int64  `json:"createdAt"`
 	UpdatedAt   int64  `json:"updatedAt"`
+	// 「回复AI」闸门：各方都点了确认之后，后端才让模型通读上下文去判定/合并
+	AIStatus string `json:"aiStatus,omitempty"` // '' | running | done | failed
+	AINote   string `json:"aiNote,omitempty"`
 }
 
 // Version 参与协商的一版文档
@@ -97,6 +100,8 @@ CREATE TABLE IF NOT EXISTS sessions(
   opened_by TEXT NOT NULL DEFAULT '',
   resolved_doc TEXT NOT NULL DEFAULT '',
   resolved_by TEXT NOT NULL DEFAULT '',
+  ai_status TEXT NOT NULL DEFAULT '',
+  ai_note TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL DEFAULT 0
 );
@@ -129,7 +134,27 @@ CREATE TABLE IF NOT EXISTS signals(
   at INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_signals_session ON signals(session_id, id);
+CREATE TABLE IF NOT EXISTS ai_confirms(
+  session_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  at INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(session_id, user_id)
+);
 `
+
+// migrateOld 给 0.9.32 之前建的老库补「回复AI」的两个列（CREATE IF NOT EXISTS
+// 不会改已存在的表；重复加列报 duplicate column，忽略即可）
+func migrateOld(db *sql.DB) {
+	for _, stmt := range []string{
+		`ALTER TABLE sessions ADD COLUMN ai_status TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN ai_note TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			// 其它错误不该静默吞，但也不至于打不开库（列缺了读写会报错，到时再说）
+			_ = err
+		}
+	}
+}
 
 // Open 打开（或创建）某个数据目录下的协商记录库：<dir>/conflicts.db
 func Open(dir string) (*Store, error) {
@@ -147,6 +172,7 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("初始化协商表结构失败：%w", err)
 	}
+	migrateOld(db)
 	return &Store{db: db}, nil
 }
 
@@ -227,7 +253,7 @@ func (s *Store) Sessions(groupID string, onlyOpen bool) ([]Session, error) {
 	if onlyOpen {
 		where += ` AND status='open'`
 	}
-	rows, err := s.db.Query(`SELECT id,group_id,name,status,opened_by,resolved_doc,resolved_by,created_at,updated_at,
+	rows, err := s.db.Query(`SELECT id,group_id,name,status,opened_by,resolved_doc,resolved_by,ai_status,ai_note,created_at,updated_at,
 		(SELECT COUNT(*) FROM versions v WHERE v.session_id=sessions.id),
 		(SELECT COUNT(*) FROM messages m WHERE m.session_id=sessions.id)
 		FROM sessions WHERE `+where+` ORDER BY updated_at DESC`, groupID)
@@ -239,7 +265,8 @@ func (s *Store) Sessions(groupID string, onlyOpen bool) ([]Session, error) {
 	for rows.Next() {
 		var x Session
 		if err := rows.Scan(&x.ID, &x.GroupID, &x.Name, &x.Status, &x.OpenedBy,
-			&x.ResolvedDoc, &x.ResolvedBy, &x.CreatedAt, &x.UpdatedAt, &x.VersionN, &x.MessageN); err != nil {
+			&x.ResolvedDoc, &x.ResolvedBy, &x.AIStatus, &x.AINote,
+			&x.CreatedAt, &x.UpdatedAt, &x.VersionN, &x.MessageN); err != nil {
 			return nil, err
 		}
 		out = append(out, x)
@@ -256,12 +283,13 @@ func (s *Store) Session(id string) (Session, error) {
 
 func (s *Store) sessionLocked(id string) (Session, error) {
 	var x Session
-	err := s.db.QueryRow(`SELECT id,group_id,name,status,opened_by,resolved_doc,resolved_by,created_at,updated_at,
+	err := s.db.QueryRow(`SELECT id,group_id,name,status,opened_by,resolved_doc,resolved_by,ai_status,ai_note,created_at,updated_at,
 		(SELECT COUNT(*) FROM versions v WHERE v.session_id=sessions.id),
 		(SELECT COUNT(*) FROM messages m WHERE m.session_id=sessions.id)
 		FROM sessions WHERE id=?`, id).
 		Scan(&x.ID, &x.GroupID, &x.Name, &x.Status, &x.OpenedBy,
-			&x.ResolvedDoc, &x.ResolvedBy, &x.CreatedAt, &x.UpdatedAt, &x.VersionN, &x.MessageN)
+			&x.ResolvedDoc, &x.ResolvedBy, &x.AIStatus, &x.AINote,
+			&x.CreatedAt, &x.UpdatedAt, &x.VersionN, &x.MessageN)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, errors.New("没有这个协商会话")
 	}
@@ -444,6 +472,111 @@ func (s *Store) Signals(sessionID, to string, afterID int64, limit int) ([]Signa
 			continue
 		}
 		out = append(out, x)
+	}
+	return out, rows.Err()
+}
+
+/* ---------- 「回复AI」确认闸 ---------- */
+
+// ConfirmAI 某一方点了「回复AI」。
+//
+// 只有**每一版的作者**都确认过，才返回 allConfirmed=true（调用方据此触发
+// AI 通读判定）。作者缺失（versions 里没记 owner，早期数据）时按"已确认"
+// 处理——不能让人卡在一个补不回来的确认上。
+// 幂等：同一人点多次只留第一次。
+func (s *Store) ConfirmAI(sessionID, byID string) (bool, []string, error) {
+	byID = strings.TrimSpace(byID)
+	if byID == "" {
+		return false, nil, errors.New("请先登录再确认")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.sessionLocked(sessionID); err != nil {
+		return false, nil, err
+	}
+	if _, err := s.db.Exec(`INSERT OR IGNORE INTO ai_confirms(session_id,user_id,at) VALUES(?,?,?)`,
+		sessionID, byID, time.Now().UnixMilli()); err != nil {
+		return false, nil, err
+	}
+	// 每一版的作者（去重、去空）都要确认
+	rows, err := s.db.Query(`SELECT DISTINCT owner_id FROM versions WHERE session_id=? AND owner_id<>''`, sessionID)
+	if err != nil {
+		return false, nil, err
+	}
+	owners := []string{}
+	for rows.Next() {
+		var o string
+		if err := rows.Scan(&o); err != nil {
+			rows.Close()
+			return false, nil, err
+		}
+		owners = append(owners, o)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return false, nil, err
+	}
+	if len(owners) == 0 { // 早期数据没记作者：一个人确认就放行
+		return true, nil, nil
+	}
+	confirmed, err := s.confirmedOwnersLocked(sessionID)
+	if err != nil {
+		return false, nil, err
+	}
+	missing := []string{}
+	for _, o := range owners {
+		if !confirmed[o] {
+			missing = append(missing, o)
+		}
+	}
+	return len(missing) == 0, missing, nil
+}
+
+func (s *Store) confirmedOwnersLocked(sessionID string) (map[string]bool, error) {
+	rows, err := s.db.Query(`SELECT user_id FROM ai_confirms WHERE session_id=?`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, err
+		}
+		out[u] = true
+	}
+	return out, rows.Err()
+}
+
+// SetAIStatus 记 AI 判定/合并的进度（” = 没跑；running/done/failed）
+func (s *Store) SetAIStatus(sessionID, status, note string) (Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.sessionLocked(sessionID); err != nil {
+		return Session{}, err
+	}
+	if _, err := s.db.Exec(`UPDATE sessions SET ai_status=?,ai_note=?,updated_at=? WHERE id=?`,
+		status, note, time.Now().UnixMilli(), sessionID); err != nil {
+		return Session{}, err
+	}
+	return s.sessionLocked(sessionID)
+}
+
+// AIConfirmers 这个会话里已经点过「回复AI」的 userId 列表
+func (s *Store) AIConfirmers(sessionID string) ([]string, error) {
+	rows, err := s.db.Query(`SELECT user_id FROM ai_confirms WHERE session_id=? ORDER BY at`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
 	}
 	return out, rows.Err()
 }

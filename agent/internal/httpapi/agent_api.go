@@ -37,6 +37,7 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	s.registerAccounts(mux)
 	// 用户组共享文档（组内成员互相可见）
 	s.registerSharing(mux)
+	s.registerCalls(mux)
 	// 冲突协商（同名两版的对照/聊天/定稿 + 音视频信令中转）
 	s.registerConflicts(mux)
 	// 插件市场（静态源 + 插件包 → 技能目录 / MCP 配置）

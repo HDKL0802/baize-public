@@ -1,6 +1,6 @@
 // Package executor 在桌面端就地执行后端下发的指令。
 //
-// MVP 支持的动作：ping / sys.info / window.now / fs.stat / fs.delete。
+// MVP 支持的动作：ping / sys.info / window.now / fs.stat / fs.list / fs.delete。
 // fs.delete 属于危险动作，除了后端审批闸门，这里还有一层本地路径护栏与 --dry-run 开关。
 package executor
 
@@ -10,11 +10,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
-	"baize/shared/proto"
 	"baize/internal/sysinfo"
+	"baize/shared/proto"
 )
 
 // ErrDangerDisabled 本端未开启危险能力（删除类动作被本地策略拒绝）
@@ -53,6 +54,13 @@ func Run(action string, args map[string]any, opt Options) (map[string]any, error
 			return nil, err
 		}
 		return statPaths(paths), nil
+
+	case proto.ActionFsList:
+		paths, err := pathsFrom(args, opt.MaxPaths)
+		if err != nil {
+			return nil, err
+		}
+		return listPaths(paths), nil
 
 	case proto.ActionFsDelete:
 		if !opt.DryRun && !opt.AllowDanger && len(opt.AllowRoots) == 0 {
@@ -137,6 +145,47 @@ func statPaths(paths []string) map[string]any {
 		items = append(items, item)
 	}
 	return map[string]any{"count": len(items), "items": items}
+}
+
+// listPaths 列目录条目（电脑控制第 1 档）：path 必须是个目录；单目录最多回 500 条。
+// 返回 entries 按「目录在前、其余按名字」排序，带上大小与修改时间；子目录不递归。
+func listPaths(paths []string) map[string]any {
+	const maxEntries = 500
+	out := make([]map[string]any, 0, len(paths))
+	for _, p := range paths {
+		item := map[string]any{"path": p, "ok": false}
+		entries, err := os.ReadDir(p)
+		if err != nil {
+			item["error"] = err.Error()
+			out = append(out, item)
+			continue
+		}
+		list := make([]map[string]any, 0, len(entries))
+		for _, e := range entries {
+			sub := map[string]any{"name": e.Name(), "isDir": e.IsDir()}
+			if info, err := e.Info(); err == nil {
+				sub["size"] = info.Size()
+				sub["modTime"] = info.ModTime().UnixMilli()
+			}
+			list = append(list, sub)
+			if len(list) >= maxEntries {
+				break
+			}
+		}
+		sort.SliceStable(list, func(i, j int) bool {
+			di, dj := list[i]["isDir"] == true, list[j]["isDir"] == true
+			if di != dj {
+				return di // 目录在前
+			}
+			return strings.ToLower(fmt.Sprint(list[i]["name"])) < strings.ToLower(fmt.Sprint(list[j]["name"]))
+		})
+		item["ok"] = true
+		item["count"] = len(list)
+		item["truncated"] = len(entries) > maxEntries
+		item["entries"] = list
+		out = append(out, item)
+	}
+	return map[string]any{"count": len(out), "dirs": out}
 }
 
 func deletePaths(paths []string, opt Options) (map[string]any, error) {

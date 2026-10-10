@@ -107,8 +107,8 @@ func (t *DeviceRun) Name() string { return "device_run" }
 
 // Description 说明
 func (t *DeviceRun) Description() string {
-	return "在指定设备上执行一条指令并等待回执（例如 fs.delete/fs.stat/sys.info/window.now/ping）；" +
-		"删除类动作是危险操作，会先走审批闸门"
+	return "在指定设备上执行一条指令并等待回执（例如 fs.list/fs.stat/fs.delete/sys.exec/sys.info/window.now/ping）；" +
+		"删除与执行命令类动作是危险操作，会先走审批闸门"
 }
 
 // Schema 参数说明
@@ -117,8 +117,8 @@ func (t *DeviceRun) Schema() map[string]any {
 		"type": "object",
 		"properties": map[string]any{
 			"deviceId":   map[string]any{"type": "string", "description": "目标设备 id（先用 device_list 查）"},
-			"action":     map[string]any{"type": "string", "description": "动作名，如 fs.delete / fs.stat / sys.info / window.now / ping"},
-			"args":       map[string]any{"type": "object", "description": "动作参数，例如 {\"paths\":[\"D:\\\\tmp\\\\a.txt\"]}"},
+			"action":     map[string]any{"type": "string", "description": "动作名，如 fs.list / fs.stat / fs.delete / sys.exec / sys.info / window.now / ping"},
+			"args":       map[string]any{"type": "object", "description": "动作参数，例如 {\"paths\":[\"D:\\\\tmp\"]}；sys.exec 用 {\"cmd\":\"dir\"}"},
 			"timeoutSec": map[string]any{"type": "integer", "description": "等待回执的秒数，默认 120"},
 		},
 		"required": []string{"deviceId", "action"},

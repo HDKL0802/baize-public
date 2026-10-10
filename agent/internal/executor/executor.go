@@ -62,6 +62,14 @@ func Run(action string, args map[string]any, opt Options) (map[string]any, error
 		}
 		return listPaths(paths), nil
 
+	case proto.ActionSysExec:
+		// 执行命令：无界面端默认一律拒绝，只有显式 --allow-danger 或 --dry-run 才放行
+		// （桌面端那条路由则由用户白名单 + 界面审批兜底）。
+		if !opt.DryRun && !opt.AllowDanger {
+			return nil, ErrDangerDisabled
+		}
+		return execCommand(args["cmd"], args["cwd"], args["timeoutSec"], opt.DryRun), nil
+
 	case proto.ActionFsDelete:
 		if !opt.DryRun && !opt.AllowDanger && len(opt.AllowRoots) == 0 {
 			return nil, ErrDangerDisabled

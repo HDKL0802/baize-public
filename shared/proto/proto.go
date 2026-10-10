@@ -61,6 +61,7 @@ const (
 	ActionWindowNow = "window.now" // 取当前活动窗口（桌面端）
 	ActionFsStat    = "fs.stat"    // 查看文件/目录信息（桌面端）
 	ActionFsList    = "fs.list"    // 列一个目录里的条目（桌面端，电脑控制第 1 档）
+	ActionSysExec   = "sys.exec"   // 在本机执行一条命令（**危险，强制审批**；桌面端，电脑控制第 2 档）
 	ActionFsDelete  = "fs.delete"  // 删除文件/目录（危险，强制审批；桌面端）
 
 	// 手机端（待办内核）可执行的动作：均为只读，不改数据
@@ -73,7 +74,8 @@ const (
 	CapWindow   = "window.report"
 	CapFs       = "fs"
 	CapFsDelete = "fs.delete"
-	CapTodo     = "todo" // 待办内核（手机端）
+	CapShell    = "sys.exec" // 允许在本机执行命令（桌面端，需用户显式开启）
+	CapTodo     = "todo"     // 待办内核（手机端）
 )
 
 // 记录（三态 + 审批）落库用的种类
@@ -200,7 +202,7 @@ type Receipt struct {
 
 // knownActions 后端允许创建的动作白名单
 var knownActions = []string{
-	ActionPing, ActionSysInfo, ActionWindowNow, ActionFsStat, ActionFsList, ActionFsDelete,
+	ActionPing, ActionSysInfo, ActionWindowNow, ActionFsStat, ActionFsList, ActionSysExec, ActionFsDelete,
 	ActionTodoList, ActionTodoStats,
 }
 

@@ -56,7 +56,7 @@ func main() {
 	debug := flag.Bool("debug", false, "打开 WebView2 调试（可用 CDP 连）")
 	// 临时浮窗（内部用）：同一个 exe 带这个参数再起一个进程，只当一块临时浮窗用。
 	// 见 float_windows.go —— 照豆包「一堆进程」那套，每个临时窗口一个独立进程。
-	floatMode := flag.String("float", "", "临时浮窗模式：chat / extract / translate（内部用）")
+	floatMode := flag.String("float", "", "临时浮窗模式：chat / extract / translate / dictate / subtitle / call（内部用）")
 	floatImg := flag.String("img", "", "浮窗（提取/翻译）要处理的截图临时文件（内部用）")
 	flag.Parse()
 

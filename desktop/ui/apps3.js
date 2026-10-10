@@ -24,6 +24,7 @@ async function renderAccounts(root) {
         <button data-tab="users">用户</button>
         <button data-tab="groups">用户组</button>
         <button data-tab="docs">共享文档</button>
+        <button data-tab="calls">通话</button>
       </div>
       <div id="uaBody"></div>
     </div>`;
@@ -37,6 +38,7 @@ async function renderAccounts(root) {
       if (tab === 'me') await drawMe();
       else if (tab === 'users') await drawUsers();
       else if (tab === 'groups') await drawGroups();
+      else if (tab === 'calls') await drawCalls();
       else await drawDocs();
     } catch (e) {
       body.innerHTML = `<div class="empty err">渲染失败：${esc(e && e.message ? e.message : e)}</div>`;
@@ -342,6 +344,72 @@ async function renderAccounts(root) {
     await load();
   };
 
+  /* ---------- 通话（两人通话：互发消息 + 通话浮窗） ---------- */
+  const drawCalls = async () => {
+    body.innerHTML = '<div class="empty">读取中…</div>';
+    const me = await API.whoami();
+    if (!me.ok) { showErr(body, me); return; }
+    if (!me.data || !me.data.loggedIn) {
+      body.innerHTML = '<div class="empty">通话要<b>先登录</b>（通话在用户组内）。到「身份」页签登录。</div>';
+      return;
+    }
+    const mine = me.data.groups || [];
+    if (!mine.length) {
+      body.innerHTML = '<div class="empty">你还没加入任何用户组。到「用户组」页签建一个、把对方拉进来，就能像微信一样互相发消息 / 开通话了。</div>';
+      return;
+    }
+    body.innerHTML = `
+      <h3>通话</h3>
+      <div class="sub">组内两人通话：文字消息随时发，需要见面就开通话浮窗（音视频，信令走后端、媒体 P2P 直连）。
+        挂在文档协商下的通话带「回复AI」：双方确认后 AI 自动通读记录、判定/合并文档。</div>
+      <div id="clList"></div>`;
+    const box = $i('clList');
+    box.innerHTML = '<div class="empty">读取中…</div>';
+    for (const g of mine) {
+      const [gg, cl] = await Promise.all([
+        API.get('/api/agent/groups/' + encodeURIComponent(g.id)),
+        API.get('/api/agent/groups/' + encodeURIComponent(g.id) + '/calls'),
+      ]);
+      const members = ((gg.data && gg.data.members) || []).filter(m => m.userId !== (me.data.user && me.data.user.id));
+      const live = ((cl.data && cl.data.calls) || []).filter(c => c.status === 'live');
+      const sec = document.createElement('div');
+      sec.className = 'sect';
+      sec.style.marginTop = '14px';
+      sec.innerHTML = '<h3 class="h-sub">' + esc(g.name) + '</h3>' +
+        live.map(c => `
+          <div class="row">
+            <div class="who"><b>进行中 · ${esc(c.peerName || c.peerId)}</b>
+              <span class="mono">${esc(c.id)}${c.conflictSid ? ' · 挂在协商 ' + esc(c.conflictSid) : ''}</span></div>
+            <div class="tags"><button class="btn sm" data-call="${esc(c.id)}" data-g="${esc(g.id)}">打开通话窗</button></div>
+          </div>`).join('') +
+        (members.length ? members.map(m => `
+          <div class="row">
+            <div class="who"><b>${esc(m.userName || m.userId)}</b>
+              <span class="mono">${esc(m.userId)} · ${esc(m.role || 'member')}</span></div>
+            <div class="tags"><button class="btn sm" data-peer="${esc(m.userId)}" data-name="${esc(m.userName || m.userId)}" data-g="${esc(g.id)}">开通话</button></div>
+          </div>`).join('') : '<div class="empty">这个组里还没有别的成员</div>');
+      box.appendChild(sec);
+    }
+    box.querySelectorAll('[data-call]').forEach(b => b.onclick = async () => {
+      const rr = await API.localPost('/float/open', {
+        mode: 'call', group: b.dataset.g, call: b.dataset.call, session: BZ.sessionToken(),
+      });
+      Shell.toast((rr && rr.ok !== false) ? '已打开通话窗' : ('打不开通话窗：' + ((rr && rr.error) || '未知')),
+        rr && rr.ok !== false ? 'ok' : 'err');
+    });
+    box.querySelectorAll('[data-peer]').forEach(b => b.onclick = async () => {
+      const rr = await API.post('/api/agent/groups/' + encodeURIComponent(b.dataset.g) + '/calls',
+        { peer: b.dataset.peer });
+      if (!rr.ok) { Shell.toast('开通话失败：' + (rr.error || ''), 'err'); return; }
+      const cid = (rr.data && rr.data.call && rr.data.call.id) || '';
+      const ro = await API.localPost('/float/open', {
+        mode: 'call', group: b.dataset.g, call: cid, session: BZ.sessionToken(),
+      });
+      Shell.toast((ro && ro.ok !== false) ? '已和 ' + b.dataset.name + ' 开通话' : ('打不开通话窗：' + ((ro && ro.error) || '未知')),
+        ro && ro.ok !== false ? 'ok' : 'err');
+    });
+  };
+
   await draw();
 }
 
@@ -430,6 +498,8 @@ async function renderConflicts(root) {
       msgAfter = delta[delta.length - 1].id;
       renderMessages();
     }
+    // 「回复AI」进度（3 秒轮询顺手刷）
+    paintAIState(c);
     // 信令（音视频）：只处理新到的
     const sigs = d.signals || [];
     if (sigs.length) {
@@ -462,9 +532,12 @@ async function renderConflicts(root) {
           <button class="btn" data-keep="${esc(mine.docId || '')}">保留左版（${esc(mine.ownerName || '我')}）</button>
           <button class="btn" data-keep="${esc(other.docId || '')}">保留右版（${esc(other.ownerName || '对方')}）</button>
           <button class="btn ghost" data-giveup="1">我放弃我这一版</button>
+          <button class="btn ghost" id="cfCallFloat">发起通话</button>
+          <button class="btn" id="cfAI">回复AI</button>
         ` : '<span class="sub" style="margin:0">这次协商已经收场，下面留着聊天记录。</span>'}
         <span class="sub" id="cfAct" style="margin:0"></span>
       </div>
+      <div class="sub" id="cfAiState" style="margin:-4px 0 10px"></div>
       <div class="sect">
         <h3 class="h-sub">聊天</h3>
         <div class="chat-box" id="cfMsgs"></div>
@@ -530,7 +603,45 @@ async function renderConflicts(root) {
     });
     $i('cfSend').onclick = sendMsg;
     $i('cfInput').onkeydown = e => { if (e.key === 'Enter') sendMsg(); };
+    // 发起通话：开（或复用）挂在这次协商下的通话窗（文字 + 音视频都在那个窗口里）
+    const cfCallFloat = $i('cfCallFloat');
+    if (cfCallFloat) cfCallFloat.onclick = async () => {
+      cfCallFloat.textContent = '开通话中…';
+      const rr = await API.post('/api/agent/groups/' + encodeURIComponent(cur.group) + '/calls',
+        { peer: curOther, conflictSid: cur.sid });
+      if (!rr.ok) { cfCallFloat.textContent = '发起通话'; Shell.toast('开通话失败：' + (rr.error || ''), 'err'); return; }
+      const cid = (rr.data && rr.data.call && rr.data.call.id) || '';
+      const ro = await API.localPost('/float/open', {
+        mode: 'call', group: cur.group, call: cid, conflict: cur.sid, session: BZ.sessionToken(),
+      });
+      cfCallFloat.textContent = '发起通话';
+      Shell.toast(ro && ro.ok !== false ? '通话窗已打开（对方收到消息就会自动出现）'
+        : ('打不开通话窗：' + ((ro && ro.error) || '未知')), ro && ro.ok !== false ? 'ok' : 'err');
+    };
+    // 回复AI：我这一方先点；两方都点了，后端才让模型通读记录判定/合并
+    const cfAI = $i('cfAI');
+    if (cfAI) cfAI.onclick = async () => {
+      cfAI.disabled = true;
+      const rr = await API.post('/api/agent/groups/' + encodeURIComponent(cur.group) +
+        '/conflicts/' + encodeURIComponent(cur.sid) + '/ai-confirm', {});
+      if (!rr.ok) { cfAI.disabled = false; Shell.toast('确认失败：' + (rr.error || ''), 'err'); return; }
+      const d = rr.data || {};
+      Shell.toast(d.allConfirmed ? '双方都确认了，AI 开始通读判定（结果会出现在下面和通话窗）'
+        : ('我已确认，还差 ' + ((d.missing || []).length) + ' 方'), 'ok');
+      await refreshDetail(false);
+    };
+    paintAIState(c);
     await setupRTC();
+  };
+
+  // 「回复AI」进度（跑在 3 秒轮询里）：没点 / 只点了一边 / AI 跑着 / 完成 / 失败
+  const paintAIState = (c) => {
+    const el = $i('cfAiState');
+    if (!el || !c) return;
+    if (c.aiStatus === 'running') el.innerHTML = '<span class="warn">AI 正在通读你们的记录并判定/合并…</span>';
+    else if (c.aiStatus === 'done') el.innerHTML = '<span class="ok">' + esc(c.aiNote || 'AI 已判定') + '</span>';
+    else if (c.aiStatus === 'failed') el.innerHTML = '<span class="err">AI 判定失败：' + esc(c.aiNote || '原因未知（可在「账号与共享 → 模型通道」配好一条可用的通道后重新点「回复AI」）') + '</span>';
+    else if (c.status === 'open') el.textContent = '「回复AI」：双方各点一次确认后，AI 自动通读聊天记录并判定/合并文档（需要可用的模型通道）。';
   };
 
   const sendMsg = async () => {

@@ -142,6 +142,43 @@
     line-height:1.45;margin-top:2px;word-break:break-word}
   .sub-item .dst.bad{color:var(--warn);font-weight:400}
   .sublist.hide-src .sub-item .src{display:none}
+
+  /* ---------- 两人通话（call） ---------- */
+  .callpick,.callin{flex:1;min-height:0;display:flex;flex-direction:column;padding:10px 12px;gap:8px}
+  .cprow{display:flex;gap:8px;align-items:center}
+  .cprow select{flex:1;min-width:0;background:var(--surface);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:7px 9px;font:inherit;font-size:12.5px;outline:none}
+  .clist{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:6px}
+  .crow{
+    display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);
+    border-radius:6px;padding:7px 10px;cursor:pointer;transition:border-color .12s;
+  }
+  .crow:hover{border-color:var(--border-strong)}
+  .crow .nm{flex:1;min-width:0;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .crow .st{color:var(--text-3);font-size:11px;white-space:nowrap}
+  .crow .st.live{color:var(--ok)}
+  .cempty{color:var(--text-3);font-size:12px;padding:6px 2px}
+  .cnote{color:var(--text-3);font-size:11.5px;line-height:1.5}
+  .calltop{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+  .calltop b{font-size:13.5px}
+  .sub{color:var(--text-3);font-size:11.5px;line-height:1.5}
+  .callvid{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .callvid video{
+    width:100%;aspect-ratio:4/3;background:#000;border:1px solid var(--border);border-radius:6px;object-fit:cover;
+  }
+  .callvid video.mine{position:relative}
+  .callmsgs{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:2px 1px}
+  .callmsgs .msg.ai .who{display:block;color:var(--accent);font-size:11px;margin-bottom:2px}
+  .callbar{flex:0 0 auto;display:flex;gap:6px;flex-wrap:wrap}
+  button.btn.ghost{background:transparent}
+  .aibox{flex:0 0 auto;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 10px}
+  .aibox .sub{flex:1;min-width:0}
+  .calllogin{flex:0 0 auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .calllogin h4{margin:0;font-size:13px}
+  .calllogin input{
+    width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border-strong);
+    border-radius:6px;padding:8px 10px;font:inherit;font-size:12.5px;outline:none;
+  }
+  .calllogin input:focus{border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -209,6 +246,58 @@
       <button class="sbtn" id="subClose">关闭</button>
     </div>
     <div class="sublist f-m" id="subList"></div>
+  </div>
+
+  <!-- 两人通话：组内互发消息 + WebRTC 音视频（信令走后端中转） -->
+  <div class="body" id="vCall" hidden>
+    <!-- 选对象：我的组 → 成员/进行中的通话 -->
+    <div class="callpick" id="callPick">
+      <div class="cprow">
+        <select id="callGroup"></select>
+        <button class="btn" id="cpRefresh">刷新</button>
+      </div>
+      <div class="clist" id="callList"><div class="cempty">先选一个用户组</div></div>
+      <div class="cnote">像微信一样找组里的同事：点一下就开通话窗，能发文字，也能开音视频（双方都要连同一个白泽后端）。</div>
+    </div>
+    <!-- 通话中：视频 + 消息 + 操作 + 回复AI -->
+    <div class="callin" id="callIn" hidden>
+      <div class="calltop">
+        <b id="callPeer">—</b>
+        <span class="sub" id="callState"></span>
+        <span style="flex:1"></span>
+        <button class="btn" id="callBack" title="换个对象">切换</button>
+        <button class="btn stop" id="callEnd">挂断</button>
+      </div>
+      <div class="callvid" id="callVids" hidden>
+        <video id="cvLocal" autoplay muted playsinline></video>
+        <video id="cvRemote" autoplay playsinline></video>
+      </div>
+      <div class="callmsgs" id="callMsgs"></div>
+      <div class="callbar">
+        <button class="btn primary" id="cvStart">发起音视频</button>
+        <button class="btn ghost" id="cvMute" hidden>静音</button>
+        <button class="btn ghost" id="cvCam" hidden>关摄像</button>
+        <button class="btn ghost" id="cvHang" hidden>断开音视频</button>
+      </div>
+      <div class="aibox" id="aiBox" hidden>
+        <span class="sub" id="aiState"></span>
+        <button class="btn primary" id="aiBtn">回复AI</button>
+      </div>
+      <div class="composer" style="border-top:0;padding-top:0">
+        <div class="send" style="margin:0 0 8px">
+          <button class="btn primary" id="cmSend">发送</button>
+        </div>
+        <textarea id="cmInput" placeholder="发条消息…（Enter 发送）" style="height:44px"></textarea>
+      </div>
+    </div>
+    <!-- 没登录（快捷键直接开的窗口、或本窗第一次用） -->
+    <div class="calllogin" id="callLogin" hidden>
+      <h4>登录后才能开始通话</h4>
+      <input id="lgName" placeholder="用户名" autocomplete="username">
+      <input id="lgPass" type="password" placeholder="密码" autocomplete="off">
+      <div class="send" style="margin-top:2px"><button class="btn primary" id="lgGo">登录</button><span class="sub" id="lgNote" style="align-self:center"></span></div>
+      <div class="cnote">登录信息只存在这个通话窗口里（每次从快捷键打开会优先带主窗口的登录态过来）。</div>
+    </div>
   </div>
 </div>
 
@@ -703,6 +792,344 @@ async function initSubtitle() {
   paintSubStat();
 }
 
+/* ---------- 两人通话（call） ----------
+   组内像微信那样互发消息；需要音视频时走 WebRTC（信令走后端中转、媒体 P2P 直连，
+   局域网内 host 候选即可，不引 STUN/TURN）。挂了某次文档协商的通话会显示
+   「回复AI」：双方各点一次，后端让模型通读上下文自动判定/合并。 */
+let CALL = { group: '', call: '', conflict: '', peerId: '', peerName: '' };
+let callPoll = 0, callMsgAfter = 0, callSigAfter = 0;
+let callMe = '';   // 我在这条通话里的 userId（详情接口回 me）
+let rtc = null;      // {pc, stream, peer}
+let iceQ = [];       // ICE 滴流队列：setRemoteDescription 之前到的候选先排队
+let ctxRev = 0;
+
+function ce(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function hhmm(ts) { if (!ts) return ''; const d = new Date(ts), p = n => String(n).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()); }
+
+function setCallView(v) {
+  $('callPick').hidden = v !== 'pick';
+  $('callIn').hidden = v !== 'in';
+  $('callLogin').hidden = v !== 'login';
+}
+
+async function initCall() {
+  const c0 = await local('/float/ctx');
+  ctxRev = (c0 && c0.rev) | 0;
+  await applyCallCtx(c0 && c0.ctx);
+  if (CALL.call) return; // 上下文已指明要开哪条通话（applyCallCtx 里已切到通话中视图），别又退回选对象页
+  if (!session()) { setCallView('login'); wireCallLogin(); return; }
+  setCallView('pick');
+  await renderCallPick();
+}
+
+// 主进程推来的上下文（组 / 要开的通话 / 会话令牌）
+async function applyCallCtx(ctx) {
+  if (!ctx || typeof ctx !== 'object') return;
+  if (ctx.session) { try { localStorage.setItem(SESSION_KEY, String(ctx.session)); } catch (e) { /* 忽略 */ } }
+  if (ctx.group) CALL.group = ctx.group;
+  if (ctx.call) CALL.call = ctx.call;
+  if (ctx.conflict) CALL.conflict = ctx.conflict;
+  if (session() && CALL.call) await openCallInView();
+  else if (session() && CALL.group) { setCallView('pick'); await renderCallPick(); }
+}
+
+function wireCallLogin() {
+  const go = async () => {
+    const name = $('lgName').value.trim(), pw = $('lgPass').value;
+    if (!name || !pw) { $('lgNote').textContent = '用户名和密码都要填'; return; }
+    $('lgNote').textContent = '登录中…';
+    const r = await api('/api/agent/auth/login', 'POST', { name: name, password: pw });
+    if (!r.ok) { $('lgNote').textContent = '登录失败：' + (r.error || '未知'); return; }
+    try { localStorage.setItem(SESSION_KEY, String((r.data && r.data.token) || '')); } catch (e) { /* 忽略 */ }
+    $('lgPass').value = '';
+    setCallView('pick');
+    await renderCallPick();
+  };
+  $('lgGo').onclick = go;
+  $('lgPass').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+}
+
+// 选对象：我的组 → 组内成员（排除我）+ 我进行中的通话
+async function renderCallPick() {
+  const sel = $('callGroup');
+  const r = await api('/api/agent/auth/whoami', 'GET');
+  const groups = (r.ok && r.data && r.data.groups) || [];
+  const meId = (r.ok && r.data && r.data.user && r.data.user.id) || '';
+  sel.innerHTML = groups.map(g => '<option value="' + ce(g.id) + '">' + ce(g.name) + '</option>').join('');
+  if (!groups.length) {
+    $('callList').innerHTML = '<div class="cempty">你还没加入任何用户组。先在「账号与共享 → 用户组」建一个、拉上对方。</div>';
+    return;
+  }
+  sel.onchange = () => loadCallGroup(sel.value, meId);
+  if (CALL.group && groups.some(g => g.id === CALL.group)) sel.value = CALL.group;
+  await loadCallGroup(sel.value, meId);
+}
+
+async function loadCallGroup(gid, meId) {
+  if (!gid) return;
+  CALL.group = gid;
+  const gr = await api('/api/agent/groups/' + encodeURIComponent(gid), 'GET');
+  const cl = await api('/api/agent/groups/' + encodeURIComponent(gid) + '/calls', 'GET');
+  const members = ((gr.ok && gr.data && gr.data.members) || []).filter(m => m.userId !== meId);
+  const live = ((cl.ok && cl.data && cl.data.calls) || []).filter(c => c.status === 'live');
+  const box = $('callList');
+  let html = '';
+  live.forEach(c => {
+    html += '<div class="crow" data-open="' + ce(c.id) + '">' +
+      '<span class="nm">正在通话 · ' + ce(c.peerName || c.peerId) + '</span>' +
+      '<span class="st live">进行中</span>' +
+      '<button class="btn" data-open="' + ce(c.id) + '">继续</button></div>';
+  });
+  members.forEach(m => {
+    html += '<div class="crow" data-peer="' + ce(m.userId) + '" data-name="' + ce(m.userName) + '">' +
+      '<span class="nm">' + ce(m.userName) + (m.role === 'owner' ? '（组长）' : '') + '</span>' +
+      '<span class="st"></span>' +
+      '<button class="btn">开通话</button></div>';
+  });
+  if (!html) html = '<div class="cempty">这个组里还没有别的成员，先去「用户组」把对方拉进来。</div>';
+  box.innerHTML = html;
+  box.querySelectorAll('.crow[data-peer]').forEach(row => {
+    row.onclick = async () => {
+      const peer = row.dataset.peer, pname = row.dataset.name;
+      const r = await api('/api/agent/groups/' + encodeURIComponent(gid) + '/calls', 'POST', { peer: peer });
+      if (!r.ok) { alert('开通话失败：' + (r.error || '未知')); return; }
+      CALL.call = (r.data && r.data.call && r.data.call.id) || '';
+      CALL.peerId = peer; CALL.peerName = pname; CALL.conflict = '';
+      await openCallInView();
+    };
+  });
+  box.querySelectorAll('.crow[data-open]').forEach(row => {
+    row.onclick = async () => {
+      CALL.call = row.dataset.open; CALL.conflict = '';
+      await openCallInView();
+    };
+  });
+}
+
+// 通话中视图：拉全量 + 2 秒轮询增量（留言 / 信令）
+async function openCallInView() {
+  setCallView('in');
+  $('callMsgs').innerHTML = '';
+  callMsgAfter = 0; callSigAfter = 0;
+  await tickCallDetail(true);
+  if (callPoll) clearInterval(callPoll);
+  callPoll = setInterval(() => tickCallDetail(false), 2000);
+}
+
+async function tickCallDetail(full) {
+  if (!CALL.call) return;
+  const gid = encodeURIComponent(CALL.group), cid = encodeURIComponent(CALL.call);
+  const r = await api('/api/agent/groups/' + gid + '/calls/' + cid +
+    '?afterMsg=' + (full ? 0 : callMsgAfter) + '&afterSignal=' + (full ? 0 : callSigAfter), 'GET');
+  if (!r.ok) {
+    $('callState').textContent = '读通话失败：' + r.error;
+    return;
+  }
+  const d = r.data || {};
+  const c = d.call || {};
+  // 对方是谁（相对我）
+  const me = d.me || '';
+  callMe = me;
+  CALL.peerId = me && c.aId === me ? c.bId : c.aId;
+  CALL.peerName = me && c.aId === me ? (c.bName || c.bId) : (c.aName || c.aId);
+  CALL.conflict = c.conflictSid || CALL.conflict;
+  $('callPeer').textContent = CALL.peerName || CALL.peerId || '—';
+  $('callState').textContent = c.status === 'ended' ? '已挂断（消息还在）' : '进行中 · ' + hhmm(c.updatedAt);
+
+  (d.messages || []).forEach(m => { callMsgAfter = Math.max(callMsgAfter, m.id | 0); addCallMsg(m); });
+  (d.signals || []).forEach(s => { callSigAfter = Math.max(callSigAfter, s.id | 0); handleCallSignal(s); });
+
+  // 挂了文档协商：显示「回复AI」区
+  const conflict = d.conflict, confirmers = d.aiConfirmers || [];
+  if (conflict) {
+    $('aiBox').hidden = false;
+    if (conflict.aiStatus === 'running') $('aiState').textContent = 'AI 正在通读你们的记录并判定…';
+    else if (conflict.aiStatus === 'done') { $('aiState').textContent = 'AI 已判定：' + (conflict.aiNote || '完成'); $('aiBtn').disabled = true; }
+    else if (conflict.aiStatus === 'failed') { $('aiState').textContent = 'AI 判定失败：' + (conflict.aiNote || '原因未知'); $('aiBtn').disabled = false; }
+    else {
+      const mine = confirmers.indexOf(me) >= 0;
+      $('aiState').textContent = '等两方都点「回复AI」，AI 才通读记录并自动判定/合并文档。' +
+        (mine ? '（我已确认，还差对方）' : '（未确认）');
+      $('aiBtn').disabled = false;
+    }
+  } else {
+    $('aiBox').hidden = true;
+  }
+}
+
+function addCallMsg(m) {
+  const list = $('callMsgs');
+  const isMe = !!callMe && m.fromId === callMe;
+  const cls = m.fromId === 'ai' ? 'ai' : (isMe ? 'me' : 'ai');
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  const who = m.fromName || m.fromId || '';
+  if (m.fromId === 'ai') {
+    d.innerHTML = '<span class="who">白泽AI</span>' + ce(m.text);
+  } else {
+    d.textContent = m.text;
+    if (!isMe && who) d.title = who;
+  }
+  d.dataset.ts = m.at || '';
+  list.appendChild(d);
+  list.scrollTop = list.scrollHeight;
+}
+
+function sendCallMsg() {
+  const ta = $('cmInput'), text = ta.value.trim();
+  if (!text || !CALL.call) return;
+  ta.value = '';
+  api('/api/agent/groups/' + encodeURIComponent(CALL.group) + '/calls/' + encodeURIComponent(CALL.call) +
+    '/messages', 'POST', { text: text }).then(r => {
+      if (!r.ok) { addCallMsg({ fromId: 'local', fromName: '我', text: '（没发出去：' + (r.error || '未知') + '）', at: Date.now() }); }
+    });
+}
+
+/* ---- WebRTC：发起 / 信令处理 / 挂断（与主窗口冲突页同款，信令端点换成 calls） ---- */
+function postCallSignal(to, kind, payload) {
+  return api('/api/agent/groups/' + encodeURIComponent(CALL.group) + '/calls/' + encodeURIComponent(CALL.call) +
+    '/signal', 'POST', { to: to, kind: kind, payload: payload });
+}
+
+async function startCallAV() {
+  if (rtc) return;
+  if (!navigator.mediaDevices || !window.RTCPeerConnection) {
+    $('callState').textContent = '这个壳不支持 WebRTC（没有 RTCPeerConnection）';
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+  } catch (e) {
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e2) {
+      $('callState').textContent = '拿不到麦克风/摄像头：' + ((e2 && e2.name) === 'NotAllowedError' ? '权限被拒了' : ((e2 && e2.message) || '未知')) ;
+      return;
+    }
+  }
+  const pc = new RTCPeerConnection(); // 同一内网：host 候选就够
+  stream.getTracks().forEach(t => pc.addTrack(t, stream));
+  $('cvLocal').srcObject = stream;
+  $('callVids').hidden = false;
+  pc.ontrack = ev => { $('cvRemote').srcObject = ev.streams[0]; };
+  pc.onicecandidate = ev => {
+    if (ev.candidate) postCallSignal(CALL.peerId, 'ice', JSON.stringify(ev.candidate));
+  };
+  rtc = { pc: pc, stream: stream, peer: CALL.peerId };
+  iceQ = [];
+  $('cvStart').hidden = true;
+  $('cvMute').hidden = false;
+  $('cvCam').hidden = !stream.getVideoTracks().length;
+  $('cvHang').hidden = false;
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await postCallSignal(CALL.peerId, 'offer', JSON.stringify(pc.localDescription));
+}
+
+function handleCallSignal(s) {
+  if (!rtc) {
+    // 被动方收到 offer：先起本地媒体再协商
+    if (s.kind === 'offer') startCallAVForPeer(s);
+    return;
+  }
+  let payload;
+  try { payload = JSON.parse(s.payload || '{}'); } catch (e) { return; }
+  if (s.kind === 'answer') {
+    rtc.pc.setRemoteDescription(new RTCSessionDescription(payload)).catch(() => {});
+  } else if (s.kind === 'ice') {
+    if (rtc.pc.remoteDescription) rtc.pc.addIceCandidate(new RTCIceCandidate(payload)).catch(() => {});
+    else iceQ.push(payload);
+  } else if (s.kind === 'bye') {
+    stopCallAV();
+    $('callState').textContent = '对方挂断了音视频';
+  }
+}
+
+async function startCallAVForPeer(sig) {
+  if (rtc) return;
+  await startCallAV();      // 起本地媒体 + pc（内部会发 offer；这里要改成被动收 offer）
+  // startCallAV 已经是发起方了——被动方不重复发 offer，直接回答
+  try {
+    await rtc.pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(sig.payload)));
+    const ans = await rtc.pc.createAnswer();
+    await rtc.pc.setLocalDescription(ans);
+    await postCallSignal(sig.from, 'answer', JSON.stringify(rtc.pc.localDescription));
+    iceQ.forEach(c => rtc.pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {}));
+    iceQ = [];
+  } catch (e) {
+    $('callState').textContent = '接通话失败：' + ((e && e.message) || e);
+  }
+}
+
+function stopCallAV() {
+  if (!rtc) return;
+  try { rtc.pc.close(); } catch (e) { /* 忽略 */ }
+  try { rtc.stream.getTracks().forEach(t => t.stop()); } catch (e) { /* 忽略 */ }
+  try { $('cvLocal').srcObject = null; $('cvRemote').srcObject = null; } catch (e) { /* 忽略 */ }
+  $('callVids').hidden = true;
+  rtc = null; iceQ = [];
+  $('cvStart').hidden = false;
+  $('cvMute').hidden = true;
+  $('cvCam').hidden = true;
+  $('cvHang').hidden = true;
+}
+
+function wireCall() {
+  $('callBack').onclick = () => { stopCallAV(); CALL.call = ''; setCallView('pick'); renderCallPick(); };
+  $('callEnd').onclick = async () => {
+    stopCallAV();
+    await postCallSignal(CALL.peerId, 'bye', '{}');
+    await api('/api/agent/groups/' + encodeURIComponent(CALL.group) + '/calls/' + encodeURIComponent(CALL.call) + '/end', 'POST', {});
+    setCallView('pick');
+    renderCallPick();
+  };
+  $('cvStart').onclick = startCallAV;
+  $('cvHang').onclick = async () => { stopCallAV(); await postCallSignal(CALL.peerId, 'bye', '{}'); };
+  $('cvMute').onclick = () => {
+    if (!rtc) return;
+    const on = !$('cvMute').dataset.on;
+    rtc.stream.getAudioTracks().forEach(t => { t.enabled = on; });
+    $('cvMute').dataset.on = on ? '1' : '';
+    $('cvMute').textContent = on ? '取消静音' : '静音';
+  };
+  $('cvCam').onclick = () => {
+    if (!rtc) return;
+    const on = !$('cvCam').dataset.on;
+    rtc.stream.getVideoTracks().forEach(t => { t.enabled = on; });
+    $('cvCam').dataset.on = on ? '1' : '';
+    $('cvCam').textContent = on ? '关摄像' : '开摄像';
+  };
+  $('cmSend').onclick = sendCallMsg;
+  $('cmInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCallMsg(); }
+  });
+  $('aiBtn').onclick = async () => {
+    if (!CALL.conflict) return;
+    $('aiBtn').disabled = true;
+    const r = await api('/api/agent/groups/' + encodeURIComponent(CALL.group) + '/conflicts/' + encodeURIComponent(CALL.conflict) + '/ai-confirm', 'POST', {});
+    if (!r.ok) { $('aiState').textContent = '确认失败：' + (r.error || '未知'); $('aiBtn').disabled = false; return; }
+    const d = r.data || {};
+    $('aiBtn').disabled = !!(d.allConfirmed && d.triggered);
+    $('aiState').textContent = d.allConfirmed
+      ? 'AI 开始通读了（判定结果会出现在协商记录和这里）'
+      : ('我已确认，还差 ' + ((d.missing || []).length) + ' 方');
+  };
+  $('cpRefresh').onclick = () => { renderCallPick(); };
+}
+
+// 关窗时给对方发 bye（尽力而为：keepalive fetch，发不出就算了）
+window.addEventListener('pagehide', () => {
+  if (rtc) {
+    try {
+      fetch('/api/be/api/agent/groups/' + encodeURIComponent(CALL.group) + '/calls/' + encodeURIComponent(CALL.call) + '/signal', {
+        method: 'POST', keepalive: true,
+        headers: { 'Content-Type': 'application/json', 'X-Baize-Session': session() },
+        body: JSON.stringify({ to: rtc.peer, kind: 'bye', payload: '{}' }),
+      });
+    } catch (e) { /* 忽略 */ }
+    stopCallAV();
+  }
+});
 /* ---------- 启动 ---------- */
 (async function boot() {
   const st = await local('/float/state');
@@ -730,6 +1157,11 @@ async function initSubtitle() {
     if (MODE === 'translate') { $('lang').hidden = false; $('lang').textContent = lang === 'zh' ? '中' : 'EN'; }
     if (m && m.hasImage) await runVision();
     else $('result').dataset.ph = '正在等截图…';
+  } else if (MODE === 'call') {
+    $('vCall').hidden = false;
+    $('title').textContent = '白泽 · 两人通话';
+    wireCall();
+    await initCall();
   } else {
     $('vChat').hidden = false;
     $('title').textContent = '白泽 · 对话';
@@ -744,6 +1176,16 @@ async function initSubtitle() {
     if (MODE === 'extract' || MODE === 'translate') await runVision();
     else if (MODE === 'chat') await askPrefill();
   }, 1500);
+
+  // 通话窗：主进程随时可能推来上下文（冲突页点「发起通话」→ 切到指定通话）
+  if (MODE === 'call') {
+    setInterval(async () => {
+      const c = await local('/float/ctx');
+      if (!c || !c.ok || (c.rev | 0) === ctxRev) return;
+      ctxRev = c.rev | 0;
+      await applyCallCtx(c.ctx);
+    }, 1500);
+  }
 })();
 </script>
 </body>

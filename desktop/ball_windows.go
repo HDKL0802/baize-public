@@ -74,6 +74,7 @@ const menuShot = 1004
 const menuFloat = 1005
 const menuDictate = 1006
 const menuSubtitle = 1007
+const menuCall = 1008
 
 // 全局快捷键：都走 Alt+Shift+<字母>（豆包那套习惯）。
 // ⚠️ 这些是**系统级**注册（RegisterHotKey），占用的是全局组合键 —— 被别的程序占了就只记日志、
@@ -86,10 +87,12 @@ const (
 	vkD            = 0x44
 	vkC            = 0x43
 	vkQ            = 0x51
+	vkV            = 0x56
 	hotkeyShot     = 1
 	hotkeyDictate  = 2
 	hotkeySubtitle = 3
 	hotkeyFloat    = 4
+	hotkeyCall     = 5
 )
 
 // ballHotkeyDef 一条全局快捷键的定义
@@ -107,6 +110,7 @@ var ballHotkeys = []ballHotkeyDef{
 	{hotkeyDictate, modAlt | modShift, vkD, "D", "语音转写"},
 	{hotkeySubtitle, modAlt | modShift, vkC, "C", "实时字幕（开/关）"},
 	{hotkeyFloat, modAlt | modShift, vkQ, "Q", "对话浮窗"},
+	{hotkeyCall, modAlt | modShift, vkV, "V", "两人通话浮窗"},
 }
 
 // ballHotkeyLive 真正注册成功的快捷键 id。
@@ -535,6 +539,8 @@ func ballWndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			ballToggleFloat(floatModeSubtitle)
 		case hotkeyFloat:
 			ballOpenFloat(floatModeChat)
+		case hotkeyCall:
+			ballOpenFloat(floatModeCall)
 		}
 		return 0
 	case wmDestroy:
@@ -760,6 +766,7 @@ func ballShowMenu(hwnd uintptr) {
 	appendMenu(hmenu, mfString, menuShot, "截图提问\tAlt+Shift+S")
 	appendMenu(hmenu, mfString, menuDictate, "语音转写\tAlt+Shift+D")
 	appendMenu(hmenu, mfString, menuSubtitle, "实时字幕\tAlt+Shift+C")
+	appendMenu(hmenu, mfString, menuCall, "两人通话\tAlt+Shift+V")
 	appendMenu(hmenu, mfSeparator, 0, "")
 	label := "待审批"
 	if ballPending > 0 {
@@ -785,6 +792,8 @@ func ballShowMenu(hwnd uintptr) {
 		ballOpenFloat(floatModeDictate)
 	case menuSubtitle:
 		ballToggleFloat(floatModeSubtitle)
+	case menuCall:
+		ballOpenFloat(floatModeCall)
 	case menuTasks:
 		ballOpenMain(true)
 	case menuQuit:

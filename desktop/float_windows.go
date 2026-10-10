@@ -44,6 +44,8 @@ const (
 	// 语音线（B1）：语音转写（录音→文字→存笔记）与实时双语字幕（贴屏幕底部的置顶横条）
 	floatModeDictate  = "dictate"
 	floatModeSubtitle = "subtitle"
+	// 两人通话（B1 · 通话线）：组内互发消息 + WebRTC 音视频（信令走后端）
+	floatModeCall = "call"
 
 	floatEdgeGap = 12       // 浮窗靠边时离屏幕边缘留的缝
 	floatImgMax  = 64 << 20 // 推图上限（一张截图远到不了）
@@ -73,12 +75,18 @@ var (
 	floatCbtY  int32
 
 	floatHWND    uintptr
-	floatModeNow string // 本浮窗进程的模式（chat/extract/translate）
+	floatModeNow string // 本浮窗进程的模式（chat/extract/translate/dictate/subtitle/call）
 
 	// floatPinned 钉住：锁死不可拖（页面拖动时先问它）
 	floatPinned atomic.Bool
 	// floatRev 图片版本号：主进程推来新图就 +1，页面靠它判断「该重跑了」。
 	floatRev atomic.Int64
+
+	// floatCtx 主进程推给浮窗页的上下文（通话模式：group/call/conflict/session），
+	// 只存原始 JSON、不在原生侧解析（页面自己读）。call 页 1.5s 轮询它的版本号。
+	floatCtxMu  sync.Mutex
+	floatCtx    []byte
+	floatCtxRev atomic.Int64
 
 	floatImgMu  sync.Mutex
 	floatImgPNG []byte
@@ -211,6 +219,8 @@ func floatWindowTitle(mode string) string {
 		return "白泽 · 语音转写"
 	case floatModeSubtitle:
 		return "白泽 · 实时字幕"
+	case floatModeCall:
+		return "白泽 · 两人通话"
 	default:
 		return "白泽 · 对话浮窗"
 	}
@@ -226,6 +236,8 @@ func floatSize(mode string) (int, int) {
 		return 380, 560
 	case floatModeDictate:
 		return 420, 540
+	case floatModeCall:
+		return 520, 640
 	case floatModeSubtitle:
 		sw, _, _ := pGetSystemMetrics.Call(smCxScreen)
 		w := int(sw) - 2*floatEdgeGap
@@ -333,6 +345,40 @@ func pushFloatImage(mode string, png []byte) error {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// pushFloatCtx 把上下文 POST 给浮窗进程。新起的进程要等它写完端口文件才推得进去，
+// 所以带重试（窗口已在跑时端口文件现成，一轮就过）。
+func pushFloatCtx(mode string, body map[string]any) error {
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: 2 * time.Second}
+	deadline := time.Now().Add(6 * time.Second)
+	for {
+		if b, err := os.ReadFile(floatPortFile(mode)); err == nil {
+			port := strings.TrimSpace(string(b))
+			if port != "" {
+				req, err := http.NewRequest(http.MethodPost,
+					"http://127.0.0.1:"+port+"/api/local/float/ctx", bytes.NewReader(payload))
+				if err == nil {
+					req.Header.Set("Content-Type", "application/json")
+					resp, err := client.Do(req)
+					if err == nil {
+						_ = resp.Body.Close()
+						if resp.StatusCode < 300 {
+							return nil
+						}
+					}
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			return errors.New("浮窗还没起来，推不出去")
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 // writeFloatTemp 把图写到一个临时文件，交给浮窗子进程读（子进程读完即删）。
@@ -508,17 +554,23 @@ func floatSnapToEdge(hwnd uintptr) {
 // 放行任意字符串等于给本机接口开了一条路径穿越（`../` 就能写到目录外）。
 func floatModeKnown(mode string) bool {
 	switch mode {
-	case floatModeChat, floatModeExtract, floatModeTranslate, floatModeDictate, floatModeSubtitle:
+	case floatModeChat, floatModeExtract, floatModeTranslate, floatModeDictate, floatModeSubtitle, floatModeCall:
 		return true
 	}
 	return false
 }
 
 func registerFloatRoutes(mux *http.ServeMux) {
-	// 从主界面（设置页）唤起浮窗：字幕模式是「开/关」切换，其余是打开/置前
+	// 从主界面（设置页 / 冲突协商页）唤起浮窗：字幕模式是「开/关」切换，其余是打开/置前。
+	// call 模式可带上下文（group/call/conflict/session）：页面靠 /float/ctx 轮询拿到
+	// 「该打开哪条通话」（浮窗是独立进程、localStorage 与主窗口不通，会话令牌只能靠这里递进去）。
 	mux.HandleFunc("/api/local/float/open", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Mode string `json:"mode"`
+			Mode     string `json:"mode"`
+			Group    string `json:"group"`
+			Call     string `json:"call"`
+			Conflict string `json:"conflict"`
+			Session  string `json:"session"`
 		}
 		if r.Body != nil {
 			_ = json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&req)
@@ -526,13 +578,20 @@ func registerFloatRoutes(mux *http.ServeMux) {
 		mode := strings.TrimSpace(req.Mode)
 		if !floatModeKnown(mode) {
 			writeJSON(w, http.StatusOK, map[string]any{
-				"ok": false, "error": "不认识的浮窗模式：" + mode + "（可用 chat / extract / translate / dictate / subtitle）"})
+				"ok": false, "error": "不认识的浮窗模式：" + mode + "（可用 chat / extract / translate / dictate / subtitle / call）"})
 			return
 		}
 		if mode == floatModeSubtitle {
 			ballToggleFloat(mode)
 		} else {
 			ballOpenFloat(mode)
+		}
+		if req.Group != "" || req.Call != "" || req.Conflict != "" || req.Session != "" {
+			if err := pushFloatCtx(mode, map[string]any{
+				"group": req.Group, "call": req.Call, "conflict": req.Conflict, "session": req.Session,
+			}); err != nil {
+				log.Printf("[浮窗] 上下文推送失败：%v", err)
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
@@ -632,6 +691,37 @@ func registerFloatRoutes(mux *http.ServeMux) {
 			floatSnapToEdge(floatHWND)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	})
+
+	// 上下文（通话模式）：主进程把「该打开哪条通话 + 会话令牌」递给子进程，
+	// 子进程只存不解析（页面轮询 rev 拿走）。⚠️ 会话令牌只在本机回环 + 进程内存里走，不落盘。
+	mux.HandleFunc("/api/local/float/ctx", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			floatCtxMu.Lock()
+			b := append([]byte(nil), floatCtx...)
+			floatCtxMu.Unlock()
+			var ctx any
+			if len(b) > 0 {
+				_ = json.Unmarshal(b, &ctx)
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "ctx": ctx, "rev": floatCtxRev.Load()})
+			return
+		}
+		b, err := io.ReadAll(io.LimitReader(r.Body, 4<<10))
+		if err != nil || len(b) == 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "空上下文"})
+			return
+		}
+		var v any
+		if json.Unmarshal(b, &v) != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "上下文不是 JSON"})
+			return
+		}
+		floatCtxMu.Lock()
+		floatCtx = b
+		floatCtxMu.Unlock()
+		rev := floatCtxRev.Add(1)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "rev": rev})
 	})
 
 	// 关掉这个浮窗（＝销毁窗口 → 消息循环结束 → 本进程退出）

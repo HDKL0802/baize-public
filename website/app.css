@@ -510,7 +510,7 @@ code, pre { font-family: var(--mono); }
   -webkit-mask-composite: xor; mask-composite: exclude;
   pointer-events: none;
 }
-.hero-preview svg { width: 100%; height: auto; display: block; border-radius: 8px; }
+.hero-preview img { width: 100%; height: auto; display: block; border-radius: 8px; }
 
 /* ---------- 通用 Section（交替背景制造节奏） ---------- */
 .section {

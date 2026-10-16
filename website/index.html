@@ -95,94 +95,9 @@
       <div class="hm-item">Go · MIT</div>
     </div>
 
-    <!-- 产品预览 SVG（更大、居中） -->
+    <!-- 产品预览：真实暗色桌面端截图 -->
     <div class="hero-preview fade-in">
-      <svg viewBox="0 0 800 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="白泽控制台预览">
-        <defs>
-          <linearGradient id="hp-bg" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#0d1117"/>
-            <stop offset="1" stop-color="#161b22"/>
-          </linearGradient>
-          <linearGradient id="hp-accent" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stop-color="#38bdf8"/>
-            <stop offset="1" stop-color="#0ea5e9"/>
-          </linearGradient>
-        </defs>
-
-        <!-- 控制台外框 -->
-        <rect width="800" height="520" rx="14" fill="url(#hp-bg)" stroke="rgba(255,255,255,.08)"/>
-
-        <!-- 顶栏 -->
-        <rect x="0" y="0" width="800" height="40" rx="14" fill="#0d1117"/>
-        <rect x="0" y="38" width="800" height="2" fill="rgba(255,255,255,.06)"/>
-        <circle cx="22" cy="20" r="5" fill="#f85149"/>
-        <circle cx="40" cy="20" r="5" fill="#d29922"/>
-        <circle cx="58" cy="20" r="5" fill="#3fb950"/>
-        <text x="400" y="25" text-anchor="middle" fill="rgba(255,255,255,.35)" font-family="Consolas, monospace" font-size="12">baize-desktop.exe — 对话</text>
-
-        <!-- 左侧导航 -->
-        <rect x="0" y="40" width="168" height="480" fill="#161b22"/>
-        <rect x="0" y="52" width="168" height="480" fill="#161b22"/>
-        <text x="84" y="76" text-anchor="middle" fill="#38bdf8" font-family="Noto Serif SC, serif" font-size="16" font-weight="700">白泽</text>
-
-        <!-- 导航项 -->
-        <g font-family="Noto Sans SC, sans-serif" font-size="13" fill="rgba(255,255,255,.62)">
-          <rect x="12" y="88" width="144" height="30" rx="5" fill="rgba(56,189,248,.12)"/>
-          <circle cx="26" cy="103" r="3.5" fill="#38bdf8"/>
-          <text x="42" y="107" fill="#fff">对话</text>
-          <text x="42" y="137">设备</text>
-          <text x="42" y="165">记忆星图</text>
-          <text x="42" y="193">知识库</text>
-          <text x="42" y="221">模型通道</text>
-          <text x="42" y="249">MCP 服务</text>
-          <text x="42" y="277">技能</text>
-          <text x="42" y="305">定时任务</text>
-          <text x="42" y="333">频道</text>
-          <text x="42" y="361">审批中心</text>
-        </g>
-
-        <!-- 主区 -->
-        <g font-family="Noto Sans SC, sans-serif">
-          <text x="196" y="72" fill="#fff" font-size="16" font-weight="600">对话</text>
-          <text x="196" y="94" fill="rgba(255,255,255,.35)" font-size="12">向白泽下达指令，查看运行状态</text>
-
-          <!-- 用户消息 -->
-          <rect x="196" y="116" width="280" height="42" rx="10" fill="url(#hp-accent)"/>
-          <text x="212" y="143" fill="#06121b" font-size="13">帮我看下 NAS 上有哪些大文件</text>
-
-          <!-- 白泽消息 -->
-          <rect x="196" y="174" width="540" height="96" rx="10" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.08)"/>
-          <text x="212" y="200" fill="rgba(255,255,255,.9)" font-size="13" font-weight="600">白泽 🦊</text>
-          <text x="212" y="222" fill="rgba(255,255,255,.75)" font-size="12" font-family="Consolas, monospace">正在扫描 /vol1/@appdata/baize/data…</text>
-          <text x="212" y="244" fill="rgba(255,255,255,.55)" font-size="11.5">• memory.db &nbsp;&nbsp;12.4 MB
-• kb/ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;48.2 MB
-• runs.db &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.1 MB
-(0.47 s · 已派发到桌面端)</text>
-
-          <!-- 审批卡 -->
-          <rect x="196" y="292" width="540" height="66" rx="8" fill="rgba(217,119,6,.08)" stroke="rgba(217,119,6,.25)"/>
-          <circle cx="212" cy="325" r="5" fill="#d97706"/>
-          <text x="226" y="321" fill="#fbbf24" font-size="12" font-weight="500">待审批</text>
-          <text x="226" y="338" fill="rgba(255,255,255,.6)" font-size="11">删除 /vol1/temp/old-logs/ 共 2.3 GB</text>
-          <rect x="636" y="308" width="40" height="22" rx="4" fill="rgba(255,255,255,.08)"/>
-          <text x="656" y="323" text-anchor="middle" fill="#fff" font-size="10.5">拒绝</text>
-          <rect x="682" y="308" width="40" height="22" rx="4" fill="#3fb950"/>
-          <text x="702" y="323" text-anchor="middle" fill="#06121b" font-size="10.5" font-weight="600">放行</text>
-
-          <!-- 状态卡 -->
-          <rect x="196" y="374" width="540" height="54" rx="8" fill="rgba(56,189,248,.08)" stroke="rgba(56,189,248,.2)"/>
-          <circle cx="212" cy="401" r="4.5" fill="#38bdf8"/>
-          <text x="226" y="398" fill="#fff" font-size="12" font-weight="500">后端在线</text>
-          <text x="226" y="415" fill="rgba(255,255,255,.5)" font-size="11">3 台设备连接 · 12 条待审批</text>
-          <text x="724" y="398" text-anchor="end" fill="#38bdf8" font-size="11" font-family="Consolas, monospace">192.168.1.100:8787</text>
-
-          <!-- 输入框 -->
-          <rect x="196" y="442" width="540" height="40" rx="8" fill="#21262d" stroke="rgba(255,255,255,.1)"/>
-          <text x="212" y="468" fill="rgba(255,255,255,.3)" font-size="12">和白泽说点什么…（Enter 发送 · Shift+Enter 换行）</text>
-          <rect x="704" y="450" width="24" height="24" rx="5" fill="#38bdf8"/>
-          <text x="716" y="467" text-anchor="middle" fill="#06121b" font-size="13" font-weight="700">↵</text>
-        </g>
-      </svg>
+      <img src="assets/hero-desktop-dark.png" alt="白泽桌面端 · 频道管理界面" loading="eager">
     </div>
   </div>
 </section>

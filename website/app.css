@@ -121,18 +121,17 @@ code, pre { font-family: var(--mono); }
   letter-spacing: .02em;
   font-family: var(--font);
 }
-/* 🦊 Logo 图标（emoji 带圆角背景 + 微阴影） */
+/* 项目真实 logo（图标文件：desktop/assets/icon-src.png — 暗色圆角方块里的白狼头） */
 .brand .bm {
-  width: 36px; height: 36px; flex: none;
-  display: grid; place-items: center;
-  background: var(--accent-soft);
+  width: 34px; height: 34px; flex: none;
+  display: block;
   border-radius: 8px;
-  font-size: 22px;
-  line-height: 1;
-  box-shadow: inset 0 0 0 1px rgba(2,132,199,.15);
+  box-shadow: 0 2px 8px rgba(20,20,19,.12), inset 0 0 0 1px rgba(20,20,19,.06);
+  overflow: hidden;
 }
+.brand .bm img { width: 100%; height: 100%; display: block; object-fit: cover; }
 @media (prefers-color-scheme: dark) {
-  .brand .bm { background: rgba(56,189,248,.15); box-shadow: inset 0 0 0 1px rgba(56,189,248,.25); }
+  .brand .bm { box-shadow: 0 2px 8px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.08); }
 }
 .brand .bt b {
   display: block;
@@ -282,6 +281,27 @@ code, pre { font-family: var(--mono); }
 }
 .ndm-more .ndm-ic { background: var(--bg-muted); color: var(--text-2); }
 .ndm-more:hover .ndm-ic { background: var(--accent-soft); color: var(--accent); }
+
+/* 下载菜单 loading / error 态 */
+.ndm-loading, .ndm-error {
+  padding: 14px 16px;
+  font-size: 13px;
+  color: var(--text-3);
+  text-align: center;
+}
+.ndm-error { color: var(--warn); }
+.ndm-retry {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 12px;
+  font-size: 12px;
+  background: var(--accent);
+  color: var(--bg-alt);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: var(--font);
+}
 
 /* GitHub 主按钮 */
 .nav-cta {
@@ -863,14 +883,13 @@ code, pre { font-family: var(--mono); }
   margin-bottom: var(--sp-4);
 }
 .footer-brand .brand-lg .bm {
-  width: 38px; height: 38px;
-  display: grid; place-items: center;
-  background: var(--accent-soft);
+  width: 36px; height: 36px;
+  display: block;
   border-radius: 8px;
-  font-size: 24px;
-  line-height: 1;
-  box-shadow: inset 0 0 0 1px rgba(2,132,199,.15);
+  box-shadow: 0 2px 8px rgba(20,20,19,.12), inset 0 0 0 1px rgba(20,20,19,.06);
+  overflow: hidden;
 }
+.footer-brand .brand-lg .bm img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .footer-brand .brand-lg b {
   font-family: var(--font-display);
   font-size: 18px; font-weight: 700;

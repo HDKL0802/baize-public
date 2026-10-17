@@ -2,8 +2,13 @@
 
 // 本机设备能力：桌面端自己也注册成「设备」，可以被 NAS 派活。
 //
-// 复用共享契约 baize/shared（与手机内核、agent/cmd/desktop 同一份协议），
-// 但**只实现只读动作**：ping / sys.info / window.now / fs.stat / fs.list。
+// 复用共享契约 baize/shared（与手机内核、agent/cmd/desktop 同一份协议）。
+// 已实现的动作：
+//   - ping / sys.info / window.now / fs.stat / fs.list（只读，受「桌面控制」权限档位管）
+//   - sys.exec（第 2 档：本机开关 + 命令白名单 + 强制审批，见 shell_windows.go）
+//   - gui.screenshot / gui.click / gui.input / gui.key（第 3 档：本机开关 + 目标窗口白名单
+//   - 强制审批，见 gui_windows.go）
+//
 // 故意不声明 fs.delete —— 删除类动作要护栏 + 审批，本端不做，宁可如实拒绝。
 package main
 
@@ -29,7 +34,7 @@ import (
 	"baize/shared/proto"
 )
 
-const desktopAppVersion = "0.5.27"
+const desktopAppVersion = "0.5.28"
 
 /* ---------------- 本机信息（与 agent/internal/sysinfo 同一口径） ---------------- */
 
@@ -286,6 +291,17 @@ func runAction(action string, args map[string]any) (map[string]any, error) {
 			return nil, err
 		}
 	}
+	// GUI 控制（第 3 档）：开关在 permGate 已过，这里再过**目标窗口白名单**这道闸。
+	// 关键在 guiTargetApp：点击是"动手前"先算坐标落点属于哪个应用；
+	// 输入/按键认的是当时的前台窗口——认不出就拒绝盲发（闸门细节见 gui_windows.go）。
+	for _, ga := range guiActions() {
+		if action == ga {
+			if err := guiGate(action, guiTargetApp(action, args)); err != nil {
+				return nil, err
+			}
+			break
+		}
+	}
 
 	switch action {
 	case proto.ActionPing:
@@ -328,10 +344,19 @@ func runAction(action string, args map[string]any) (map[string]any, error) {
 			return nil, err
 		}
 		return deletePaths(paths), nil
+	case proto.ActionGuiScreenshot:
+		return guiScreenshot(args), nil
+	case proto.ActionGuiClick:
+		return guiClick(args), nil
+	case proto.ActionGuiInput:
+		return guiInput(args), nil
+	case proto.ActionGuiKey:
+		return guiKey(args), nil
 	default:
-		return nil, fmt.Errorf("本端不支持的动作：%s（支持：ping / %s / %s / %s / %s / %s / %s）",
+		return nil, fmt.Errorf("本端不支持的动作：%s（支持：ping / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s）",
 			action, proto.ActionSysInfo, proto.ActionWindowNow, proto.ActionFsStat,
-			proto.ActionFsList, proto.ActionSysExec, proto.ActionFsDelete)
+			proto.ActionFsList, proto.ActionSysExec, proto.ActionFsDelete,
+			proto.ActionGuiScreenshot, proto.ActionGuiClick, proto.ActionGuiInput, proto.ActionGuiKey)
 	}
 }
 

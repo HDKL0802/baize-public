@@ -29,6 +29,12 @@ type Config struct {
 	// GuiShellAllowCmds 允许执行的命令名白名单（**空 = 一个都不允许**，与"空=不限制"的惯例相反：
 	// 执行命令是高危能力，宁可默认谁都跑不了，也不要一开就全放开）。
 	GuiShellAllowCmds []string `json:"guiShellAllowCmds,omitempty"`
+	// GuiControl 是否允许智能体控制本机 GUI（电脑控制第 3 档：点击 / 输入 / 按键 / 截图）。**默认关**。
+	// 开启后的三重闸门：① 这个开关（要过风险确认）；② 目标窗口进程白名单 GuiControlAllowApps
+	// （**空 = 一个窗都不许碰**，只剩截图这种只读动作可用）；③ 后端强制审批（gui.* 全是危险动作）。
+	GuiControl bool `json:"guiControl,omitempty"`
+	// GuiControlAllowApps 允许被控制的应用白名单（写进程名，如 chrome / notepad；小写、去 .exe）。
+	GuiControlAllowApps []string `json:"guiControlAllowApps,omitempty"`
 	// DataDir 数据目录（桌面端的配置与日志；留空 = 默认 %APPDATA%\白泽）
 	DataDir string `json:"dataDir,omitempty"`
 
@@ -123,6 +129,7 @@ func localConfigSnapshot() map[string]any {
 		"server": cfg.Server, "tokenSet": cfg.Token != "",
 		"guiPerm": cfg.GuiPerm, "guiScopes": append([]string{}, cfg.GuiScopes...),
 		"guiShell": cfg.GuiShell, "guiShellAllowCmds": append([]string{}, cfg.GuiShellAllowCmds...),
+		"guiControl": cfg.GuiControl, "guiControlAllowApps": append([]string{}, cfg.GuiControlAllowApps...),
 		"disclaimerAck": cfg.DisclaimerAck,
 		"dataDir":       dataDir(), "dataDirDefault": defaultDataDir(),
 		"configPath": cfgPath,
@@ -286,6 +293,45 @@ func setGuiShell(on bool, cmds []string, ack bool) error {
 	// 能力变了要重连：caps 与 hello 都得重新上报，否则后端还按旧能力派活
 	deviceRestart(baseCtx, "命令执行能力变更")
 	return nil
+}
+
+// setGuiControl 开关「允许控制 GUI」（电脑控制第 3 档）+ 改应用白名单。
+// 开启必须显式确认风险（ack）；白名单**可以为空**——空 = 一个窗都不许碰（点击/输入/按键全拒），
+// 但截图这种只读动作仍可用（控制之前先截图确认目标，是这套设计的一部分）。
+func setGuiControl(on bool, apps []string, ack bool) error {
+	if on && !ack {
+		return errors.New("开启「允许控制 GUI」前要先确认风险提示")
+	}
+	cfgMu.Lock()
+	cfg.GuiControl = on
+	cfg.GuiControlAllowApps = cleanAppList(apps)
+	if ack {
+		cfg.DisclaimerAck = true
+	}
+	saveConfigLocked()
+	cfgMu.Unlock()
+	// 能力变了要重连：caps 与 hello 都得重新上报，否则后端还按旧能力派活
+	deviceRestart(baseCtx, "GUI 控制能力变更")
+	return nil
+}
+
+// cleanAppList 归一应用白名单：去空、去重、小写、去 .exe（`Chrome.EXE` → `chrome`，与归一后的进程名对得上）
+func cleanAppList(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := map[string]bool{}
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		s = normalizeAppName(s)
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
 }
 
 // cleanCmdList 归一命令白名单：去空、去重、只留命令名本身（取 basename、去 .exe）

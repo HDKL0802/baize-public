@@ -1,7 +1,8 @@
 // Package executor 在桌面端就地执行后端下发的指令。
 //
-// MVP 支持的动作：ping / sys.info / window.now / fs.stat / fs.list / fs.delete。
-// fs.delete 属于危险动作，除了后端审批闸门，这里还有一层本地路径护栏与 --dry-run 开关。
+// MVP 支持的动作：ping / sys.info / window.now / fs.stat / fs.list / sys.exec / fs.delete。
+// 危险动作（删除、执行命令）除了后端审批闸门，这里还有本地护栏与 --dry-run / --allow-danger 开关。
+// gui.*（第 3 档 GUI 控制）无界面端一律拒绝：这类活只能派给 Windows 桌面端。
 package executor
 
 import (
@@ -79,6 +80,13 @@ func Run(action string, args map[string]any, opt Options) (map[string]any, error
 			return nil, err
 		}
 		return deletePaths(paths, opt)
+
+	case proto.ActionGuiScreenshot, proto.ActionGuiClick, proto.ActionGuiInput, proto.ActionGuiKey:
+		// 无界面端（后端进程 / 手机内核）做不了 GUI 控制：如实拒绝，不假装能干。
+		// 这条路径其实到不了——gui.control 能力只有 Windows 桌面端会上报，
+		// 后端也就不会把 gui.* 派给无界面的端。这里兜底，说清"为什么不行"。
+		return nil, fmt.Errorf("本端没有图形界面，做不了 %s；这类动作要派给具备 %s 能力的 Windows 桌面端",
+			action, proto.CapGuiControl)
 
 	default:
 		return nil, fmt.Errorf("不支持的动作：%s（本端支持：%s）", action, strings.Join(proto.KnownActions(), ", "))

@@ -162,6 +162,20 @@ func shellAllowList() []string {
 	return append([]string{}, cfg.GuiShellAllowCmds...)
 }
 
+// guiControlEnabled 是否允许控制本机 GUI（电脑控制第 3 档）
+func guiControlEnabled() bool {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	return cfg.GuiControl
+}
+
+// guiAllowApps 当前允许被控制的应用（进程名）白名单（副本）
+func guiAllowApps() []string {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	return append([]string{}, cfg.GuiControlAllowApps...)
+}
+
 // permCaps 按当前权限算出该上报给后端的能力标记。
 //
 // 这里直接决定后端能派什么活 —— 权限不够的能力**根本不上报**，
@@ -182,6 +196,10 @@ func permCaps() []string {
 	// 命令执行是独立开关（与文件权限档位不是一条轴）：开了才上报
 	if shellEnabled() {
 		caps = append(caps, proto.CapShell)
+	}
+	// GUI 控制（第 3 档）同样是独立开关：开了才上报，后端才不会派 gui.* 过来
+	if guiControlEnabled() {
+		caps = append(caps, proto.CapGuiControl)
 	}
 	return caps
 }
@@ -204,6 +222,15 @@ func permGate(action string, paths []string) error {
 	if action == proto.ActionSysExec {
 		if !shellEnabled() {
 			return fmt.Errorf("本机没开「允许执行命令」（设置 → 桌面控制 → 允许执行命令）；这是高危能力，默认关闭")
+		}
+		return nil
+	}
+	// GUI 控制（第 3 档）也是**独立开关**：开关本身在设备侧判（没开就拒），
+	// 逐动作的白名单校验（目标窗口进程必须在清单里）在平台侧 guiGate 做（要拿到进程名）。
+	switch action {
+	case proto.ActionGuiScreenshot, proto.ActionGuiClick, proto.ActionGuiInput, proto.ActionGuiKey:
+		if !guiControlEnabled() {
+			return fmt.Errorf("本机没开「允许控制 GUI」（设置 → 桌面控制 → 允许控制 GUI）；这是高危能力，默认关闭")
 		}
 		return nil
 	}
@@ -304,6 +331,19 @@ func normalizeCmdName(s string) string {
 	}
 	s = strings.ToLower(s)
 	for _, ext := range []string{".exe", ".cmd", ".bat", ".com"} {
+		if strings.HasSuffix(s, ext) {
+			s = strings.TrimSuffix(s, ext)
+			break
+		}
+	}
+	return s
+}
+
+// normalizeAppName 应用（进程名）归一：去空白与引号、小写、去 .exe/.dll 后缀。
+// 白名单与"窗口所属进程名"两边都过这个函数再比较（`Chrome.EXE` 与 `chrome` 视为同一个）。
+func normalizeAppName(s string) string {
+	s = strings.ToLower(strings.TrimSpace(strings.Trim(strings.TrimSpace(s), `"`)))
+	for _, ext := range []string{".exe", ".dll"} {
 		if strings.HasSuffix(s, ext) {
 			s = strings.TrimSuffix(s, ext)
 			break

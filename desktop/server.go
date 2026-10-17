@@ -221,6 +221,27 @@ func buildHandler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "on": on, "cmds": cmds})
 	})
 
+	// 「允许控制 GUI」（电脑控制第 3 档）：开关 + 目标应用白名单。
+	// ⚠️ 高危：开启要过风险确认（ack）；白名单空 = 一个窗都不许碰（截图仍可用）。
+	mux.HandleFunc("/api/local/gui", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req struct {
+				On   bool     `json:"on"`
+				Apps []string `json:"apps"`
+				Ack  bool     `json:"ack"`
+			}
+			_ = json.NewDecoder(io.LimitReader(r.Body, 1<<14)).Decode(&req)
+			if err := setGuiControl(req.On, req.Apps, req.Ack); err != nil {
+				writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+				return
+			}
+		}
+		cfgMu.RLock()
+		on, apps := cfg.GuiControl, append([]string{}, cfg.GuiControlAllowApps...)
+		cfgMu.RUnlock()
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "on": on, "apps": apps})
+	})
+
 	// 平台专属路由（Windows：自动更新）
 	registerPlatformRoutes(mux)
 

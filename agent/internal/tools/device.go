@@ -107,8 +107,9 @@ func (t *DeviceRun) Name() string { return "device_run" }
 
 // Description 说明
 func (t *DeviceRun) Description() string {
-	return "在指定设备上执行一条指令并等待回执（例如 fs.list/fs.stat/fs.delete/sys.exec/sys.info/window.now/ping）；" +
-		"删除与执行命令类动作是危险操作，会先走审批闸门"
+	return "在指定设备上执行一条指令并等待回执（例如 fs.list/fs.stat/fs.delete/sys.exec/sys.info/window.now/ping；" +
+		"Windows 桌面端还支持 GUI 控制第 3 档 gui.screenshot（截图）/gui.click（点击）/gui.input（输入文字）/gui.key（按键））；" +
+		"删除、执行命令与 gui.* 是危险操作，会先走人工审批闸门"
 }
 
 // Schema 参数说明
@@ -117,8 +118,8 @@ func (t *DeviceRun) Schema() map[string]any {
 		"type": "object",
 		"properties": map[string]any{
 			"deviceId":   map[string]any{"type": "string", "description": "目标设备 id（先用 device_list 查）"},
-			"action":     map[string]any{"type": "string", "description": "动作名，如 fs.list / fs.stat / fs.delete / sys.exec / sys.info / window.now / ping"},
-			"args":       map[string]any{"type": "object", "description": "动作参数，例如 {\"paths\":[\"D:\\\\tmp\"]}；sys.exec 用 {\"cmd\":\"dir\"}"},
+			"action":     map[string]any{"type": "string", "description": "动作名，如 fs.list / fs.stat / fs.delete / sys.exec / sys.info / window.now / ping / gui.screenshot / gui.click / gui.input / gui.key"},
+			"args":       map[string]any{"type": "object", "description": "动作参数，例如 {\"paths\":[\"D:\\\\tmp\"]}；sys.exec 用 {\"cmd\":\"dir\"}；gui.click 用 {\"x\":512,\"y\":320,\"button\":\"left\"}；gui.input 用 {\"text\":\"…\"}；gui.key 用 {\"keys\":\"ctrl+s\"}；gui.screenshot 可带 {\"x\":..,\"y\":..,\"width\":..,\"height\":..}，缺省全屏幕"},
 			"timeoutSec": map[string]any{"type": "integer", "description": "等待回执的秒数，默认 120"},
 		},
 		"required": []string{"deviceId", "action"},

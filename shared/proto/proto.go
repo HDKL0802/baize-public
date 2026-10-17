@@ -64,6 +64,14 @@ const (
 	ActionSysExec   = "sys.exec"   // 在本机执行一条命令（**危险，强制审批**；桌面端，电脑控制第 2 档）
 	ActionFsDelete  = "fs.delete"  // 删除文件/目录（危险，强制审批；桌面端）
 
+	// 电脑控制第 3 档：GUI 控制（桌面端）。全部**危险，强制审批**（危险前缀 gui）：
+	// 点击/按键/输入改的是用户眼前正在用的东西，误点一下的代价比读文件大得多。
+	// 截图是其中唯一只读的一个，但屏幕内容同样敏感，一并强制审批。
+	ActionGuiScreenshot = "gui.screenshot" // 截屏幕（可指定区域）；回本地临时 PNG 路径
+	ActionGuiClick      = "gui.click"      // 在 (x,y) 点鼠标（button：left/right/middle）
+	ActionGuiInput      = "gui.input"      // 向前台窗口输入一段文字（支持中文，走 Unicode 按键）
+	ActionGuiKey        = "gui.key"        // 按一个（组）键，如 enter / ctrl+s / f5（可逗号串多组）
+
 	// 手机端（待办内核）可执行的动作：均为只读，不改数据
 	ActionTodoList  = "todo.list"  // 列出待办（可按状态/关键词过滤）
 	ActionTodoStats = "todo.stats" // 待办统计（总数/完成/逾期等）
@@ -75,6 +83,7 @@ const (
 	CapFs       = "fs"
 	CapFsDelete = "fs.delete"
 	CapShell    = "sys.exec" // 允许在本机执行命令（桌面端，需用户显式开启）
+	CapGuiControl = "gui.control" // 允许控制本机 GUI（桌面端第 3 档，需用户显式开启 + 目标窗口白名单）
 	CapTodo     = "todo"     // 待办内核（手机端）
 )
 
@@ -203,6 +212,7 @@ type Receipt struct {
 // knownActions 后端允许创建的动作白名单
 var knownActions = []string{
 	ActionPing, ActionSysInfo, ActionWindowNow, ActionFsStat, ActionFsList, ActionSysExec, ActionFsDelete,
+	ActionGuiScreenshot, ActionGuiClick, ActionGuiInput, ActionGuiKey,
 	ActionTodoList, ActionTodoStats,
 }
 
@@ -226,6 +236,7 @@ func KnownActions() []string {
 // dangerousPrefixes 需要人工审批的动作（删除/提权/外发/改权限类）
 var dangerousPrefixes = []string{
 	"fs.delete", "proc.kill", "sys.exec", "net.upload", "perm.change", "msg.send",
+	"gui", // GUI 控制第 3 档：gui.screenshot / gui.click / gui.input / gui.key 全部强制审批
 }
 
 // IsDangerous 判断动作是否必须人工审批。危险动作不接受调用方"免审批"的声明。

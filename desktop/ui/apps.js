@@ -239,6 +239,25 @@ async function renderSettings(root) {
       </div>
 
       <div class="sect">
+        <h3>允许控制 GUI（电脑控制第 3 档 · 高危）</h3>
+        <div class="sub">打开后白泽可以<b>在这台电脑上点鼠标、输入文字、按按键</b>（并截图看效果）。
+          三重闸门缺一不可：① 这里显式开启；② 目标窗口必须属于下面白名单里的应用
+          （<b>空 = 一个窗都不许碰</b>，只剩截图这种只读动作可用——控制前先截图确认目标）；
+          ③ 每个 gui 动作派下来都要你在弹窗里点「批准」。<b>默认关闭</b>。</div>
+        <label class="sub" style="display:flex;gap:6px;align-items:flex-start;margin:10px 0">
+          <input type="checkbox" id="guiOn" style="margin-top:3px">
+          <span>允许控制 GUI（我清楚风险：这等于把这台电脑的鼠标和键盘交给智能体，后果自负）</span></label>
+        <div class="fields" style="grid-template-columns:1fr">
+          <div><label>允许的应用（每行一个，写进程名，例如 notepad / chrome / calc；不写 = 只许截图，不许碰任何窗口）</label>
+            <textarea id="guiApps" style="min-height:70px" placeholder="notepad&#10;chrome"></textarea></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn" id="guiSave">保存 GUI 控制设置</button>
+          <span class="sub" id="guiMsg" style="margin:0"></span>
+        </div>
+      </div>
+
+      <div class="sect">
         <h3>数据目录</h3>
         <div class="sub">桌面端的配置与日志放哪儿。<b>不是必须放 C 盘</b> —— 默认在
           <span class="mono" id="ddDefault">…</span>，你可以改到 D 盘或任意文件夹（改完立即搬过去）。
@@ -488,6 +507,32 @@ async function renderSettings(root) {
     if (on && !permState.disclaimerAck) permState.disclaimerAck = true;
   };
 
+  /* ---------- 允许控制 GUI（电脑控制第 3 档） ---------- */
+  const paintGui = (on, apps) => {
+    $i('guiOn').checked = !!on;
+    $i('guiApps').value = (apps || []).join('\n');
+    $i('guiMsg').innerHTML = on
+      ? ((apps || []).length
+        ? `<span class="warn">已开启：只许控制 ${esc(apps.join('、'))} 的窗口（每个动作仍需人工审批）</span>`
+        : '<span class="warn">已开启，但白名单是空的：只许截图，不许碰任何窗口</span>')
+      : '<span class="sub">未开启（默认）—— 智能体不能控制这台电脑的鼠标 / 键盘</span>';
+  };
+  const loadGui = async () => {
+    const r = await API.localGet('/gui');
+    if (!r || r.ok === false) return;
+    paintGui(r.on, r.apps);
+  };
+  $i('guiSave').onclick = async () => {
+    const on = $i('guiOn').checked;
+    const apps = $i('guiApps').value.split('\n').map(s => s.trim()).filter(Boolean);
+    if (on && !confirm(`真的要允许白泽控制这台电脑的 GUI 吗？\n这等于把鼠标和键盘交给它（白名单${apps.length ? '：' + apps.join('、') : '是空的，只许截图'} + 每个动作仍需审批）。`)) return;
+    $i('guiMsg').textContent = '保存中…';
+    const r = await API.localPost('/gui', { on: on, apps: apps, ack: on });
+    if (!r || r.ok === false) { $i('guiMsg').innerHTML = `<span class="err">${esc((r && r.error) || '保存失败')}</span>`; return; }
+    paintGui(r.on, r.apps);
+    if (on && !permState.disclaimerAck) permState.disclaimerAck = true;
+  };
+
   /* ---------- 数据目录 ---------- */
   const loadDataDir = async () => {
     const r = await API.localGet('/datadir');
@@ -667,6 +712,7 @@ async function renderSettings(root) {
 
   await loadPerm();
   await loadShell();
+  await loadGui();
   await loadDataDir();
   refresh();
 }

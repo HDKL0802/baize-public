@@ -1,0 +1,10 @@
+# 白泽官网 robots.txt
+# 允许所有爬虫抓取公开页面
+User-agent: *
+Allow: /
+
+# 不允许爬 GitHub API 动态拉取的私人下载接口（实际是 JS 调用，没公开 URL）
+# Disallow: （无需禁止）
+
+# Sitemap 位置
+Sitemap: https://baize.wydhd.fun/sitemap.xml

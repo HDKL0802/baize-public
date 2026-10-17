@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文档 · 白泽 BAIZE</title>
+<meta name="description" content="白泽文档：项目介绍、快速开始、架构总览、三大端说明、控制台、频道配置、模型通道、长期记忆、任务与审批。">
+<link rel="icon" href="assets/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="assets/logo.png">
+<link rel="apple-touch-icon" href="assets/logo.png">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+<!-- 导航栏 -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="brand">
+      <img class="bm" src="assets/logo.png?v=2" alt="白泽">
+      <div class="bt">
+        <b>白泽</b>
+        <span>BAIZE · YOUR PERSONAL AI</span>
+      </div>
+    </a>
+    <button class="nav-toggle" aria-label="菜单">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M3 6h18M3 12h18M3 18h18"/>
+      </svg>
+    </button>
+    <div class="nav-links">
+      <a href="index.html">首页</a>
+      <a href="index.html#features">核心能力</a>
+      <a href="index.html#channels">频道</a>
+      <a href="index.html#quickstart">开始</a>
+      <a href="docs.html" class="nav-doc" style="color:var(--accent)!important;border-color:var(--accent);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        文档
+      </a>
+      <div class="nav-download">
+        <button class="nav-download-btn" type="button" aria-haspopup="menu" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          下载
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-download-menu" role="menu">
+          <div class="ndm-loading">正在从 GitHub 获取最新版本…</div>
+        </div>
+      </div>
+      <a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener" class="nav-cta">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<div class="docs-shell">
+
+  <!-- 左侧导航 -->
+  <aside class="docs-side">
+    <div class="ds-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      在本文档中查找
+    </div>
+    <div class="ds-links">
+      <div class="ds-group">欢迎</div>
+      <a href="#intro" class="active">项目介绍</a>
+      <a href="#quickstart">快速开始</a>
+      <a href="#architecture">架构总览</a>
+      <a href="#tour">功能演示</a>
+
+      <div class="ds-group">三大件</div>
+      <a href="#backend">NAS 后端</a>
+      <a href="#desktop">Windows 桌面端</a>
+      <a href="#mobile">Android 手机端</a>
+
+      <div class="ds-group">控制</div>
+      <a href="#console">控制台</a>
+      <a href="#channels">频道配置</a>
+      <a href="#models">模型通道</a>
+      <a href="#mcp">MCP 与技能</a>
+      <a href="#cron">定时任务</a>
+
+      <div class="ds-group">智能体</div>
+      <a href="#memory">长期记忆</a>
+      <a href="#knowledge">知识库与记忆星图</a>
+      <a href="#approval">任务与审批</a>
+      <a href="#persona">人设与多智能体</a>
+
+      <div class="ds-group">更多</div>
+      <a href="#faq">常见问题</a>
+      <a href="#license">许可与安全</a>
+    </div>
+  </aside>
+
+  <!-- 正文 -->
+  <main class="docs-main">
+
+    <div class="doc-head">
+      <span class="doc-eyebrow">DOCUMENTATION</span>
+      <h1>白泽文档</h1>
+      <p class="doc-lead">
+        白泽是一个全 Go 的跨端个人智能体：NAS 上的后端是唯一大脑，Windows 桌面端与 Android 手机端注册成设备当手脚。
+        这份文档从「它是什么」讲到「怎么把它跑起来」，再到每一块控制面板背后的机制。
+      </p>
+    </div>
+
+    <!-- ========== 项目介绍 ========== -->
+    <section id="intro">
+      <h2>项目介绍</h2>
+      <p>
+        白泽解决的是一个很具体的问题：你有一台常年开机的 NAS、一台天天在用的 Windows 电脑、一部随身带的手机——
+        但你没有一个「记得住事、能在三个设备之间自己流转」的助手。
+      </p>
+      <p>
+        所以白泽把职责拆成两层：<strong>NAS 后端是唯一大脑</strong>，所有智能体逻辑、长期记忆、模型路由、审批闸门都跑在那里；
+        <strong>桌面端和手机端是它的手脚</strong>，注册成设备、上报能力清单、接收指令、执行动作。
+      </p>
+
+      <div class="feat-grid">
+        <div class="feat">
+          <div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+          <div class="f-t">数据正本只在后端</div>
+          <div class="f-d">记忆、知识库、任务、审批记录全部落在 NAS 的 SQLite 里，端侧只留缓存。断电重装端，数据不丢。</div>
+        </div>
+        <div class="feat">
+          <div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6 4 4 6-6"/><path d="M14 7h6v6"/></svg></div>
+          <div class="f-t">跨端自动流转</div>
+          <div class="f-d">每个端注册时上报能力清单。手机布置需要电脑能力的任务，后端自动转派桌面端执行，回执再汇总。</div>
+        </div>
+        <div class="feat">
+          <div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+          <div class="f-t">危险动作强制审批</div>
+          <div class="f-d">删除、提权、发消息、改权限——一律过人工闸门，支持「本次放行 / 永远放行」记忆。</div>
+        </div>
+        <div class="feat">
+          <div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+          <div class="f-t">全 Go · 无重依赖</div>
+          <div class="f-d">后端与桌面端都是 Go。桌面端用纯 Go WebView2，不需要 cgo、不需要 Rust，产出一个约 8 MB 的 exe。</div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div><strong>一句话记住它：</strong>后端存正本、端侧当手脚、危险动作要点头。</div>
+      </div>
+    </section>
+
+    <!-- ========== 快速开始 ========== -->
+    <section id="quickstart">
+      <h2>快速开始</h2>
+      <p>三条路径，按你要装的东西选。最先装的应该是 NAS 后端——没有它，两个端连不上。</p>
+
+      <h3>1 · 部署 NAS 后端</h3>
+      <p>
+        在仓库根目录建一个 <code>deploy.local.env</code>（模板见 <code>deploy.local.env.example</code>），
+        填 NAS 地址、用户名、密码和配对令牌。然后一条命令跑完剩下的：
+      </p>
+      <div class="code-wrap">
+<pre class="code-block"><button class="copy-btn" data-copy>复制</button><span class="cmt"># 构建 linux/amd64 → 上传 NAS → NAS 打镜像 → 起容器 → 健康检查</span>
+<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1
+
+<span class="cmt"># 健康检查不通过会自动回滚到原来的 systemd 服务，不会把后端留在死状态</span></pre>
+      </div>
+      <p>
+        后端默认监听 <code>http://&lt;NAS&gt;:8787</code>。首次启动会自动创建 admin 账号，
+        口令写在数据目录的 <code>admin-password.txt</code> 里。
+      </p>
+
+      <h3>2 · 装 Windows 桌面端</h3>
+      <div class="code-wrap">
+<pre class="code-block"><button class="copy-btn" data-copy>复制</button><span class="cmt"># 构建（纯 ASCII 脚本，无 cgo / 无 Rust）</span>
+<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File desktop\build.ps1
+
+<span class="cmt"># 首次运行，指定后端地址和配对令牌</span>
+desktop\bin\baize-desktop.exe --server http://&lt;NAS&gt;:8787 --token &lt;令牌&gt;
+
+<span class="cmt"># 之后直接双击 exe（配置保存在 %APPDATA%\白泽\desktop.json）</span>
+
+<span class="cmt"># 要打安装包</span>
+<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File desktop\build-installer.ps1</pre>
+      </div>
+
+      <h3>3 · 装 Android 手机端</h3>
+      <div class="code-wrap">
+<pre class="code-block"><button class="copy-btn" data-copy>复制</button><span class="cmt"># 两步合一：先交叉编译 Go 内核（arm64），再打 APK</span>
+<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File android-app\build.ps1
+
+<span class="cmt"># 安装到设备</span>
+adb connect &lt;手机IP&gt;:5555
+adb install -r android-app\bz-todo-v&lt;版本&gt;.apk</pre>
+      </div>
+      <div class="callout warn">
+        <div><strong>三星等激进 ROM：</strong>装完要去系统设置里手动允许「自启动」和「后台运行」，否则前台服务会被杀掉，手机端就掉线了。</div>
+      </div>
+
+      <h3>部署前检查清单</h3>
+      <table>
+        <thead><tr><th>需要</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>NAS 能 SSH</td><td>部署脚本通过 <code>tools/sshrun</code> 连过去打镜像</td></tr>
+          <tr><td>NAS 上有 Docker</td><td>镜像在 NAS 本地构建，电脑端不需要 Docker</td></tr>
+          <tr><td><code>deploy.local.env</code></td><td>已在 <code>.gitignore</code> 里，密码不会进仓库</td></tr>
+          <tr><td>可选：基础镜像</td><td>默认用 daocloud 镜像；可用 <code>BAIZE_BASE_IMAGE</code> 覆盖</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ========== 架构总览 ========== -->
+    <section id="architecture">
+      <h2>架构总览</h2>
+      <p>三端之间只有一条通信路径：<strong>WebSocket + HTTP</strong>，全部由后端发起编排。端与端之间不直连。</p>
+      <div class="code-wrap">
+<pre class="code-block">                    ┌──────────────────────────────────────┐
+                    │   NAS 后端（唯一大脑，Docker）          │
+                    │   设备中枢 / 任务与审批 / Agent / 记忆   │
+                    │   知识库 / MCP / 技能 / 备份 / 定时任务  │
+                    └──────┬────────────────────┬──────────┘
+             WebSocket+HTTP          WebSocket+HTTP
+                    ┌──────┴──────┐      ┌──────┴──────────┐
+                    │ Windows 桌面端 │      │  Android 手机端   │
+                    │ Go + WebView2 │      │ Go 内核 + WebView │
+                    └───────────────┘      └───────────────────┘</pre>
+      </div>
+
+      <h3>仓库结构</h3>
+      <table>
+        <thead><tr><th>目录</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><code>agent/</code></td><td>后端 Agent：设备中枢、任务与审批、Agent 循环、记忆、知识库、MCP、技能、备份、定时任务</td></tr>
+          <tr><td><code>shared/</code></td><td>跨端共享契约：消息定义（proto）+ 设备客户端</td></tr>
+          <tr><td><code>core/</code></td><td>共享领域内核 + 手机端 Go 内核（<code>cmd/bzcore</code>）</td></tr>
+          <tr><td><code>desktop/</code></td><td>Windows 桌面端（Go + 纯 Go WebView2）</td></tr>
+          <tr><td><code>android-app/</code></td><td>手机壳（Java，不打 Gradle）+ 打包脚本</td></tr>
+          <tr><td><code>todo-app/</code></td><td>手机端 WebView 前端（原生 HTML/CSS/JS）</td></tr>
+          <tr><td><code>cli/</code></td><td>电脑端小工具 <code>bz</code></td></tr>
+          <tr><td><code>tools/</code></td><td>部署与运维（<code>deploy-nas.ps1</code>、<code>sshrun</code>）</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ========== 功能演示 ========== -->
+    <section id="tour">
+      <h2>功能演示</h2>
+      <p>下面是桌面端与手机端的真实界面截图（暗色主题）。</p>
+
+      <figure class="docs-shot">
+        <img src="assets/hero-desktop-dark.png" alt="桌面端 · 频道管理">
+        <figcaption>桌面端 · 频道管理：左栏为对话 / 设备 / 任务与审批 / 知识库 / 记忆星图 / 频道等入口，底部实时显示 NAS 连接状态</figcaption>
+      </figure>
+
+      <div class="shot-row">
+        <figure class="docs-shot">
+          <img src="assets/phone-todo-dark.png" alt="手机端 · 待办">
+          <figcaption>手机端 · 待办（含 Agent 待办）</figcaption>
+        </figure>
+        <figure class="docs-shot">
+          <img src="assets/phone-agent-dark.png" alt="手机端 · Agent 待办与授权">
+          <figcaption>Agent 派下来的任务可「授权执行」</figcaption>
+        </figure>
+        <figure class="docs-shot">
+          <img src="assets/phone-settings-dark.png" alt="手机端 · 系统与配置">
+          <figcaption>设置 · AI 接口与通知</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ========== NAS 后端 ========== -->
+    <section id="backend">
+      <h2>NAS 后端</h2>
+      <p>
+        后端是唯一跑智能体逻辑的地方。它负责设备注册与心跳、任务分解与派发、审批闸门、记忆读写、知识库索引、
+        模型路由、插件与工具调用、定时任务调度。
+      </p>
+
+      <h3>运行形态</h3>
+      <ul>
+        <li>Docker 单容器，镜像在 NAS 本地从上传的 linux/amd64 二进制构建</li>
+        <li>默认端口 <code>8787</code>，健康检查走 <code>/api/health</code></li>
+        <li>数据目录默认 <code>/vol1/@appdata/baize</code>，SQLite 存正本</li>
+        <li>与旧的 systemd 服务互斥：先停止、容器健康后才 disable，失败自动回滚</li>
+      </ul>
+
+      <h3>常用参数</h3>
+      <div class="code-wrap">
+<pre class="code-block"><span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -SkipBuild      <span class="cmt"># 跳过编译，直接上传现有二进制</span>
+<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -NoRestart     <span class="cmt"># 只上传/构建，不动运行中的容器</span>
+<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -Tag v0.9.35    <span class="cmt"># 给镜像打版本标签</span>
+<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -Push           <span class="cmt"># 推送到 ghcr.io（需先在 NAS 上 docker login）</span></pre>
+      </div>
+
+      <div class="callout warn">
+        <div><strong>⚠️ 高权限意味着高风险。</strong>后端会按你的授权在真实设备上执行操作（读文件、跑命令、删文件）。放开前先备份，并从最低档权限开始。</div>
+      </div>
+    </section>
+
+    <!-- ========== 桌面端 ========== -->
+    <section id="desktop">
+      <h2>Windows 桌面端</h2>
+      <p>
+        Go + 纯 Go WebView2 实现，<strong>无 cgo、无 Rust</strong>。单文件约 8 MB，用户级安装（不需要管理员）。
+      </p>
+
+      <div class="feat-grid">
+        <div class="feat">
+          <div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+          <div class="f-t">三形态执行</div>
+          <div class="f-d">CLI / CMD / 管理员 CMD，按任务要求选择，权限逐级显式确认。</div>
+        </div>
+        <div class="feat">
+          <div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <div class="f-t">悬浮球 + 托盘常驻</div>
+          <div class="f-d">关掉窗口不退进程，随时接后端派下来的任务。</div>
+        </div>
+        <div class="feat">
+          <div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.8 1 6.4 2.6L21 8"/><polyline points="21 3 21 8 16 8"/></svg></div>
+          <div class="f-t">自动更新</div>
+          <div class="f-d">检测到新版本后按更新流程覆盖安装，安装位置可改。</div>
+        </div>
+      </div>
+
+      <h3>桌面控制的三档权限</h3>
+      <table>
+        <thead><tr><th>档位</th><th>能力</th><th>风险</th></tr></thead>
+        <tbody>
+          <tr><td>关闭 / 只读</td><td>默认档。只读指定目录，不可写不可删</td><td>低</td></tr>
+          <tr><td>只读指定盘</td><td>放开指定盘符的读取范围</td><td>中</td></tr>
+          <tr><td>完全访问</td><td>不限定范围，可写可删</td><td>高，建议先备份再开</td></tr>
+        </tbody>
+      </table>
+
+      <h3>「允许执行命令」的三重闸门</h3>
+      <p>这是第 2 档高危能力，默认关闭，打开需要过风险确认 + 二次确认弹窗。三重闸门缺一不可，且都在<strong>本机</strong>判定：</p>
+      <ol>
+        <li><strong>本机开关</strong>：不开，<code>sys.exec</code> 这条能力根本不上报给后端，后端也就派不过来</li>
+        <li><strong>命令白名单</strong>：命令名（去路径、去 <code>.exe/.cmd/.bat</code>、小写）必须在清单里；<strong>空清单 = 一条都不许跑</strong>；拒绝管道、重定向、串联、命令替换（<code>; | &amp; ` $ &gt; &lt;</code> 换行）</li>
+        <li><strong>后端人工审批</strong>：<code>sys.exec</code> 属危险动作，每次派下来都要点「批准并执行」</li>
+      </ol>
+      <p>执行侧还有护栏：单次超时默认 60 秒（上限 300 秒），输出上限 256KB，超时自动终止并写明原因。</p>
+    </section>
+
+    <!-- ========== 手机端 ========== -->
+    <section id="mobile">
+      <h2>Android 手机端</h2>
+      <p>
+        Go 内核编译成静态库 + Java 前台服务常驻。前端是原生 HTML/CSS/JS 的 WebView 页面，不打 Gradle。
+      </p>
+
+      <ul>
+        <li><strong>ADB + 无障碍双通道并行</strong>：能走 ADB 的走 ADB，需要界面语义的走无障碍</li>
+        <li><strong>UI 自动化 Copilot</strong>：读屏、定位控件、模拟操作，可以跨 App 完成任务</li>
+        <li><strong>24 小时监听与回溯</strong>：前台服务常驻，掉线自动重连</li>
+        <li><strong>四个标签页</strong>：待办 / 密码本 / 语音 / 设置</li>
+        <li><strong>密码本</strong>：明文只驻设备内存，不送云端模型</li>
+      </ul>
+
+      <div class="callout">
+        <div><strong>待办与密码可导出为 Markdown</strong>，Obsidian 兼容，直接放进你的仓库。</div>
+      </div>
+
+      <h3>常见坑</h3>
+      <ul>
+        <li>三星 / 小米等激进 ROM 需要在系统设置里允许「自启动」「后台运行」，否则服务被杀</li>
+        <li>ADB 通道需要先 <code>adb connect &lt;手机IP&gt;:5555</code> 并授权</li>
+        <li>无障碍通道需要在系统设置里手动开启对应服务</li>
+      </ul>
+    </section>
+
+    <!-- ========== 控制台 ========== -->
+    <section id="console">
+      <h2>控制台</h2>
+      <p>桌面端的主界面就是一个控制台，左侧固定导航，右侧按功能切换。</p>
+
+      <table>
+        <thead><tr><th>入口</th><th>作用</th></tr></thead>
+        <tbody>
+          <tr><td>对话</td><td>向白泽下达指令，查看运行状态与执行过程</td></tr>
+          <tr><td>设备</td><td>已注册端列表、在线状态、能力清单</td></tr>
+          <tr><td>任务与审批</td><td>进行中 / 已完成任务，待审批的危险动作</td></tr>
+          <tr><td>知识库</td><td>Markdown 笔记，可导入导出，Obsidian 兼容</td></tr>
+          <tr><td>记忆星图</td><td>双向链接 + 语义连边可视化</td></tr>
+          <tr><td>活动追踪</td><td>后端执行过的动作流水</td></tr>
+          <tr><td>账号与共享</td><td>多用户与共享资源</td></tr>
+          <tr><td>冲突协商</td><td>多端同时操作时的冲突处理</td></tr>
+          <tr><td>模型通道</td><td>模型服务商、BaseURL、模型名与路由</td></tr>
+          <tr><td>MCP 服务 / 技能</td><td>外部工具与技能的热插拔管理</td></tr>
+          <tr><td>插件市场</td><td>板块 / 阶段 / 分类三维货架</td></tr>
+          <tr><td>人设</td><td>智能体的人设与行为预设</td></tr>
+          <tr><td>定时任务</td><td>Cron 表达式与执行记录</td></tr>
+          <tr><td>频道</td><td>外部消息入口与出站 Webhook</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ========== 频道 ========== -->
+    <section id="channels">
+      <h2>频道配置</h2>
+      <p>频道是「外部消息变成一条任务」的入口，也是「任务结果发出去」的出口。</p>
+
+      <h3>支持的频道</h3>
+      <table>
+        <thead><tr><th>频道</th><th>方向</th><th>协议</th></tr></thead>
+        <tbody>
+          <tr><td>Webhook</td><td>出站</td><td>POST 到指定 URL</td></tr>
+          <tr><td>QQ OneBot</td><td>入站</td><td>反向 WebSocket V11</td></tr>
+          <tr><td>飞书</td><td>入站</td><td>事件回调 / 长轮询</td></tr>
+          <tr><td>钉钉</td><td>入站</td><td>Stream 长连接</td></tr>
+          <tr><td>腾讯元宝</td><td>入站</td><td>protobuf over WebSocket</td></tr>
+          <tr><td>个人微信</td><td>入站</td><td>二维码登录 + 长轮询</td></tr>
+        </tbody>
+      </table>
+
+      <h3>配置步骤</h3>
+      <ol>
+        <li>在控制台打开「频道」页，点「新建」</li>
+        <li>填频道 ID（字母 / 数字 / <code>-</code> / <code>_</code>）和类型</li>
+        <li>填入口地址或凭据；口令留空表示不修改</li>
+        <li>点「测试发送」验证连通性，再启用</li>
+      </ol>
+      <div class="callout">
+        <div><strong>口令一律加密存储。</strong>界面上不会回显已保存的口令，只会显示「有口令 / 无口令」。</div>
+      </div>
+    </section>
+
+    <!-- ========== 模型通道 ========== -->
+    <section id="models">
+      <h2>模型通道</h2>
+      <p>模型通道决定白泽用哪个模型服务。支持 OpenAI 兼容协议，填 BaseURL + API Key + 模型名即可。</p>
+      <table>
+        <thead><tr><th>字段</th><th>示例</th></tr></thead>
+        <tbody>
+          <tr><td>服务商</td><td>DeepSeek / OpenAI / 本地推理服务…</td></tr>
+          <tr><td>BaseURL</td><td><code>https://api.deepseek.com/v1</code></td></tr>
+          <tr><td>API Key</td><td><code>sk-…</code>（加密存储）</td></tr>
+          <tr><td>Model</td><td><code>deepseek-chat</code></td></tr>
+        </tbody>
+      </table>
+      <p>配好后点「测试连通性」，通过即生效。多通道时可以按任务类型路由到不同模型。</p>
+    </section>
+
+    <!-- ========== MCP ========== -->
+    <section id="mcp">
+      <h2>MCP 与技能</h2>
+      <p>
+        MCP 服务给白泽接外部工具（文件系统、浏览器、数据库…），技能是可复用的任务模板。
+        两者都是热插拔：装上即生效，不需要重启后端。
+      </p>
+      <ul>
+        <li>技能可自定义扩展，内置一份官方源，离线也能用</li>
+        <li>插件市场按 <strong>板块 / 阶段 / 分类</strong> 三维组织</li>
+        <li>所有工具调用都受审批闸门约束，危险前缀的动作强制人工确认</li>
+      </ul>
+    </section>
+
+    <!-- ========== 定时任务 ========== -->
+    <section id="cron">
+      <h2>定时任务</h2>
+      <p>按 Cron 表达式在后端调度，触发后走与手动对话完全相同的任务链路——同样审批、同样落记忆。</p>
+      <div class="code-wrap">
+<pre class="code-block"><span class="cmt"># 示例：每天早上 8 点汇总昨日任务</span>
+0 8 * * *
+
+<span class="cmt"># 示例：每 30 分钟检查一次 NAS 磁盘占用</span>
+*/30 * * * *</pre>
+      </div>
+      <p>执行记录会写进活动追踪，失败可在「任务与审批」里看到原因。</p>
+    </section>
+
+    <!-- ========== 长期记忆 ========== -->
+    <section id="memory">
+      <h2>长期记忆</h2>
+      <p>记忆不是把所有历史塞进上下文，而是「先检索、再召回、最后进提示词」。</p>
+
+      <h3>四路混合检索</h3>
+      <div class="feat-grid">
+        <div class="feat"><div class="f-t">图谱</div><div class="f-d">沿着实体与关系扩展，找到间接相关的内容。</div></div>
+        <div class="feat"><div class="f-t">向量</div><div class="f-d">语义相似度召回，措辞不同也能命中。</div></div>
+        <div class="feat"><div class="f-t">关键词</div><div class="f-d">精确命中人名、路径、编号这类不能模糊的词。</div></div>
+        <div class="feat"><div class="f-t">时效性</div><div class="f-d">越近的记忆权重越高，避免旧结论压过新事实。</div></div>
+      </div>
+
+      <h3>召回三闸门</h3>
+      <ul>
+        <li><strong>相关性</strong>：分数低于阈值的不进上下文</li>
+        <li><strong>时效性</strong>：过期的事实降权</li>
+        <li><strong>多样性</strong>：避免同一条记忆的多个副本占满窗口</li>
+      </ul>
+
+      <div class="callout warn">
+        <div><strong>许可说明：</strong><code>agent/internal/memory</code> 是基于 GPL-3.0 项目 OpenHuman 的实现用 Go 重写的衍生作品，按 GPL-3.0 授权。</div>
+      </div>
+    </section>
+
+    <!-- ========== 知识库 ========== -->
+    <section id="knowledge">
+      <h2>知识库与记忆星图</h2>
+      <p>
+        知识库是 Markdown 笔记的集合，双向链接语法与 Obsidian 兼容。
+        记忆星图把「手工双链」和「语义自动连边」画在同一张图上：
+      </p>
+      <ul>
+        <li><strong>实线</strong> = 你手工写的双向链接</li>
+        <li><strong>虚线</strong> = 系统根据语义相似度自动连的边</li>
+        <li>力导向布局，节点按连接度分布</li>
+      </ul>
+      <p>笔记可以整体导出为 <code>.md</code>，也可以从已有 Markdown 仓库导入。</p>
+    </section>
+
+    <!-- ========== 任务与审批 ========== -->
+    <section id="approval">
+      <h2>任务与审批</h2>
+      <p>任务分两种来源：你主动下的指令，和定时任务 / 频道消息触发的任务。两种都走同一条链路。</p>
+
+      <h3>任务生命周期</h3>
+      <div class="code-wrap">
+<pre class="code-block">收到指令 → 分解子任务 → 选端（按能力清单） → 派发
+        → 端执行 → 回执 → 落记忆 → 通知你</pre>
+      </div>
+
+      <h3>危险动作前缀</h3>
+      <p>以删除、提权、发消息、改权限等前缀开头的动作，会被强制拦下等人确认。确认时有两种选择：</p>
+      <ul>
+        <li><strong>本次放行</strong>：只放过这一次</li>
+        <li><strong>永远放行</strong>：记住这个动作模式，之后同类不再询问（谨慎使用）</li>
+      </ul>
+      <div class="callout warn">
+        <div><strong>审批闸门只降低风险，不能消除风险。</strong>请始终保留备份。</div>
+      </div>
+    </section>
+
+    <!-- ========== 人设 ========== -->
+    <section id="persona">
+      <h2>人设与多智能体</h2>
+      <p>
+        每个智能体有独立的人设、配置、记忆与技能。默认只有一个人设，需要时可以创建多个，
+        各自负责不同领域（工作 / 生活 / 运维…）。
+      </p>
+      <ul>
+        <li>人设影响语气、默认行为边界与工具偏好</li>
+        <li>多智能体之间可以通过协作技能互相通信、共同完成复杂任务</li>
+        <li>每个智能体的记忆是隔离的，不会互相污染</li>
+      </ul>
+    </section>
+
+    <!-- ========== FAQ ========== -->
+    <section id="faq">
+      <h2>常见问题</h2>
+
+      <h3>后端起来了但端连不上？</h3>
+      <p>先确认 NAS 的 <code>8787</code> 端口在内网可达，再检查配对令牌是否正确、设备是否已在「设备」页注册。</p>
+
+      <h3>第一次的 admin 口令在哪？</h3>
+      <p>在 NAS 的数据目录里，文件名是 <code>admin-password.txt</code>。</p>
+
+      <h3>部署失败了后端会挂吗？</h3>
+      <p>不会。部署脚本的健康检查不通过会自动回滚到原来的 systemd 服务。</p>
+
+      <h3>手机端老是掉线？</h3>
+      <p>多半是系统把前台服务杀了。去系统设置里允许「自启动」和「后台运行」，并把电池策略改成「不限制」。</p>
+
+      <h3>下载链接是最新的吗？</h3>
+      <p>是。官网的下载菜单每次打开都从 GitHub Releases API 拉最新版本，发新版后不需要改网页。</p>
+    </section>
+
+    <!-- ========== 许可与安全 ========== -->
+    <section id="license">
+      <h2>许可与安全</h2>
+      <h3>许可</h3>
+      <ul>
+        <li><strong>主体：MIT</strong></li>
+        <li><strong>例外：</strong><code>agent/internal/memory</code> 与 <code>agent/internal/voice</code> 为 GPL-3.0</li>
+        <li>第三方依赖清单见 <a href="https://github.com/HDKL0802/baize/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener">THIRD-PARTY-NOTICES.md</a></li>
+      </ul>
+
+      <h3>风险声明</h3>
+      <ol>
+        <li><strong>高权限意味着高风险。</strong>「只读指定盘」与「完全访问」会显著扩大智能体可触达的范围，放开前请备份。</li>
+        <li><strong>智能体不可靠。</strong>大模型可能误解指令、产生幻觉或误操作，造成误删、误改、数据泄露。</li>
+        <li><strong>后果自负。</strong>自行放开权限、部署与使用本软件产生的一切后果由你本人承担。</li>
+        <li><strong>无担保。</strong>本软件按「现状」提供，不附带任何明示或默示担保。</li>
+        <li>危险动作默认强制人工审批，但审批闸门只降低风险，不能消除风险。</li>
+      </ol>
+    </section>
+
+    <div class="doc-pager">
+      <a href="index.html">
+        <span class="pg-dir">返回</span>
+        首页
+      </a>
+      <a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener" class="next">
+        <span class="pg-dir">下一步</span>
+        查看源码 →
+      </a>
+    </div>
+  </main>
+
+  <!-- 右侧目录 -->
+  <aside class="docs-toc">
+    <div class="dt-title">本页目录</div>
+    <a href="#intro">项目介绍</a>
+    <a href="#quickstart">快速开始</a>
+    <a href="#architecture">架构总览</a>
+    <a href="#tour">功能演示</a>
+    <a href="#backend">NAS 后端</a>
+    <a href="#desktop">Windows 桌面端</a>
+    <a href="#mobile">Android 手机端</a>
+    <a href="#console">控制台</a>
+    <a href="#channels">频道配置</a>
+    <a href="#models">模型通道</a>
+    <a href="#mcp">MCP 与技能</a>
+    <a href="#cron">定时任务</a>
+    <a href="#memory">长期记忆</a>
+    <a href="#knowledge">知识库与星图</a>
+    <a href="#approval">任务与审批</a>
+    <a href="#persona">人设与多智能体</a>
+    <a href="#faq">常见问题</a>
+    <a href="#license">许可与安全</a>
+  </aside>
+</div>
+
+<script src="app.js"></script>
+<script>
+// 文档站滚动高亮（左栏 + 右栏同步）
+(function () {
+  var sections = Array.prototype.slice.call(document.querySelectorAll(".docs-main section[id]"));
+  var sideLinks = Array.prototype.slice.call(document.querySelectorAll(".docs-side .ds-links a"));
+  var tocLinks = Array.prototype.slice.call(document.querySelectorAll(".docs-toc a"));
+
+  function mark(id) {
+    sideLinks.forEach(function (a) {
+      a.classList.toggle("active", a.getAttribute("href") === "#" + id);
+    });
+    tocLinks.forEach(function (a) {
+      a.classList.toggle("active", a.getAttribute("href") === "#" + id);
+    });
+  }
+
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) mark(e.target.id);
+    });
+  }, { rootMargin: "-80px 0px -70% 0px", threshold: 0 });
+
+  sections.forEach(function (s) { io.observe(s); });
+
+  // 搜索框：聚焦时提示（纯静态站，不内建全文索引）
+  var search = document.querySelector(".ds-search");
+  if (search) {
+    search.style.cursor = "text";
+    search.addEventListener("click", function () {
+      search.textContent = "用浏览器 Ctrl+F 搜索本页";
+      setTimeout(function () {
+        search.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>用浏览器 Ctrl+F 搜索本页';
+      }, 0);
+    });
+  }
+})();
+</script>
+</body>
+</html>

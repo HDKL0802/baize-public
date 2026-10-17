@@ -10,36 +10,38 @@
   "use strict";
 
   // ===================== 配置 =====================
+  // 注意：工作仓 HDKL0802/baize 是私有仓库，匿名 API 会 404；
+  // 官网面向公网，必须读公开镜像仓 HDKL0802/baize-public。
   const GITHUB_OWNER = "HDKL0802";
-  const GITHUB_REPO  = "baize";
-  const RELEASE_API  = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
-  const CACHE_KEY    = "baize-latest-release";
+  const GITHUB_REPO  = "baize-public";
+  const API_BASE     = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}`;
+  const RELEASE_API  = `${API_BASE}/releases/latest`;
+  const RELEASES_API = `${API_BASE}/releases?per_page=30`;
+  const COMPOSE_URL  = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/deploy/nas-docker-compose.yml`;
+  const CACHE_KEY    = "baize-latest-release-v2";
   const CACHE_TTL_MS = 60 * 60 * 1000;  // 1 小时
 
   // 匹配规则：从 release assets 里按文件名找到对应文件
-  const ASSET_MATCHERS = [
-    {
-      key: "desktop",
+  const ASSET_MATCHERS = {
+    desktop: {
       title: "Windows 桌面端",
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
       arrow: `<svg class="ndm-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`,
       match: (name) => /^baize-desktop-setup-\d[\d.]+\.exe$/.test(name),
     },
-    {
-      key: "android",
+    android: {
       title: "Android 手机端",
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>`,
       arrow: `<svg class="ndm-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`,
       match: (name) => /^bz-todo-\d[\d.]+\.apk$/.test(name),
     },
-    {
-      key: "compose",
+    compose: {
       title: "NAS · docker-compose",
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
       arrow: `<svg class="ndm-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`,
       match: (name) => /nas-docker-compose\.yml$/.test(name),
     },
-  ];
+  };
 
   // ===================== 快速开始 4 卡片 =====================
   const cards = document.querySelectorAll(".deploy-card");
@@ -115,13 +117,15 @@
     let html = "";
     items.forEach((it) => {
       if (!it) return;
-      const sizeMb = (it.asset.size / 1024 / 1024).toFixed(1);
+      const sub = it.asset.size > 0
+        ? `${it.asset.name} · ${(it.asset.size / 1024 / 1024).toFixed(1)} MB`
+        : `${it.asset.name} · 跟随 main 分支`;
       html += `
         <a class="ndm-item" href="${it.asset.browser_download_url}" target="_blank" rel="noopener" download>
           <div class="ndm-ic">${it.meta.icon}</div>
           <div class="ndm-body">
             <div class="ndm-title">${it.meta.title}</div>
-            <div class="ndm-sub">${it.asset.name} · ${sizeMb} MB</div>
+            <div class="ndm-sub">${sub}</div>
           </div>
           ${it.meta.arrow}
         </a>`;
@@ -141,26 +145,15 @@
     downloadMenu.innerHTML = html;
   }
 
-  function parseRelease(json) {
-    const items = ASSET_MATCHERS.map((meta) => {
-      const asset = (json.assets || []).find((a) => meta.match(a.name));
-      return asset ? { asset, meta } : null;
-    });
-    return {
-      tag: json.tag_name || "",
-      name: json.name || "",
-      published_at: json.published_at || "",
-      items,
-    };
-  }
-
+  // 桌面端和手机端是两条独立的 release 线（desktop-v* / mobile-v*），
+  // 所以要拿「最新 release」+「release 列表」两份数据。
   async function fetchRelease() {
     // 读缓存
     try {
       const raw = localStorage.getItem(CACHE_KEY);
       if (raw) {
         const cached = JSON.parse(raw);
-        if (Date.now() - cached.ts < CACHE_TTL_MS) {
+        if (Date.now() - cached.ts < CACHE_TTL_MS && cached.data && cached.data.items.length) {
           setMenuHtml(cached.data.items);
           return;
         }
@@ -169,24 +162,43 @@
 
     setLoading();
     try {
-      const res = await fetch(RELEASE_API, {
-        headers: { "Accept": "application/vnd.github+json" },
-        cache: "no-store",
-      });
-      if (!res.ok) {
-        // 匿名 API rate limit 通常是 403 / 429，404 是没 release
-        throw new Error(`GitHub API ${res.status}`);
+      const headers = { "Accept": "application/vnd.github+json" };
+      const [latestRes, listRes] = await Promise.all([
+        fetch(RELEASE_API, { headers, cache: "no-store" }),
+        fetch(RELEASES_API, { headers, cache: "no-store" }),
+      ]);
+      if (!latestRes.ok) throw new Error(`GitHub API ${latestRes.status}`);
+
+      const latest = await latestRes.json();
+      const list = listRes.ok ? await listRes.json() : [];
+
+      const items = [];
+
+      // 桌面端：latest release 里的 .exe
+      const deskAsset = (latest.assets || []).find((a) => ASSET_MATCHERS.desktop.match(a.name));
+      if (deskAsset) items.push({ asset: deskAsset, meta: ASSET_MATCHERS.desktop });
+
+      // 手机端：在 release 列表里找最新的 bz-todo-*.apk
+      if (Array.isArray(list)) {
+        for (const rel of list) {
+          const apk = (rel.assets || []).find((a) => ASSET_MATCHERS.android.match(a.name));
+          if (apk) { items.push({ asset: apk, meta: ASSET_MATCHERS.android }); break; }
+        }
       }
-      const json = await res.json();
-      const data = parseRelease(json);
-      // 缓存
+
+      // NAS compose：随 main 分支走，始终最新
+      items.push({
+        asset: { name: "nas-docker-compose.yml", size: 0, browser_download_url: COMPOSE_URL },
+        meta: ASSET_MATCHERS.compose,
+      });
+
+      const data = { tag: latest.tag_name || "", items };
       try {
         localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data }));
       } catch {}
-      setMenuHtml(data.items);
+      setMenuHtml(items);
     } catch (err) {
       console.warn("[baize] release fetch failed:", err.message);
-      // 静默降级：给个兜底的 GitHub Releases 链接
       setFallback();
     }
   }

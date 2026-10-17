@@ -394,7 +394,25 @@ code, pre { font-family: var(--mono); }
 .hero-tag svg { width: 14px; height: 14px; flex: none; opacity: .6; transition: all .18s; }
 .hero-tag:hover svg { opacity: 1; transform: translateX(2px); color: var(--accent); }
 
-/* 大衬线 H1（居中 + 🦊 emoji 装饰） */
+/* 品牌图标（真实 logo，置于标题上方） */
+.hero-mark {
+  width: 68px;
+  height: 68px;
+  display: block;
+  margin: 0 auto var(--sp-5);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(20,20,19,.18), inset 0 0 0 1px rgba(255,255,255,.06);
+  animation: bob 4s ease-in-out infinite;
+}
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@media (prefers-color-scheme: dark) {
+  .hero-mark { box-shadow: 0 10px 28px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.08); }
+}
+
+/* 大衬线 H1（居中） */
 .hero h1 {
   font-family: var(--font-display);
   font-size: clamp(36px, 5.6vw, 64px);
@@ -403,23 +421,6 @@ code, pre { font-family: var(--mono); }
   margin: 0 0 var(--sp-5);
   letter-spacing: -.02em;
   color: var(--text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(8px, 1.6vw, 20px);
-  flex-wrap: wrap;
-}
-.hero .hero-emoji {
-  font-size: clamp(28px, 4vw, 48px);
-  line-height: 1;
-  display: inline-block;
-  filter: drop-shadow(0 2px 6px rgba(20,20,19,.15));
-  animation: bob 3s ease-in-out infinite;
-}
-.hero .hero-emoji:last-child { animation-delay: 1.5s; }
-@keyframes bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
 }
 .hero h1 .hl {
   position: relative;
@@ -1007,11 +1008,8 @@ code, pre { font-family: var(--mono); }
   .hero-cta .btn { justify-content: center; }
   .deploy-cards { gap: 14px; }
   .deploy-card { aspect-ratio: auto; padding: 24px 16px; }
-  .hero h1 {
-    flex-direction: column;
-    gap: 8px;
-  }
-  .hero .hero-emoji { font-size: 32px; }
+  .hero h1 { font-size: 30px; }
+  .hero-mark { width: 56px; height: 56px; border-radius: 14px; }
   .hero-preview { max-width: 100%; padding: 10px; }
   .code-block { padding: 18px 20px; font-size: 12px; }
   .footer-grid { gap: var(--sp-5); }

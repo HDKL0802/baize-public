@@ -33,7 +33,7 @@
       title: "Android 手机端",
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>`,
       arrow: `<svg class="ndm-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`,
-      match: (name) => /^bz-todo-\d[\d.]+\.apk$/.test(name),
+      match: (name) => /^bz-todo-v?\d[\d.]+\.apk$/.test(name),
     },
     compose: {
       title: "NAS · docker-compose",

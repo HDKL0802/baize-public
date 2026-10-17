@@ -18,7 +18,7 @@
   const RELEASE_API  = `${API_BASE}/releases/latest`;
   const RELEASES_API = `${API_BASE}/releases?per_page=30`;
   const COMPOSE_URL  = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/deploy/nas-docker-compose.yml`;
-  const CACHE_KEY    = "baize-latest-release-v2";
+  const CACHE_KEY    = "baize-latest-release-v3";
   const CACHE_TTL_MS = 60 * 60 * 1000;  // 1 小时
 
   // 匹配规则：从 release assets 里按文件名找到对应文件

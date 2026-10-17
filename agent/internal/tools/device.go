@@ -108,8 +108,10 @@ func (t *DeviceRun) Name() string { return "device_run" }
 // Description 说明
 func (t *DeviceRun) Description() string {
 	return "在指定设备上执行一条指令并等待回执（例如 fs.list/fs.stat/fs.delete/sys.exec/sys.info/window.now/ping；" +
-		"Windows 桌面端还支持 GUI 控制第 3 档 gui.screenshot（截图）/gui.click（点击）/gui.input（输入文字）/gui.key（按键））；" +
-		"删除、执行命令与 gui.* 是危险操作，会先走人工审批闸门"
+		"Windows 桌面端还支持 GUI 控制第 3 档 gui.screenshot（截图）/gui.click（点击）/gui.input（输入文字）/gui.key（按键），" +
+		"以及浏览器双方案 browser.open（打开/导航）/browser.read（读页面）/browser.click（点击）/browser.type（填字）/" +
+		"browser.key（按键）/browser.screenshot（截图）/browser.status/browser.handoff（把控制权移交给人）；" +
+		"删除、执行命令、gui.* 与 browser.* 都是危险操作，会先走人工审批闸门"
 }
 
 // Schema 参数说明
@@ -118,8 +120,8 @@ func (t *DeviceRun) Schema() map[string]any {
 		"type": "object",
 		"properties": map[string]any{
 			"deviceId":   map[string]any{"type": "string", "description": "目标设备 id（先用 device_list 查）"},
-			"action":     map[string]any{"type": "string", "description": "动作名，如 fs.list / fs.stat / fs.delete / sys.exec / sys.info / window.now / ping / gui.screenshot / gui.click / gui.input / gui.key"},
-			"args":       map[string]any{"type": "object", "description": "动作参数，例如 {\"paths\":[\"D:\\\\tmp\"]}；sys.exec 用 {\"cmd\":\"dir\"}；gui.click 用 {\"x\":512,\"y\":320,\"button\":\"left\"}；gui.input 用 {\"text\":\"…\"}；gui.key 用 {\"keys\":\"ctrl+s\"}；gui.screenshot 可带 {\"x\":..,\"y\":..,\"width\":..,\"height\":..}，缺省全屏幕"},
+			"action":     map[string]any{"type": "string", "description": "动作名，如 fs.list / fs.stat / fs.delete / sys.exec / sys.info / window.now / ping / gui.screenshot / gui.click / gui.input / gui.key / browser.open / browser.read / browser.click / browser.type / browser.key / browser.screenshot / browser.status / browser.handoff"},
+			"args":       map[string]any{"type": "object", "description": "动作参数，例如 {\"paths\":[\"D:\\\\tmp\"]}；sys.exec 用 {\"cmd\":\"dir\"}；gui.click 用 {\"x\":512,\"y\":320,\"button\":\"left\"}；gui.input 用 {\"text\":\"…\"}；gui.key 用 {\"keys\":\"ctrl+s\"}；gui.screenshot 可带 {\"x\":..,\"y\":..,\"width\":..,\"height\":..}，缺省全屏幕；browser.open 用 {\"url\":\"https://…\"}；browser.click 用 {\"selector\":\"#submit\"} 或 {\"text\":\"登录\"}；browser.type 用 {\"selector\":\"#q\",\"text\":\"白泽\",\"submit\":true}；browser.key 用 {\"keys\":\"ctrl+l\"}；browser.handoff 用 {\"handoff\":true}（交给用户）或 {\"handoff\":false}（收回）；浏览器动作可用 {\"target\":\"builtin\"}（默认，内置浏览器）或 {\"target\":\"chrome\"}（已装 Chrome，需扩展接入）"},
 			"timeoutSec": map[string]any{"type": "integer", "description": "等待回执的秒数，默认 120"},
 		},
 		"required": []string{"deviceId", "action"},

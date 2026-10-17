@@ -58,11 +58,22 @@ func main() {
 	// 见 float_windows.go —— 照豆包「一堆进程」那套，每个临时窗口一个独立进程。
 	floatMode := flag.String("float", "", "临时浮窗模式：chat / extract / translate / dictate / subtitle / call（内部用）")
 	floatImg := flag.String("img", "", "浮窗（提取/翻译）要处理的截图临时文件（内部用）")
+	// 内置浏览器（内部用）：同一个 exe 再起一个进程，只显示一块 WebView2 浏览器窗口，
+	// 由主进程通过本机回环 HTTP 控制（见 browser_windows.go）。
+	browserMode := flag.Bool("browser", false, "内置浏览器模式（内部用）")
+	browserPort := flag.Int("browser-port", 0, "内置浏览器控制口端口（内部用）")
+	browserToken := flag.String("browser-token", "", "内置浏览器控制口令牌（内部用）")
+	browserURL := flag.String("browser-url", "", "内置浏览器启动地址（内部用）")
 	flag.Parse()
 
 	// 浮窗进程：不起单实例检查、托盘、悬浮球、设备连接 —— 它只负责显示那一小块窗口
 	if strings.TrimSpace(*floatMode) != "" {
 		runFloatMode(*floatMode, *floatImg)
+		os.Exit(0)
+	}
+	// 内置浏览器进程：同样不参与单实例/托盘/设备连接，只当一块受控的浏览器窗口
+	if *browserMode {
+		runBrowserMode(*browserPort, *browserToken, *browserURL)
 		os.Exit(0)
 	}
 
@@ -87,6 +98,8 @@ func main() {
 	defer stop()
 	baseCtx = ctx
 	deviceRestart(ctx, "启动")
+	// Chrome 扩展接入通道（只在「允许控制浏览器 + 允许 Chrome 扩展」都开时监听）
+	restartExtServer()
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {

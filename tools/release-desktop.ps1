@@ -50,11 +50,14 @@ $exe = Join-Path $desk "bin\baize-desktop.exe"
 if (-not (Test-Path $exe)) { throw "build output missing: $exe" }
 $ui = Join-Path $desk "ui"
 if (-not (Test-Path $ui)) { throw "missing ui dir: $ui (multi-file layout needs it)" }
+$ext = Join-Path $desk "browser-ext"
+$pack = @($exe, $ui)
+if (Test-Path $ext) { $pack += $ext } else { Write-Host "WARN: missing browser-ext dir ($ext)" -ForegroundColor Yellow }
 
-# ---- 3b. pack the multi-file update (zip: baize-desktop.exe + ui/) ----
+# ---- 3b. pack the multi-file update (zip: baize-desktop.exe + ui/ + browser-ext/) ----
 $zip = Join-Path $desk ("bin\baize-desktop-" + $ver + ".zip")
 if (Test-Path $zip) { Remove-Item $zip -Force }
-Compress-Archive -Path $exe, $ui -DestinationPath $zip -Force
+Compress-Archive -Path $pack -DestinationPath $zip -Force
 if (-not (Test-Path $zip)) { throw "zip not created: $zip" }
 
 # ---- 4. hash + size (of the zip the client downloads) ----

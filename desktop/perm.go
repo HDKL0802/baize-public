@@ -176,6 +176,37 @@ func guiAllowApps() []string {
 	return append([]string{}, cfg.GuiControlAllowApps...)
 }
 
+// browserControlEnabled 是否允许智能体控制浏览器（内置浏览器 + Chrome 扩展的总开关）
+func browserControlEnabled() bool {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	return cfg.BrowserControl
+}
+
+// browserChromeAllowed 是否允许 Chrome 扩展接入（与内置浏览器分开授权）
+func browserChromeAllowed() bool {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	return cfg.BrowserControl && cfg.BrowserAllowChrome
+}
+
+// browserExtToken 扩展接入令牌（副本）
+func browserExtToken() string {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	return cfg.BrowserExtToken
+}
+
+// browserExtPort 扩展接入端口
+func browserExtPort() int {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	if cfg.BrowserExtPort <= 0 {
+		return 47121
+	}
+	return cfg.BrowserExtPort
+}
+
 // permCaps 按当前权限算出该上报给后端的能力标记。
 //
 // 这里直接决定后端能派什么活 —— 权限不够的能力**根本不上报**，
@@ -200,6 +231,10 @@ func permCaps() []string {
 	// GUI 控制（第 3 档）同样是独立开关：开了才上报，后端才不会派 gui.* 过来
 	if guiControlEnabled() {
 		caps = append(caps, proto.CapGuiControl)
+	}
+	// 浏览器控制（内置浏览器 / Chrome 扩展）也是独立开关
+	if browserControlEnabled() {
+		caps = append(caps, proto.CapBrowser)
 	}
 	return caps
 }
@@ -231,6 +266,17 @@ func permGate(action string, paths []string) error {
 	case proto.ActionGuiScreenshot, proto.ActionGuiClick, proto.ActionGuiInput, proto.ActionGuiKey:
 		if !guiControlEnabled() {
 			return fmt.Errorf("本机没开「允许控制 GUI」（设置 → 桌面控制 → 允许控制 GUI）；这是高危能力，默认关闭")
+		}
+		return nil
+	}
+	// 浏览器控制（内置浏览器 / Chrome 扩展）同样是独立开关。
+	// target=chrome 的额外校验（是否允许扩展接入）在 runAction 里做（permGate 拿不到 args）。
+	switch action {
+	case proto.ActionBrowserOpen, proto.ActionBrowserRead, proto.ActionBrowserClick,
+		proto.ActionBrowserType, proto.ActionBrowserKey, proto.ActionBrowserShot,
+		proto.ActionBrowserStatus, proto.ActionBrowserHandoff:
+		if !browserControlEnabled() {
+			return fmt.Errorf("本机没开「允许控制浏览器」（设置 → 桌面控制 → 允许控制浏览器）；默认关闭")
 		}
 		return nil
 	}

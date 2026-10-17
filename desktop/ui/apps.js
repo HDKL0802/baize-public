@@ -131,6 +131,7 @@ window.APPS = [
   { id: 'chat', name: '对话', icon: '💬', w: 900, h: 620, render: renderChat },
   { id: 'devices', name: '设备', icon: '🖥️', w: 1000, h: 620, render: renderDevices },
   { id: 'files', name: '电脑文件', icon: '🗂️', w: 1000, h: 640 },
+  { id: 'browser', name: '浏览器', icon: '🌐', w: 1000, h: 640 },
   { id: 'settings', name: '设置', icon: '⚙️', w: 720, h: 540, render: renderSettings },
 
   { id: 'tasks', name: '任务与审批', icon: '📋', w: 900, h: 600 },
@@ -254,6 +255,37 @@ async function renderSettings(root) {
         <div style="display:flex;gap:8px;align-items:center">
           <button class="btn" id="guiSave">保存 GUI 控制设置</button>
           <span class="sub" id="guiMsg" style="margin:0"></span>
+        </div>
+      </div>
+
+      <div class="sect">
+        <h3>允许控制浏览器（电脑控制 · 浏览器双方案）</h3>
+        <div class="sub">打开后白泽可以控制浏览器：
+          <b>内置浏览器</b>（白泽自带的窗口，需要登录时可点「移交给我」让你自己操作，再交还）；
+          或<b>你已装的 Chrome</b>（要另外允许扩展接入，并在 Chrome 里加载 <span class="mono">browser-ext</span>）。
+          <b>默认关闭</b>；每个 <span class="mono">browser.*</span> 动作仍会在后端弹窗要求你批准。</div>
+        <label class="sub" style="display:flex;gap:6px;align-items:flex-start;margin:10px 0">
+          <input type="checkbox" id="brOn" style="margin-top:3px">
+          <span>允许控制浏览器（我清楚风险：它能读当前页面、点按钮、填表单，包括已登录的账号）</span></label>
+        <label class="sub" style="display:flex;gap:6px;align-items:flex-start;margin:6px 0 10px">
+          <input type="checkbox" id="brChrome" style="margin-top:3px">
+          <span>同时允许 Chrome 扩展接入（控制你已装的 Chrome / Edge）</span></label>
+        <div class="fields" style="grid-template-columns:1fr">
+          <div><label>Chrome 扩展接入信息（填进扩展弹窗）</label>
+            <div class="mono" id="brExtAddr" style="margin:4px 0">—</div>
+            <div class="mono" id="brExtToken" style="word-break:break-all;margin:4px 0">—</div>
+            <div class="sub" id="brExtState" style="margin:4px 0"></div>
+            <div class="mono sub" id="brExtDir" style="word-break:break-all;margin:4px 0"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn ghost sm" id="brCopy">复制地址与令牌</button>
+              <button class="btn ghost sm" id="brRotate">重置令牌</button>
+              <button class="btn ghost sm" id="brExtOpen">打开扩展目录</button>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn" id="brSave">保存浏览器控制设置</button>
+          <span class="sub" id="brMsg" style="margin:0"></span>
         </div>
       </div>
 
@@ -533,6 +565,65 @@ async function renderSettings(root) {
     if (on && !permState.disclaimerAck) permState.disclaimerAck = true;
   };
 
+  /* ---------- 允许控制浏览器（浏览器双方案） ---------- */
+  const paintBrowser = (st) => {
+    const s = st || {};
+    $i('brOn').checked = !!s.control;
+    $i('brChrome').checked = !!s.allowChrome;
+    const addr = 'ws://127.0.0.1:' + (s.extPort || 47121) + '/ext/ws';
+    const token = s.extToken || '';
+    $i('brExtAddr').textContent = '地址：' + addr;
+    $i('brExtToken').textContent = token ? ('令牌：' + token) : '令牌：还没生成（保存开启后自动生成）';
+    $i('brExtState').innerHTML = !s.allowChrome
+      ? '<span class="sub">未允许扩展接入（内置浏览器仍可用）</span>'
+      : (s.extConnected
+        ? '<span class="ok">扩展已连接</span>'
+        : '<span class="warn">扩展还没连上：在 Chrome 里加载 browser-ext，填上面的地址与令牌后点「连接」</span>');
+    $i('brExtDir').textContent = s.extDir ? ('扩展目录：' + s.extDir) : '';
+    $i('brMsg').innerHTML = s.control
+      ? '<span class="warn">已开启（每个 browser 动作仍需人工审批）</span>'
+      : '<span class="sub">未开启（默认）—— 智能体不能控制任何浏览器</span>';
+  };
+  const loadBrowser = async () => {
+    const r = await API.localGet('/browser');
+    if (!r || r.ok === false) return;
+    paintBrowser(r.state || {});
+  };
+  $i('brSave').onclick = async () => {
+    const on = $i('brOn').checked;
+    const chrome = $i('brChrome').checked;
+    if (on && !confirm('真的要允许白泽控制浏览器吗？\n它能读你当前页面、点按钮、填表单（包括已登录的账号）；每个动作仍需你审批。')) return;
+    $i('brMsg').textContent = '保存中…';
+    const r = await API.localPost('/browser', { action: 'setting', on: on, allowChrome: chrome, ack: on });
+    if (!r || r.ok === false) { $i('brMsg').innerHTML = `<span class="err">${esc((r && r.error) || '保存失败')}</span>`; return; }
+    paintBrowser(r.state || {});
+    if (on && !permState.disclaimerAck) permState.disclaimerAck = true;
+  };
+  $i('brCopy').onclick = async () => {
+    const addr = ($i('brExtAddr').textContent || '').replace('地址：', '').trim();
+    const token = ($i('brExtToken').textContent || '').replace('令牌：', '').trim();
+    if (!token || token.indexOf('还没生成') >= 0) { $i('brMsg').textContent = '先保存开启，让令牌生成'; return; }
+    const txt = '地址：' + addr + '\n令牌：' + token;
+    try {
+      await navigator.clipboard.writeText(txt);
+      $i('brMsg').textContent = '已复制，去 Chrome 扩展弹窗里粘贴';
+    } catch (e) {
+      $i('brMsg').textContent = '复制失败（请手动选中上面的文字复制）';
+    }
+  };
+  $i('brRotate').onclick = async () => {
+    if (!confirm('重置后旧令牌立刻失效，已连接的扩展会断开。继续？')) return;
+    const r = await API.localPost('/browser', { action: 'rotate' });
+    if (!r || r.ok === false) { $i('brMsg').innerHTML = `<span class="err">${esc((r && r.error) || '重置失败')}</span>`; return; }
+    paintBrowser(r.state || {});
+    $i('brMsg').textContent = '令牌已重置，请在扩展里改填新令牌';
+  };
+  $i('brExtOpen').onclick = async () => {
+    const r = await API.localPost('/browser', { action: 'opendir' });
+    if (!r || r.ok === false) { $i('brMsg').innerHTML = `<span class="err">${esc((r && r.error) || '打不开目录')}</span>`; return; }
+    $i('brMsg').textContent = '已在资源管理器里打开扩展目录';
+  };
+
   /* ---------- 数据目录 ---------- */
   const loadDataDir = async () => {
     const r = await API.localGet('/datadir');
@@ -713,6 +804,7 @@ async function renderSettings(root) {
   await loadPerm();
   await loadShell();
   await loadGui();
+  await loadBrowser();
   await loadDataDir();
   refresh();
 }

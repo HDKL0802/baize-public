@@ -72,6 +72,19 @@ const (
 	ActionGuiInput      = "gui.input"      // 向前台窗口输入一段文字（支持中文，走 Unicode 按键）
 	ActionGuiKey        = "gui.key"        // 按一个（组）键，如 enter / ctrl+s / f5（可逗号串多组）
 
+	// 电脑控制 · 浏览器双方案（桌面端）。两种目标共用同一组动作，用 args.target 区分：
+	//   builtin（默认）= 白泽自带的内置浏览器窗口（用户可操作，可把控制权移交给人）；
+	//   chrome        = 用户已安装的 Chrome/Edge（通过浏览器扩展接入）。
+	// 点击/输入/按键/导航都会改变用户眼前的东西 → 危险前缀 browser，全部强制人工审批。
+	ActionBrowserOpen    = "browser.open"       // 打开/导航到某个地址（内置或扩展）
+	ActionBrowserRead    = "browser.read"       // 读当前页 URL / 标题 / 正文
+	ActionBrowserClick   = "browser.click"      // 点击（CSS 选择器或可见文字）
+	ActionBrowserType    = "browser.type"       // 往输入框填字（CSS 选择器 + text，可 submit）
+	ActionBrowserKey     = "browser.key"        // 按一个（组）键，如 enter / ctrl+s
+	ActionBrowserShot    = "browser.screenshot" // 截当前页/窗口，回本地临时 PNG 路径
+	ActionBrowserStatus  = "browser.status"     // 浏览器是否开着 / 当前地址 / 是否已移交给人
+	ActionBrowserHandoff = "browser.handoff"    // 移交控制权（true=交给用户操作，false=收回给 AI）
+
 	// 手机端（待办内核）可执行的动作：均为只读，不改数据
 	ActionTodoList  = "todo.list"  // 列出待办（可按状态/关键词过滤）
 	ActionTodoStats = "todo.stats" // 待办统计（总数/完成/逾期等）
@@ -79,12 +92,13 @@ const (
 
 // 能力标记（hello.caps）
 const (
-	CapWindow   = "window.report"
-	CapFs       = "fs"
-	CapFsDelete = "fs.delete"
-	CapShell    = "sys.exec" // 允许在本机执行命令（桌面端，需用户显式开启）
-	CapGuiControl = "gui.control" // 允许控制本机 GUI（桌面端第 3 档，需用户显式开启 + 目标窗口白名单）
-	CapTodo     = "todo"     // 待办内核（手机端）
+	CapWindow     = "window.report"
+	CapFs         = "fs"
+	CapFsDelete   = "fs.delete"
+	CapShell      = "sys.exec"        // 允许在本机执行命令（桌面端，需用户显式开启）
+	CapGuiControl = "gui.control"     // 允许控制本机 GUI（桌面端第 3 档，需用户显式开启 + 目标窗口白名单）
+	CapBrowser    = "browser.control" // 允许控制浏览器（桌面端：内置浏览器 / 已装 Chrome 扩展，需用户显式开启）
+	CapTodo       = "todo"            // 待办内核（手机端）
 )
 
 // 记录（三态 + 审批）落库用的种类
@@ -213,6 +227,8 @@ type Receipt struct {
 var knownActions = []string{
 	ActionPing, ActionSysInfo, ActionWindowNow, ActionFsStat, ActionFsList, ActionSysExec, ActionFsDelete,
 	ActionGuiScreenshot, ActionGuiClick, ActionGuiInput, ActionGuiKey,
+	ActionBrowserOpen, ActionBrowserRead, ActionBrowserClick, ActionBrowserType, ActionBrowserKey,
+	ActionBrowserShot, ActionBrowserStatus, ActionBrowserHandoff,
 	ActionTodoList, ActionTodoStats,
 }
 
@@ -236,7 +252,8 @@ func KnownActions() []string {
 // dangerousPrefixes 需要人工审批的动作（删除/提权/外发/改权限类）
 var dangerousPrefixes = []string{
 	"fs.delete", "proc.kill", "sys.exec", "net.upload", "perm.change", "msg.send",
-	"gui", // GUI 控制第 3 档：gui.screenshot / gui.click / gui.input / gui.key 全部强制审批
+	"gui",     // GUI 控制第 3 档：gui.screenshot / gui.click / gui.input / gui.key 全部强制审批
+	"browser", // 浏览器双方案：browser.* 全部强制审批（导航/点击/输入都会改变用户眼前的东西）
 }
 
 // IsDangerous 判断动作是否必须人工审批。危险动作不接受调用方"免审批"的声明。

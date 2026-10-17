@@ -88,6 +88,13 @@ func Run(action string, args map[string]any, opt Options) (map[string]any, error
 		return nil, fmt.Errorf("本端没有图形界面，做不了 %s；这类动作要派给具备 %s 能力的 Windows 桌面端",
 			action, proto.CapGuiControl)
 
+	case proto.ActionBrowserOpen, proto.ActionBrowserRead, proto.ActionBrowserClick,
+		proto.ActionBrowserType, proto.ActionBrowserKey, proto.ActionBrowserShot,
+		proto.ActionBrowserStatus, proto.ActionBrowserHandoff:
+		// 浏览器控制同样只有桌面端能做（内置浏览器 / Chrome 扩展都在用户电脑上）。
+		return nil, fmt.Errorf("本端没有浏览器控制能力，做不了 %s；这类动作要派给具备 %s 能力的 Windows 桌面端",
+			action, proto.CapBrowser)
+
 	default:
 		return nil, fmt.Errorf("不支持的动作：%s（本端支持：%s）", action, strings.Join(proto.KnownActions(), ", "))
 	}

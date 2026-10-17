@@ -35,6 +35,17 @@ type Config struct {
 	GuiControl bool `json:"guiControl,omitempty"`
 	// GuiControlAllowApps 允许被控制的应用白名单（写进程名，如 chrome / notepad；小写、去 .exe）。
 	GuiControlAllowApps []string `json:"guiControlAllowApps,omitempty"`
+	// BrowserControl 是否允许智能体控制浏览器（电脑控制 · 浏览器双方案）。**默认关**。
+	// ① 内置浏览器：白泽自带 WebView2 窗口，AI 可导航/读页/点击/输入/截图，可把控制权移交给人；
+	// ② Chrome 扩展：控制用户已安装的 Chrome/Edge（要另外打开 BrowserAllowChrome）。
+	// 所有 browser.* 动作仍然强制人工审批。
+	BrowserControl bool `json:"browserControl,omitempty"`
+	// BrowserAllowChrome 是否允许 Chrome 扩展接入（与内置浏览器分开授权；默认关）。
+	BrowserAllowChrome bool `json:"browserAllowChrome,omitempty"`
+	// BrowserExtToken Chrome 扩展接入令牌（本机生成；为空时首次开启自动生成）。
+	BrowserExtToken string `json:"browserExtToken,omitempty"`
+	// BrowserExtPort Chrome 扩展接入的本地端口（默认 47121；只监听 127.0.0.1）。
+	BrowserExtPort int `json:"browserExtPort,omitempty"`
 	// DataDir 数据目录（桌面端的配置与日志；留空 = 默认 %APPDATA%\白泽）
 	DataDir string `json:"dataDir,omitempty"`
 
@@ -97,6 +108,9 @@ func loadConfig() {
 	if cfg.AutoUpdateMin <= 0 {
 		cfg.AutoUpdateMin = 360 // 默认 6 小时扫一次
 	}
+	if cfg.BrowserExtPort <= 0 {
+		cfg.BrowserExtPort = 47121 // Chrome 扩展接入的本地端口（只监听 127.0.0.1）
+	}
 }
 
 func saveConfigLocked() {
@@ -130,6 +144,8 @@ func localConfigSnapshot() map[string]any {
 		"guiPerm": cfg.GuiPerm, "guiScopes": append([]string{}, cfg.GuiScopes...),
 		"guiShell": cfg.GuiShell, "guiShellAllowCmds": append([]string{}, cfg.GuiShellAllowCmds...),
 		"guiControl": cfg.GuiControl, "guiControlAllowApps": append([]string{}, cfg.GuiControlAllowApps...),
+		"browserControl": cfg.BrowserControl, "browserAllowChrome": cfg.BrowserAllowChrome,
+		"browserExtPort": cfg.BrowserExtPort, "browserExtToken": cfg.BrowserExtToken,
 		"disclaimerAck": cfg.DisclaimerAck,
 		"dataDir":       dataDir(), "dataDirDefault": defaultDataDir(),
 		"configPath": cfgPath,
@@ -313,6 +329,37 @@ func setGuiControl(on bool, apps []string, ack bool) error {
 	// 能力变了要重连：caps 与 hello 都得重新上报，否则后端还按旧能力派活
 	deviceRestart(baseCtx, "GUI 控制能力变更")
 	return nil
+}
+
+// setBrowserControl 开关「允许控制浏览器」+ 是否允许 Chrome 扩展接入。
+// 开启必须显式确认风险（ack）；扩展令牌首次开启时自动生成（设置页可重置）。
+func setBrowserControl(on, allowChrome, ack bool) error {
+	if on && !ack {
+		return errors.New("开启「允许控制浏览器」前要先确认风险提示")
+	}
+	cfgMu.Lock()
+	cfg.BrowserControl = on
+	cfg.BrowserAllowChrome = on && allowChrome
+	if on && cfg.BrowserExtToken == "" {
+		cfg.BrowserExtToken = newExtToken()
+	}
+	saveConfigLocked()
+	cfgMu.Unlock()
+	restartExtServer()
+	// 能力变了要重连：caps 与 hello 都得重新上报，否则后端还按旧能力派活
+	deviceRestart(baseCtx, "浏览器控制能力变更")
+	return nil
+}
+
+// clearBrowserExtToken 重置扩展接入令牌（旧令牌立刻失效；扩展要重新填）。
+func clearBrowserExtToken() string {
+	cfgMu.Lock()
+	cfg.BrowserExtToken = newExtToken()
+	t := cfg.BrowserExtToken
+	saveConfigLocked()
+	cfgMu.Unlock()
+	restartExtServer()
+	return t
 }
 
 // cleanAppList 归一应用白名单：去空、去重、小写、去 .exe（`Chrome.EXE` → `chrome`，与归一后的进程名对得上）

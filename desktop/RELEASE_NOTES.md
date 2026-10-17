@@ -1,60 +1,71 @@
-# 白泽桌面端 0.5.29
+# 白泽桌面端 0.5.30
 
-「电脑控制」第 3 档：**允许控制 GUI** —— 让白泽在这台电脑上点鼠标、输入文字、按按键（先截图看效果），默认关闭，三重闸门。
-0.5.29 相对 0.5.28 是**真机冒烟修出来的两个硬 bug**（版本已升，0.5.28 从未发布）。
+「电脑控制」的**浏览器双方案**：内置浏览器（白泽自带窗口，可把控制权移交给你）+ Chrome 扩展（控制你已经装好的浏览器）。
+默认关闭，所有 `browser.*` 动作仍然**每次**走人工审批。
 
 ## 本版变化
 
-- **设置 → 桌面控制 新增一节「允许控制 GUI（第 3 档 · 高危）」**：
-  - 一个**显式开关**（默认关；打开要过风险确认 + 二次确认弹窗）；
-  - 一份**目标应用白名单**（每行一个进程名，如 `notepad` / `chrome`；
-    ⚠️ **空白名单 = 一个窗都不许碰**，此时只剩截图这种只读动作可用）。
-- **新增 4 个设备动作**（都在「危险动作前缀」里，**每次**派下来都要在弹窗里点「批准」）：
-  - `gui.screenshot`：截屏幕（可指定区域），存本机临时目录的 PNG，回执带路径与尺寸；
-  - `gui.click`：在 (x, y) 点鼠标（`button`：left / right / middle）；
-  - `gui.input`：向前台窗口输入一段文字（UTF-16 逐码元发送，**中文可**，单次 ≤ 500 字）；
-  - `gui.key`：按键（`enter` / `ctrl+s` / `f5`…，多组用逗号串，如 `ctrl+s, enter`）。
-- **推荐用法（控制前先确认目标）**：先派 `gui.screenshot` 看当前屏幕 → 定位要点的坐标 →
-  再派 `gui.click` / `gui.input` / `gui.key`。所有动作都需要你在界面上逐条批准。
-- **三重闸门，缺一不可**（判定全在**本机**，后端绕不过）：
-  1. **本机开关**：不开就一条都不执行（`gui.control` 能力**根本不上报**给后端，它也就派不过来）；
-  2. **目标窗口白名单**：点击是**动手前**先算「坐标落点属于哪个应用」，输入/按键认「当时前台窗口的应用」，
-     命中白名单才真正发按键；**认不出目标窗口一律拒绝盲发**（锁屏等场景如实报错）；
-  3. **后端人工审批**：`gui.*` 全部强制审批（危险动作前缀 `gui` 自动生效）。
-- **执行侧护栏**：单次输入上限 500 字；不认识的按键/鼠标键如实报错，不偷跑默认值；
-  截图越界区域如实拒绝。全部原生 Win32（`SetCursorPos` / `mouse_event` / `keybd_event` /
-  `SendInput` / GDI 截图），无 cgo。
-- **真机冒烟修出的两个 bug（0.5.29）**：
-  1. **截屏读不到像素**：`CreateDIBSection` + `GetDIBits` 在真机返回 **0 行**（DIB section 不能用 GetDIBits 取位）。
-     改用同包已跑通的 **`CreateCompatibleBitmap`（DDB）+ `GetDIBits(dstDC, bmp, …)`**，真机实测 1920×1080 / 132KB PNG、区域截图 120×80 均正确。
-  2. **`SendInput` 结构体布局错了**：把 C 的 **union** 写成了 Go struct（字段顺序排列 → 72 字节），
-     Windows 要的是 **40 字节**（4 type + 4 对齐 + 32 union），尺寸不对时 `SendInput` **静默返回 0**（表现就是"输入没反应"）。
-     改成 `U [32]byte` 的真实 union 区 + `newKeyInput()` 按地址写入，并加单测锁死 `unsafe.Sizeof == 40`。
+### 1. 内置浏览器（白泽自带）
+
+- 主界面新增应用 **「浏览器」**（导航「核心」组）：地址栏、打开、当前页面状态、**移交给我 / 交还给白泽**、关闭。
+- 浏览器是**独立进程的 WebView2 窗口**（与主窗口互不影响；关掉不等同于关白泽）。
+- AI 可执行的动作（`target=builtin`，默认）：
+  - `browser.open`：打开/导航到 http(s) 地址；
+  - `browser.read`：读当前页 URL / 标题 / 正文；
+  - `browser.click`：按 CSS 选择器或**可见文字**点击；
+  - `browser.type`：往输入框填字（可 `submit` 回车提交）；
+  - `browser.key`：按键（`enter` / `ctrl+s` / `f5`…，多组用逗号串）；
+  - `browser.screenshot`：截当前窗口，存本机临时 PNG，回执带路径与尺寸；
+  - `browser.status`：是否打开 / 当前地址 / 是否已移交；
+  - `browser.handoff`：`{handoff:true}` 把控制权交给你，`{handoff:false}` 收回。
+- **移交是硬闸门**：移交期间除 `status` / `handoff` 外，AI 的动作一律被拒绝（页面顶部黄条上也有「交还给白泽」按钮）。
+  典型用法：AI 说"需要你扫码登录" → 移交给你 → 你登录完点交还 → AI 接着干。
+
+### 2. Chrome 扩展（控制你已装的浏览器）
+
+- 设置页新增「允许控制浏览器」：总开关 + **允许 Chrome 扩展接入**（分开授权，默认都关）。
+- 打开后设置页会显示本机接入地址（`ws://127.0.0.1:47121/ext/ws`）与**随机令牌**，可复制、可重置。
+- 安装包自带扩展目录 `browser-ext/`：
+  1. Chrome/Edge 打开 `chrome://extensions` → 打开「开发者模式」→「加载已解压的扩展程序」→ 选安装目录下的 `browser-ext`；
+  2. 点扩展图标，填设置页里的地址与令牌 →「保存并连接」；
+  3. 之后 AI 用 `browser.*` + `{"target":"chrome"}` 控制**当前活动标签页**（`chrome.debugger`）。
+- 扩展支持：`open` / `read` / `click` / `type` / `key` / `screenshot` / `status`；断线自动重连（30 秒保活）。
+- **外部 Chrome 没有「移交」动作**（你本来就能直接操作浏览器），调用会明确报错说明。
+
+### 3. 安全与闸门
+
+- 两道**本机**开关：① 允许控制浏览器；② 允许 Chrome 扩展接入（只在 ① 打开时可开）。
+  开关关闭时**根本不上报** `browser.control` 能力，后端也就派不过来。
+- `browser.*` 全部在危险动作前缀里 → **每次**派下来都要人工审批。
+- 内置浏览器的控制口只监听 `127.0.0.1`，随机端口 + 随机令牌；**只接受白名单动作**，不执行任意 JS。
+- 扩展接入口同样只监听 `127.0.0.1`，令牌不对直接 403；令牌可随时重置（旧连接立刻失效）。
+- 扩展目录随安装包/自动更新一起更新（不会因为更新桌面端而丢扩展）。
 
 ## 验证
 
-- 桌面端 `go build` / `go vet` / `go test -count=1` 全绿；后端 `go build` / `go vet` 全绿，相关包测试通过。
-- **真机截屏冒烟**（本机真跑，非只编译）：全屏 `1920x1080`、PNG 可解码、132239 字节；区域 `120x80` 尺寸精确。
-- 新增桌面端单测（`desktop/gui_windows_test.go`）：
-  - `guiGate`：**没开开关拒绝 / 空清单拒点击·输入·按键但放行截图 / 白名单内放行（`Chrome.exe` → `chrome` 归一命中）/
-    认不出目标窗口拒绝盲发 / 未命中拒绝**；
-  - `normalizeAppName`、`cleanAppList` 的归一（小写、去 `.exe/.dll`、去重）；
-  - `parseKeySpec` / `parseKeyCombo`（单字符 / 具名键 / f1-f24 / 组合键 / 认不出的报错）；
-  - `guiInput` 参数缺失与超长拒绝、`guiClick` 不认识的鼠标键报错（不默认偷跑）；
-  - `setGuiControl` 校验（**无 ack 拒绝、空白名单可开、合规开启成功、关闭不需 ack**）；
-  - `permCaps`：开关开了才上报 `gui.control`；
-  - `TestInputStructSize`：`unsafe.Sizeof(inputStruct{}) == 40`（union 布局回归）；
-  - `TestGuiScreenshotLive`：真机截屏全屏 + 区域尺寸（无交互桌面时自动 skip）。
+- 桌面端 `go build` / `go vet` / `go test -count=1` 全绿；后端 `go build` / `go vet` 与 `executor`/`tools` 测试全绿。
+- 新增桌面端单测：
+  - `TestBrowserPermGate`：总开关没开时 `browser.*` 全拒，开了才放行；
+  - `TestSetBrowserControlValidation`：开启必须过风险确认、令牌自动生成、关总开关时扩展授权跟着关；
+  - `TestExtToken` / `TestExtRoundTrip` / `TestExtRejectsBadToken`：扩展令牌不可重复、**WS 通道往返真实跑通**、错误令牌返回 403；
+  - `TestExtCallNotConnected` / `TestExtHandoffRejected`：没连上 / 外部浏览器移交都如实报错，不假装成功；
+  - `TestBrowserStatusWhenClosed` / `TestBuiltinActionWithoutWindow`：没打开时状态为 `open=false`，其他动作提示"先打开"；
+  - `TestCaptureInvalidWindow`：截图入口对无效句柄报错不崩。
+- **真机内置浏览器冒烟**（本机真跑）：打开 `https://example.com` → `read` 读到页面正文 →
+  `click {text:"Learn more"}` 成功导航到 iana.org → 截图 `1200x820` / 69KB（像素抽样非黑）→
+  `handoff:true` 后 `read` 被拒绝 → `handoff:false` 后恢复。
+- **无头 Edge 真渲染**：导航里出现「浏览器」；设置页「允许控制浏览器」与浏览器面板的
+  地址栏/打开按钮/状态卡片都在；**0 个 JS 错误**。
 
 ## 兼容与说明
 
-- 后端同期升到 **0.9.36**（协议加 `gui.*` 四个动作 + `gui.control` 能力；无界面端一律如实拒绝 `gui.*`）。
+- 后端同期升到 **0.9.37**（协议加 8 个 `browser.*` 动作 + `browser.control` 能力；无界面端如实拒绝）。
   手机端 **0.10.16 未改动**。
-- 这一档**与文件权限档位、命令执行开关不是一条轴**：想控 GUI 不必先放开整个盘。
-- 说明白：允许控制 GUI = 把这台电脑的鼠标和键盘交给智能体（白名单内的窗口）。
-  高分屏上坐标为系统 DPI 下的虚拟坐标（截图与点击同一套口径，闭环是准的）。
+- 浏览器控制与文件权限档位、命令执行、GUI 控制**都不是一条轴**，各自独立开关。
+- 扩展通过 `chrome.debugger` 工作，Chrome 会在页面顶部显示"正在调试此浏览器"的提示条，属正常现象。
 
 ## 安装
 
-1. 下载并运行 `baize-desktop-setup-0.5.29.exe`（用户级安装，不需要管理员）。
-2. 已装过旧版：直接运行即可 —— 会自动认出来并按更新走，**安装位置可改**。
+1. 下载并运行 `baize-desktop-setup-0.5.30.exe`（用户级安装，不需要管理员）。
+2. 已装过旧版：直接运行即可，会自动按更新走，安装位置可改。
+3. Chrome 扩展：安装目录下的 `browser-ext/`，按上面「Chrome 扩展」三步加载。

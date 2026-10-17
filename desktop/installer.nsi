@@ -32,6 +32,10 @@ Unicode true
 !ifndef UIDIR
   !define UIDIR "${__FILEDIR__}\ui"
 !endif
+; Chrome 扩展目录（浏览器双方案；用户手动在 chrome://extensions 里加载）
+!ifndef EXTDIR
+  !define EXTDIR "${__FILEDIR__}\browser-ext"
+!endif
 
 Var IsUpdate
 Var PrevVersion
@@ -173,6 +177,9 @@ Section "白泽桌面端（必需）" SEC_MAIN
   ; 界面目录（多文件形态：装出来是 exe + ui/ 多个文件）
   SetOutPath "$INSTDIR\ui"
   File /r "${UIDIR}\*.*"
+  ; Chrome 扩展（用户手动加载；不存在就跳过，不影响主程序）
+  SetOutPath "$INSTDIR\browser-ext"
+  File /r "${EXTDIR}\*.*"
   SetOutPath "$INSTDIR"
 
   CreateDirectory "$SMPROGRAMS\${APPNAME}"
@@ -219,6 +226,7 @@ Section "Uninstall"
   Delete "$INSTDIR\${APPEXE}.old"
   Delete "$INSTDIR\uninstall.exe"
   RMDir /r "$INSTDIR\ui"
+  RMDir /r "$INSTDIR\browser-ext"
   ; User data under %LOCALAPPDATA%\Baize (config / cache) is left alone.
   RMDir "$INSTDIR"
 SectionEnd

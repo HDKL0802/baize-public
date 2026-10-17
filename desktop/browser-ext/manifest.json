@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "白泽浏览器控制",
+  "version": "1.0.0",
+  "description": "让白泽控制当前 Chrome/Edge 标签页（只连本机 127.0.0.1，令牌校验）",
+  "permissions": ["tabs", "debugger", "storage", "alarms"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "白泽浏览器控制" },
+  "minimum_chrome_version": "102"
+}

@@ -29,6 +29,20 @@ var (
 	registerPlatformRoutes = func(mux *http.ServeMux) {}
 	// 标题栏跟主题刷新（Windows 有原生标题栏要改色；其它平台是空操作）
 	titleBarRefresh = func() {}
+	// 浏览器双方案（只有 Windows 桌面端有真实实现，由 browser_host_windows.go 的 init 覆盖）
+	browserStateHook   = func() map[string]any { return map[string]any{"supported": false} }
+	browserSettingHook = func(on, allowChrome, ack bool) error {
+		return errors.New("只有 Windows 桌面端支持浏览器控制")
+	}
+	browserOpenHook = func(url string) (map[string]any, error) {
+		return nil, errors.New("只有 Windows 桌面端支持内置浏览器")
+	}
+	browserHandoffHook = func(on bool) (map[string]any, error) {
+		return nil, errors.New("只有 Windows 桌面端支持浏览器控制")
+	}
+	browserCloseHook   = func() {}
+	browserRotateHook  = func() string { return "" }
+	browserOpenDirHook = func() error { return errors.New("只有 Windows 桌面端支持浏览器扩展目录") }
 )
 
 // 代理到 NAS 后端的 HTTP 客户端：Agent 派活/附件可能跑一会儿，给足超时。
@@ -240,6 +254,57 @@ func buildHandler() http.Handler {
 		on, apps := cfg.GuiControl, append([]string{}, cfg.GuiControlAllowApps...)
 		cfgMu.RUnlock()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "on": on, "apps": apps})
+	})
+
+	// 浏览器双方案：开关 / 内置浏览器操作 / 扩展令牌。
+	// 都是本机回环接口（页面本身也只在本机），不经过后端。
+	mux.HandleFunc("/api/local/browser", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req struct {
+				Action      string `json:"action"`
+				On          bool   `json:"on"`
+				AllowChrome bool   `json:"allowChrome"`
+				Ack         bool   `json:"ack"`
+				URL         string `json:"url"`
+				Handoff     *bool  `json:"handoff"`
+			}
+			_ = json.NewDecoder(io.LimitReader(r.Body, 1<<14)).Decode(&req)
+			var err error
+			var res map[string]any
+			switch strings.TrimSpace(req.Action) {
+			case "setting":
+				err = browserSettingHook(req.On, req.AllowChrome, req.Ack)
+			case "open":
+				res, err = browserOpenHook(strings.TrimSpace(req.URL))
+			case "handoff":
+				on := true
+				if req.Handoff != nil {
+					on = *req.Handoff
+				}
+				res, err = browserHandoffHook(on)
+			case "close":
+				browserCloseHook()
+			case "rotate":
+				browserRotateHook()
+			case "opendir":
+				err = browserOpenDirHook()
+			case "", "status":
+				// 只取状态
+			default:
+				err = errors.New("不认识的 action：" + req.Action)
+			}
+			if err != nil {
+				writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error(), "state": browserStateHook()})
+				return
+			}
+			state := browserStateHook()
+			if res != nil {
+				state["result"] = res
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "state": state})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "state": browserStateHook()})
 	})
 
 	// 平台专属路由（Windows：自动更新）

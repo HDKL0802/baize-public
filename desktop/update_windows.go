@@ -145,6 +145,14 @@ func ApplyUpdate() (map[string]any, error) {
 		}
 	}
 
+	// 1b) Chrome 扩展目录（浏览器双方案）。有就覆盖（不先删目录：
+	//     Chrome 可能正加载着它，删不掉就尽量逐文件覆盖；老包没有就跳过）。
+	if src := filepath.Join(pkgDir, "browser-ext"); dirExists(src) {
+		if err := copyTree(src, filepath.Join(exeDir, "browser-ext")); err != nil {
+			return nil, fmt.Errorf("替换扩展目录失败：%w", err)
+		}
+	}
+
 	// 2) 再换 exe
 	newExe := filepath.Join(pkgDir, filepath.Base(self))
 	if !fileExists(newExe) {

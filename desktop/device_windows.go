@@ -34,7 +34,7 @@ import (
 	"baize/shared/proto"
 )
 
-const desktopAppVersion = "0.5.29"
+const desktopAppVersion = "0.5.30"
 
 /* ---------------- 本机信息（与 agent/internal/sysinfo 同一口径） ---------------- */
 
@@ -301,6 +301,13 @@ func runAction(action string, args map[string]any) (map[string]any, error) {
 			}
 			break
 		}
+	}
+	// 浏览器双方案：总开关在 permGate 已过；target=chrome 还要单独允许扩展接入
+	if isBrowserAction(action) {
+		if strings.EqualFold(strings.TrimSpace(fmt.Sprint(args["target"])), "chrome") && !browserChromeAllowed() {
+			return nil, errors.New("本机没开「允许 Chrome 扩展接入」（设置 → 桌面控制 → 允许控制浏览器 → 允许 Chrome 扩展）")
+		}
+		return browserAction(action, args)
 	}
 
 	switch action {

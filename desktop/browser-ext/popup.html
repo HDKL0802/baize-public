@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>白泽浏览器控制</title>
+  <style>
+    body { width: 320px; margin: 0; padding: 14px; font: 13px/1.5 "Microsoft YaHei", system-ui, sans-serif; color: #222; }
+    h1 { font-size: 15px; margin: 0 0 6px; }
+    p { margin: 6px 0; color: #666; }
+    label { display: block; margin-top: 10px; font-size: 12px; color: #444; }
+    input { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font: inherit; }
+    button { margin-top: 10px; width: 100%; padding: 7px; border: 0; border-radius: 4px; background: #2f6fed; color: #fff; font: inherit; cursor: pointer; }
+    button:hover { background: #245bd0; }
+    #state { margin-top: 10px; padding: 6px 8px; border-radius: 4px; background: #f3f4f6; color: #555; }
+    #state.ok { background: #e7f6ec; color: #1a7f37; }
+    #state.err { background: #fdecec; color: #b42318; }
+    code { font-family: Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h1>白泽浏览器控制</h1>
+  <p>先在白泽桌面端「设置 → 桌面控制 → 允许控制浏览器」里复制地址与令牌，填到下面。</p>
+  <label>本机地址</label>
+  <input id="addr" placeholder="ws://127.0.0.1:47121/ext/ws">
+  <label>令牌</label>
+  <input id="token" placeholder="粘贴设置页里的令牌">
+  <button id="save">保存并连接</button>
+  <div id="state">未连接</div>
+  <p>连接后白泽可以读当前页、点按钮、填表单；每个动作在桌面端仍需你批准。</p>
+  <script src="popup.js"></script>
+</body>
+</html>

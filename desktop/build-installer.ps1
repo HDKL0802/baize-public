@@ -59,6 +59,14 @@ if (-not (Test-Path $Ui)) { throw "missing ui dir: $Ui (the ui folder is part of
 Copy-Item -LiteralPath $Ui -Destination (Join-Path $Stage "ui") -Recurse -Force
 $UiStage = Join-Path $Stage "ui"
 
+# Chrome 扩展（浏览器双方案）：跟安装包一起装到 $INSTDIR\browser-ext
+$Ext = Join-Path $Src "browser-ext"
+if (Test-Path $Ext) {
+  Copy-Item -LiteralPath $Ext -Destination (Join-Path $Stage "browser-ext") -Recurse -Force
+} else {
+  Write-Host "WARN: missing browser-ext dir ($Ext) - installer will not ship the Chrome extension" -ForegroundColor Yellow
+}
+
 # The .nsi pulls its icon from ${__FILEDIR__}\icon.ico, so stage that too.
 $Icon = Join-Path $Src "assets\icon.ico"
 if (-not (Test-Path $Icon)) { throw "missing $Icon - run build-icon.ps1 first" }

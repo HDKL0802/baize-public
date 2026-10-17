@@ -2,13 +2,16 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>白泽 · 你的 NAS 上住着专属 AI</title>
 <meta name="description" content="一个全 Go 开源的跨端个人 AI 智能体。NAS 后端是唯一大脑，Windows 桌面端与 Android 手机端注册成设备当手脚——数据正本全在后端，危险动作强制人工审批。">
+<meta name="theme-color" content="#faf8f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e0e10" media="(prefers-color-scheme: dark)">
+<meta name="format-detection" content="telephone=no">
 <link rel="icon" href="assets/favicon.ico?v=2" sizes="any">
 <link rel="icon" type="image/png" href="assets/logo.png?v=2">
 <link rel="apple-touch-icon" href="assets/logo.png?v=2">
-<link rel="stylesheet" href="app.css?v=5">
+<link rel="stylesheet" href="app.css?v=7">
 </head>
 <body>
 
@@ -98,9 +101,15 @@
       <div class="hm-item">Go · MIT</div>
     </div>
 
-    <!-- 产品预览：真实暗色桌面端截图 -->
+    <!-- 产品预览：桌面端显示真实暗色桌面端截图；手机端显示手机端截图 -->
     <div class="hero-preview fade-in">
-      <img src="assets/hero-desktop-dark.png" alt="白泽桌面端 · 频道管理界面" loading="eager">
+      <img class="hp-desktop" src="assets/hero-desktop-dark.png" alt="白泽桌面端 · 频道管理界面" loading="eager">
+      <div class="hp-mobile">
+        <img src="assets/phone-todo-dark.png" alt="白泽手机端 · 待办">
+        <img src="assets/phone-agent-dark.png" alt="白泽手机端 · 智能体对话">
+        <img src="assets/phone-settings-dark.png" alt="白泽手机端 · 设置">
+      </div>
+      <div class="hp-mobile-note">白泽 Android 手机端 · 待办 / 智能体 / 设置</div>
     </div>
   </div>
 </section>
@@ -361,7 +370,7 @@ adb install -r android-app\bz-todo-v0.9.0.apk
     </div>
 
     <!-- 场景 B：记忆星图 + 插件市场 -->
-    <div class="scene reverse fade-in" style="padding-top: 80px;">
+    <div class="scene reverse fade-in">
       <div class="scene-copy">
         <div class="eyebrow">MEMORY · PLUGINS</div>
         <h3>混合检索 + 记忆星图 + 插件市场。</h3>
@@ -534,6 +543,18 @@ adb install -r android-app\bz-todo-v0.9.0.apk
   </div>
 </footer>
 
-<script src="app.js?v=6"></script>
+<!-- 手机端底部常驻操作条（仅 ≤768px 显示） -->
+<div class="mobile-bar">
+  <a href="docs.html">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    文档
+  </a>
+  <a href="#quickstart" class="mb-primary">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    立即部署
+  </a>
+</div>
+
+<script src="app.js?v=7"></script>
 </body>
 </html>

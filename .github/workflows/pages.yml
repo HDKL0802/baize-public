@@ -3,9 +3,9 @@
 # 触发：push 到 main 分支（任何改动）+ workflow_dispatch 手动触发。
 #   镜像仓 baize-public 也跑一次（不额外发什么，只是保持两仓行为一致）。
 #
-# 目标：https://<owner>.github.io/<repo>/
-#   工作仓 HDKL0802/baize → https://hdkl0802.github.io/baize/
-#   公开仓 HDKL0802/baize-public → https://hdkl0802.github.io/baize-public/
+# 目标（2026-10-17 起用自定义域名）：
+#   https://baize.wydhd.fun  → 仓库 HDKL0802/baize-public（公开镜像）
+#   （阿里云 DNS CNAME：baize → hdkl0802.github.io；GitHub Pages Settings 里 Custom domain 已填 baize.wydhd.fun）
 #
 # 注意：GitHub Pages 需要在仓库 Settings → Pages → Source 选 "GitHub Actions" 才会生效。
 name: pages

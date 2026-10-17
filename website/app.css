@@ -513,6 +513,11 @@ code, pre { font-family: var(--mono); }
 }
 .hero-preview img { width: 100%; height: auto; display: block; border-radius: 8px; }
 
+/* 产品预览：桌面版 / 手机版二选一显示 */
+.hero-preview .hp-desktop { display: block; }
+.hero-preview .hp-mobile { display: none; }
+.hero-preview .hp-mobile-note { display: none; }
+
 /* ---------- 通用 Section（交替背景制造节奏） ---------- */
 .section {
   padding: var(--sp-9) 24px;
@@ -762,7 +767,7 @@ code, pre { font-family: var(--mono); }
   align-items: center;
   padding: var(--sp-8) 0;
 }
-.scene.reverse { direction: rtl; }
+.scene.reverse { direction: rtl; padding-top: var(--sp-9); }
 .scene.reverse > * { direction: ltr; }
 .scene-copy .eyebrow {
   font-size: 12px;
@@ -969,48 +974,408 @@ code, pre { font-family: var(--mono); }
   .hero-preview { max-width: 640px; }
 }
 
-@media (max-width: 640px) {
+/* ============================================================
+   手机版（≤768px）：独立排版，不是桌面版的缩小
+   - Hero 展示手机端截图（不再塞桌面截图）
+   - 导航收成汉堡菜单 + 底部常驻操作条
+   - 所有卡片单/双列，触控目标 ≥44px
+   ============================================================ */
+@media (max-width: 768px) {
+  /* ---- 导航：更紧凑，汉堡右置 ---- */
+  .nav-inner {
+    padding: 12px 18px;
+    gap: 12px;
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  }
+  .brand .bm { width: 30px; height: 30px; border-radius: 7px; }
+  .brand .bt b { font-size: 15px; }
+  .brand .bt span { font-size: 9.5px; letter-spacing: .06em; }
+  .nav-toggle {
+    display: inline-flex;
+    width: 44px; height: 44px;
+    margin-left: auto;
+  }
   .nav-links {
     display: none;
     position: absolute;
     top: 100%; left: 0; right: 0;
     flex-direction: column;
+    align-items: stretch;
     background: var(--bg-alt);
     border-bottom: 1px solid var(--border);
-    padding: 18px 24px;
-    gap: 14px;
-    box-shadow: var(--shadow);
-    align-items: stretch;
+    padding: 14px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+    gap: 4px;
+    box-shadow: 0 12px 32px rgba(20,20,19,.12);
   }
   .nav-links.open { display: flex; }
+  .nav-links > a {
+    padding: 14px 12px;
+    font-size: 15px;
+    border-radius: var(--radius);
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+  }
+  .nav-links > a:active { background: var(--bg-muted); }
   .nav-links .nav-doc,
-  .nav-links .nav-cta,
-  .nav-links .nav-download-btn { width: 100%; justify-content: center; }
+  .nav-links .nav-cta {
+    width: 100%;
+    justify-content: center;
+    min-height: 48px;
+    margin-top: 6px;
+  }
+  .nav-download { width: 100%; margin-top: 6px; }
+  .nav-download-btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 48px;
+    font-size: 15px;
+    border-radius: var(--radius);
+  }
+  .nav-download.open .nav-download-btn {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
   .nav-download-menu {
     position: static;
     width: 100%;
-    margin-top: 4px;
+    margin-top: 0;
     opacity: 1;
     visibility: visible;
     transform: none;
     box-shadow: none;
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 4px;
+    border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius);
+    padding: 6px;
     display: none;
   }
   .nav-download.open .nav-download-menu { display: block; }
-  .nav-toggle { display: inline-flex; }
-  .section { padding: var(--sp-8) 20px; }
-  .channels-grid { grid-template-columns: repeat(2, 1fr); }
-  .hero-meta { flex-wrap: wrap; gap: var(--sp-4); }
-  .hero-cta { flex-direction: column; align-items: stretch; }
-  .hero-cta .btn { justify-content: center; }
-  .deploy-cards { gap: 14px; }
-  .deploy-card { aspect-ratio: auto; padding: 24px 16px; }
-  .hero h1 { font-size: 30px; }
-  .hero-mark { width: 56px; height: 56px; border-radius: 14px; }
-  .hero-preview { max-width: 100%; padding: 10px; }
-  .code-block { padding: 18px 20px; font-size: 12px; }
-  .footer-grid { gap: var(--sp-5); }
+  .ndm-item { padding: 12px; min-height: 56px; }
+
+  /* ---- Hero：紧凑居中，展示手机端截图 ---- */
+  .hero {
+    padding: 36px 18px 44px;
+  }
+  .hero-tag {
+    font-size: 12px;
+    padding: 6px 14px 6px 12px;
+    margin-bottom: 26px;
+    max-width: calc(100vw - 56px);
+  }
+  .hero-tag .ht-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hero-mark {
+    width: 52px; height: 52px;
+    border-radius: 13px;
+    margin-bottom: 16px;
+    animation: none;
+  }
+  .hero h1 {
+    font-size: 30px;
+    line-height: 1.28;
+    margin-bottom: 14px;
+    letter-spacing: -.01em;
+  }
+  .hero h1 .hl::after { height: 10px; bottom: 2px; }
+  .hero .lede {
+    font-size: 14.5px;
+    line-height: 1.85;
+    margin-bottom: 26px;
+    padding: 0 2px;
+  }
+  .hero .lede br { display: none; }
+
+  /* CTA：整行堆叠，触控友好 */
+  .hero-cta {
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 22px;
+  }
+  .hero-cta .btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 50px;
+    font-size: 15px;
+    padding: 14px 20px;
+  }
+
+  /* 状态条：2×2 网格 */
+  .hero-meta {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px 12px;
+    font-size: 12.5px;
+    text-align: left;
+    padding: 0 6px;
+  }
+  .hero-meta .hm-item {
+    gap: 6px;
+    padding: 6px 0;
+  }
+
+  /* 产品预览：手机截图三联 */
+  .hero-preview {
+    margin-top: 32px;
+    padding: 12px 10px;
+    border-radius: 16px;
+    max-width: 100%;
+  }
+  .hero-preview .hp-desktop { display: none; }
+  .hero-preview .hp-mobile {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    align-items: flex-end;
+  }
+  .hero-preview .hp-mobile img {
+    width: calc((100% - 16px) / 3);
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(20,20,19,.14);
+    display: block;
+  }
+  /* 中间那张抬高一点，形成层次 */
+  .hero-preview .hp-mobile img:nth-child(2) {
+    width: calc((100% - 16px) / 3);
+    transform: translateY(-6px);
+  }
+  .hero-preview .hp-mobile-note {
+    display: block;
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--text-3);
+    margin-top: 12px;
+    letter-spacing: .02em;
+  }
+
+  /* ---- Section 通用 ---- */
+  .section { padding: 44px 18px; }
+  .section-head { margin-bottom: 30px; padding: 0 4px; }
+  .section-head .eyebrow { font-size: 11px; letter-spacing: .18em; margin-bottom: 10px; }
+  .section-head h2 { font-size: 25px; line-height: 1.35; margin-bottom: 10px; }
+  .section-head p { font-size: 14px; line-height: 1.8; }
+
+  /* ---- 快速开始：2 列小卡 ---- */
+  .deploy-cards {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    max-width: 100%;
+  }
+  .deploy-card {
+    aspect-ratio: auto;
+    padding: 20px 12px 16px;
+    gap: 8px;
+    border-radius: var(--radius);
+    border-width: 1px;
+    min-height: 132px;
+  }
+  .deploy-card:active { transform: scale(.985); }
+  .deploy-card .dc-icon { width: 40px; height: 40px; }
+  .deploy-card .dc-icon svg { width: 20px; height: 20px; }
+  .deploy-card .dc-title { font-size: 14px; line-height: 1.3; }
+  .deploy-card .dc-desc { font-size: 11.5px; line-height: 1.5; max-width: 100%; }
+  .deploy-card .dc-expand { font-size: 11.5px; padding-top: 4px; }
+
+  /* ---- 代码块：小字号 + 横向滚动 + 常驻复制按钮 ---- */
+  .deploy-panes { margin-top: 22px; }
+  .code-wrap { border-radius: var(--radius); }
+  .code-block {
+    padding: 42px 14px 16px;
+    font-size: 11.5px;
+    line-height: 1.85;
+    -webkit-overflow-scrolling: touch;
+  }
+  .code-block .copy-btn {
+    top: 8px; right: 8px;
+    opacity: 1;
+    padding: 7px 14px;
+    font-size: 11.5px;
+    min-height: 32px;
+  }
+
+  /* ---- 价值主张 ---- */
+  .value-grid { gap: 12px; }
+  .value-card {
+    padding: 22px 18px;
+    border-radius: var(--radius);
+  }
+  .value-card .vc-num { font-size: 34px; margin-bottom: 10px; }
+  .value-card h3 { font-size: 17px; margin-bottom: 6px; }
+  .value-card p { font-size: 13.5px; line-height: 1.8; }
+
+  /* ---- 频道墙：2 列，横向卡片 ---- */
+  .channels-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .ch-item {
+    aspect-ratio: auto;
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: center;
+    column-gap: 10px;
+    row-gap: 1px;
+    padding: 14px 12px;
+    text-align: left;
+    border-radius: var(--radius);
+    min-height: 64px;
+  }
+  .ch-item .ch-icon {
+    width: 38px; height: 38px;
+    grid-row: 1 / span 2;
+    align-self: center;
+    border-radius: var(--radius);
+  }
+  .ch-item .ch-icon svg { width: 19px; height: 19px; }
+  .ch-item .ch-name {
+    grid-column: 2;
+    font-size: 13px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ch-item .ch-tag {
+    grid-column: 2;
+    font-size: 10.5px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ---- 场景：单列，SVG 在文案下方 ---- */
+  .scene,
+  .scene.reverse {
+    grid-template-columns: 1fr;
+    gap: 22px;
+    padding: 26px 0;
+  }
+  .scene.reverse { direction: ltr; }
+  .scene-copy .eyebrow { font-size: 11px; letter-spacing: .18em; }
+  .scene-copy h3 { font-size: 22px; line-height: 1.4; margin-bottom: 12px; }
+  .scene-copy p { font-size: 14px; line-height: 1.85; margin-bottom: 16px; }
+  .scene-list { gap: 10px; }
+  .scene-list li { font-size: 13.5px; line-height: 1.7; }
+  .scene-list .sl-dot { width: 18px; height: 18px; font-size: 10px; }
+  .scene-visual {
+    aspect-ratio: 16 / 11;
+    padding: 10px;
+    max-width: 100%;
+    border-radius: var(--radius);
+  }
+  .scene + .scene { padding-top: 26px; }
+
+  /* ---- 三端协作 ---- */
+  .trio-grid { gap: 12px; }
+  .trio {
+    padding: 22px 18px;
+    border-radius: var(--radius);
+  }
+  .trio .t-head { gap: 12px; margin-bottom: 12px; }
+  .trio .t-ic { width: 40px; height: 40px; }
+  .trio .t-ic svg { width: 20px; height: 20px; }
+  .trio .t-title { font-size: 16px; }
+  .trio .t-sub { font-size: 10.5px; }
+  .trio p { font-size: 13.5px; line-height: 1.8; margin-bottom: 14px; }
+  .trio .t-tag { font-size: 11px; padding: 4px 10px; }
+
+  /* ---- Footer ---- */
+  .footer {
+    padding: 36px 18px calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  .footer-grid {
+    grid-template-columns: 1fr;
+    gap: 26px;
+    padding-bottom: 26px;
+  }
+  .footer-brand p { font-size: 13px; max-width: 100%; }
+  .footer-col h4 { font-size: 11.5px; margin-bottom: 12px; }
+  .footer-col ul { gap: 2px; }
+  .footer-col a {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    font-size: 13.5px;
+  }
+  .footer-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    font-size: 12px;
+    padding-top: 18px;
+  }
+  .social-links a { width: 44px; height: 44px; }
+
+  /* 手机端底部留出常驻操作条的高度 */
+  body { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+
+  /* 触屏设备不做 hover 位移动画（避免点击后卡住） */
+  .deploy-card:hover,
+  .value-card:hover,
+  .ch-item:hover,
+  .trio:hover,
+  .hero-tag:hover,
+  .btn:hover {
+    transform: none;
+  }
+
+  .fade-in { transform: translateY(14px); }
+}
+
+/* ---- 手机端底部常驻操作条 ---- */
+.mobile-bar { display: none; }
+@media (max-width: 768px) {
+  .mobile-bar {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0;
+    bottom: 0;
+    z-index: 90;
+    gap: 8px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in srgb, var(--bg-alt) 92%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border);
+  }
+  .mobile-bar a {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 46px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    color: var(--text);
+    background: var(--surface);
+  }
+  .mobile-bar a.mb-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    flex: 1.4;
+  }
+  .mobile-bar a.mb-primary:active { background: var(--accent-deep); }
+  .mobile-bar svg { width: 16px; height: 16px; flex: none; }
+}
+
+/* ---- 小屏（≤400px）微调 ---- */
+@media (max-width: 400px) {
+  .hero h1 { font-size: 26px; }
+  .hero .lede { font-size: 13.5px; }
+  .section-head h2 { font-size: 22px; }
+  .deploy-card { padding: 16px 10px 14px; min-height: 124px; }
+  .deploy-card .dc-desc { font-size: 11px; }
+  .ch-item { grid-template-columns: 34px minmax(0, 1fr); padding: 12px 10px; min-height: 58px; }
+  .ch-item .ch-icon { width: 34px; height: 34px; }
+  .code-block { font-size: 11px; }
 }

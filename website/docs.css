@@ -317,3 +317,143 @@
   .docs-main h2 { font-size: 21px; }
   .doc-pager { flex-direction: column; }
 }
+
+/* ============================================================
+   手机版文档站（≤768px）
+   - 左侧目录改成横向滚动的胶囊条（不占大段竖向空间）
+   - 正文加大行距、表格可横向滚动、代码块贴边
+   ============================================================ */
+@media (max-width: 768px) {
+  .docs-shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    padding: 14px 16px calc(84px + env(safe-area-inset-bottom, 0px));
+    overflow-x: hidden;
+  }
+
+  /* 左侧导航 → 单行横向滚动 */
+  .docs-side {
+    position: static;
+    max-height: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 12px;
+    margin: 0;
+    overflow: hidden;
+    font-size: 13px;
+  }
+  .ds-search { display: none; }
+  .docs-side .ds-links {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .docs-side .ds-links::-webkit-scrollbar { display: none; }
+  .ds-group { display: none; }
+  .docs-side a {
+    flex: none;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    min-height: 38px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    font-size: 13px;
+    margin: 0;
+  }
+  .docs-side a.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* 正文 */
+  .docs-main { min-width: 0; max-width: 100%; overflow-x: hidden; }
+  .docs-main .doc-eyebrow { font-size: 11px; letter-spacing: .18em; }
+  .docs-main h1 { font-size: 25px; line-height: 1.32; margin-bottom: 10px; }
+  .docs-main .doc-lead { font-size: 14.5px; line-height: 1.85; }
+  .docs-main section {
+    padding-top: 26px;
+    margin-top: 26px;
+    scroll-margin-top: 72px;
+  }
+  .docs-main section:first-of-type { margin-top: 18px; }
+  .docs-main h2 { font-size: 20px; margin-bottom: 12px; scroll-margin-top: 72px; }
+  .docs-main h3 { font-size: 16px; margin: 22px 0 8px; }
+  .docs-main p { font-size: 14.5px; line-height: 1.9; margin-bottom: 12px; }
+  .docs-main ul, .docs-main ol {
+    font-size: 14.5px;
+    line-height: 1.85;
+    padding-left: 20px;
+    margin-bottom: 14px;
+  }
+  .docs-main li { margin-bottom: 5px; }
+  .docs-main code { font-size: 12px; padding: 1px 5px; word-break: break-word; }
+
+  /* 代码块：保持容器内，内部横向滚动 */
+  .docs-main .code-wrap {
+    max-width: 100%;
+    border-radius: var(--radius);
+  }
+  .docs-main .code-block {
+    padding: 42px 14px 16px;
+    font-size: 11.5px;
+    line-height: 1.8;
+    -webkit-overflow-scrolling: touch;
+  }
+  .docs-main .code-block .copy-btn {
+    opacity: 1;
+    top: 8px; right: 8px;
+    padding: 7px 14px;
+    font-size: 11.5px;
+  }
+
+  /* 表格：允许换行，避免中文被截断 */
+  .docs-main table {
+    display: table;
+    width: 100%;
+    max-width: 100%;
+    table-layout: auto;
+    white-space: normal;
+    word-break: break-word;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .docs-main th, .docs-main td { padding: 9px 10px; }
+  .docs-main th { font-size: 12px; white-space: nowrap; }
+  .docs-main td code { word-break: break-all; }
+
+  /* 提示框 / 卡片 */
+  .callout {
+    padding: 12px 14px;
+    font-size: 13.5px;
+    line-height: 1.8;
+    border-radius: 0 var(--radius) var(--radius) 0;
+  }
+  .feat-grid { grid-template-columns: 1fr; gap: 10px; }
+  .feat { padding: 16px; }
+  .feat .f-t { font-size: 13.5px; }
+  .feat .f-d { font-size: 12.5px; }
+
+  /* 截图：手机端两列太窄 → 单列 */
+  .shot-row { grid-template-columns: 1fr; gap: 12px; }
+  .docs-shot figcaption { font-size: 12px; padding: 8px 12px; }
+
+  /* 页尾翻页：上下堆叠 */
+  .doc-pager {
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 32px;
+    padding-top: 18px;
+  }
+  .doc-pager a { padding: 12px 14px; font-size: 13px; }
+  .doc-pager .next { text-align: left; }
+}

@@ -48,41 +48,43 @@ var (
 	pMouseEvent           = u32.NewProc("mouse_event")
 	pKeybdEvent           = u32.NewProc("keybd_event")
 	pSendInput            = u32.NewProc("SendInput")
-	pGetWindowDC          = u32.NewProc("GetWindowDC")
 	pWindowFromPoint      = u32.NewProc("WindowFromPoint")
 	pGetAncestor          = u32.NewProc("GetAncestor")
 	pImmSetConversionStat = imm32.NewProc("ImmSetConversionStatus")
 )
 
-// SendInput 的 INPUT 结构（Windows 布局：type(4) + 对齐(4) + union（含 64 位对齐到 8））。
-// cbSize 用 unsafe.Sizeof 取，32/64 位自动各归其位。
-type mouseInputEvent struct {
-	Dx, Dy, MouseData, Flags uint32
-	Time                     uint32
-	Extra                    uintptr
+// SendInput 的 INPUT 结构（Windows 64 位共 40 字节）：
+//
+//	DWORD type;            // 4
+//	DWORD padding;         // 4（Windows 这里的 4 字节不用，但结构体对齐要占位）
+//	union { MOUSEINPUT / KEYBDINPUT / HARDWAREINPUT }  // 32
+//
+// ⚠️ union 必须用**字节数组**表达，不能写成含三个字段的 Go struct ——
+// Go 的 struct 是顺序排列（会变成 32+24+8=64 字节），而 C 的 union 是重叠的。
+// 写成 struct 时 unsafe.Sizeof = 72，SendInput 会静默返回 0（"点了没反应"）。
+type inputStruct struct {
+	Type uint32
+	_    uint32
+	U    [32]byte // union 区（按 inputUnionSize 固定）
 }
 
+// inputUnionSize Windows 64 位下 INPUT 的 union 区大小
+const inputUnionSize = 32
+
+// keyInputEventIndirect 把 KEYBDINPUT 写进 inputStruct 的 union 区。
 type keyInputEvent struct {
 	WVk, Scan   uint16
 	Flags, Time uint32
 	Extra       uintptr
 }
 
-type hardwareInputEvent struct {
-	Msg            uint32
-	ParamL, ParamH uint16
-}
-
-type inputUnion struct {
-	Mi mouseInputEvent
-	Ki keyInputEvent
-	Hi hardwareInputEvent
-}
-
-type inputStruct struct {
-	Type uint32
-	_    uint32 // Windows 会在这里塞 4 字节对齐
-	U    inputUnion
+// newKeyInput 构造一条键盘 INPUT（KEYBDINPUT 落在 union 区首地址）。
+func newKeyInput(vk uint16, flags uint32) inputStruct {
+	ev := inputStruct{Type: inputKeyboard}
+	ki := (*keyInputEvent)(unsafe.Pointer(&ev.U[0]))
+	ki.WVk = vk
+	ki.Flags = flags
+	return ev
 }
 
 const (
@@ -221,26 +223,25 @@ func guiScreenshot(args map[string]any) map[string]any {
 			x, y, w, h, vx, vy, vw, vh)}
 	}
 
-	hScreen, _, _ := pGetWindowDC.Call(0) // 桌面窗口 DC = 全屏
-	dstDC, _, _ := pCreateCompatibleDC.Call(0)
-	var bmpHandle uintptr
-	{
-		// 32 位 DIB（top-down 用负高度），像素直接读出来
-		bmi := dibInfo{BiSize: 40, BiWidth: int32(w), BiHeight: int32(-h), BiPlanes: 1, BiBitCount: 32}
-		bmpHandle, _, _ = pCreateDIBSection.Call(0, uintptr(unsafe.Pointer(&bmi)), 0, 0, 0)
+	// 与同包 shot_windows.go 已验证的做法一致：兼容位图（DDB）+ GetDIBits。
+	// ⚠️ 不要用 CreateDIBSection 再 GetDIBits —— 对 DIB section 调 GetDIBits 会返回 0 行（真机踩过）。
+	hScreen, _, _ := pGetDC.Call(0) // 屏幕 DC（0 = 整个屏幕）
+	if hScreen == 0 {
+		return map[string]any{"ok": false, "error": "截屏失败：拿不到屏幕 DC"}
 	}
-	if hScreen == 0 || dstDC == 0 || bmpHandle == 0 {
-		if dstDC != 0 {
-			pDeleteDC.Call(dstDC)
-		}
-		if hScreen != 0 {
-			pReleaseDC.Call(0, hScreen)
-		}
-		return map[string]any{"ok": false, "error": "截屏失败：拿不到位图句柄（GDI 资源不足？）"}
+	defer pReleaseDC.Call(0, hScreen)
+
+	dstDC, _, _ := pCreateCompatibleDC.Call(hScreen)
+	if dstDC == 0 {
+		return map[string]any{"ok": false, "error": "截屏失败：建不了内存 DC"}
+	}
+	defer pDeleteDC.Call(dstDC)
+
+	bmpHandle, _, _ := pCreateCompatibleBitmap.Call(hScreen, uintptr(w), uintptr(h))
+	if bmpHandle == 0 {
+		return map[string]any{"ok": false, "error": "截屏失败：建不了位图（GDI 资源不足？）"}
 	}
 	defer pDeleteObject.Call(bmpHandle)
-	defer pDeleteDC.Call(dstDC)
-	defer pReleaseDC.Call(0, hScreen)
 
 	sel, _, _ := pSelectObject.Call(dstDC, bmpHandle)
 	defer pSelectObject.Call(dstDC, sel)
@@ -251,12 +252,12 @@ func guiScreenshot(args map[string]any) map[string]any {
 		return map[string]any{"ok": false, "error": "截屏失败：BitBlt 返回 0"}
 	}
 
-	// 读像素（32 位 BGRA，top-down）
-	bpp := w * 4
-	buf := make([]byte, int64(bpp)*int64(h))
-	getBmi := dibInfo{BiSize: 40, BiWidth: int32(w), BiHeight: int32(h), BiPlanes: 1, BiBitCount: 32}
-	n, _, _ := pGetDIBits.Call(hScreen, bmpHandle, 0, uintptr(h),
-		uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&getBmi)))
+	// 读像素（32 位 BGRA，top-down：biHeight 取负）
+	buf := make([]byte, w*h*4)
+	getBmi := dibInfo{BiSize: 40, BiWidth: int32(w), BiHeight: int32(-h), BiPlanes: 1, BiBitCount: 32}
+	getBmi.BiSizeImage = uint32(w * h * 4)
+	n, _, _ := pGetDIBits.Call(dstDC, bmpHandle, 0, uintptr(h),
+		uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&getBmi)), 0)
 	if int(n) != h {
 		return map[string]any{"ok": false, "error": fmt.Sprintf("截屏失败：读回 %d/%d 行像素", n, h)}
 	}
@@ -349,8 +350,8 @@ func guiInput(args map[string]any) map[string]any {
 	events := make([]inputStruct, 0, len(units)*2)
 	for _, u := range units {
 		events = append(events,
-			inputStruct{Type: inputKeyboard, U: inputUnion{Ki: keyInputEvent{WVk: uint16(u), Flags: keyEventFUnicode}}},
-			inputStruct{Type: inputKeyboard, U: inputUnion{Ki: keyInputEvent{WVk: uint16(u), Flags: keyEventFUnicode | keyEventFKeyUp}}},
+			newKeyInput(u, keyEventFUnicode),
+			newKeyInput(u, keyEventFUnicode|keyEventFKeyUp),
 		)
 	}
 	sent, err := sendInputs(events)

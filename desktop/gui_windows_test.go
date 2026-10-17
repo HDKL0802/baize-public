@@ -3,7 +3,10 @@
 package main
 
 import (
+	"image/png"
+	"os"
 	"testing"
+	"unsafe"
 
 	"baize/shared/proto"
 )
@@ -226,4 +229,55 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// SendInput 的 INPUT 结构必须是 64 位 Windows 的 40 字节（8 字节头 + 32 字节 union）。
+// 结构体布局写错时 SendInput 会静默返回 0（"点了没反应"），这条断言能提前抓住。
+func TestInputStructSize(t *testing.T) {
+	if got := unsafe.Sizeof(inputStruct{}); got != 40 {
+		t.Fatalf("inputStruct 大小 = %d，Windows 64 位应为 40", got)
+	}
+}
+
+// 真机截屏回归（无显示器/无交互桌面时自动跳过）。
+//
+// ⚠️ 这里锁住一个真踩过的坑：CreateDIBSection + GetDIBits 会返回 0 行像素；
+// 必须用 CreateCompatibleBitmap（DDB）+ GetDIBits。
+func TestGuiScreenshotLive(t *testing.T) {
+	sm := func(id int) int {
+		v, _, _ := pGetSystemMetrics.Call(uintptr(id))
+		return int(v)
+	}
+	if sm(smCxVirtualScreen) <= 0 || sm(smCyVirtualScreen) <= 0 {
+		t.Skip("没有可用屏幕（无交互桌面），跳过真机截屏")
+	}
+	res := guiScreenshot(map[string]any{})
+	if res["ok"] != true {
+		t.Fatalf("截屏失败：%v", res)
+	}
+	path, _ := res["path"].(string)
+	if path == "" {
+		t.Fatalf("没回路径：%v", res)
+	}
+	defer os.Remove(path)
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("打不开 PNG：%v", err)
+	}
+	defer f.Close()
+	img, err := png.Decode(f)
+	if err != nil {
+		t.Fatalf("PNG 解不开：%v", err)
+	}
+	if b := img.Bounds(); b.Dx() <= 0 || b.Dy() <= 0 {
+		t.Fatalf("图尺寸不对：%v", b)
+	}
+	// 区域截屏：宽高必须精确等于请求值
+	res2 := guiScreenshot(map[string]any{"x": 0, "y": 0, "width": 120, "height": 80})
+	if res2["ok"] != true || res2["width"] != 120 || res2["height"] != 80 {
+		t.Fatalf("区域截屏不对：%v", res2)
+	}
+	if p2, _ := res2["path"].(string); p2 != "" {
+		os.Remove(p2)
+	}
 }

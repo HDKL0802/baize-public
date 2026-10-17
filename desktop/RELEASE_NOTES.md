@@ -1,6 +1,7 @@
-# 白泽桌面端 0.5.28
+# 白泽桌面端 0.5.29
 
 「电脑控制」第 3 档：**允许控制 GUI** —— 让白泽在这台电脑上点鼠标、输入文字、按按键（先截图看效果），默认关闭，三重闸门。
+0.5.29 相对 0.5.28 是**真机冒烟修出来的两个硬 bug**（版本已升，0.5.28 从未发布）。
 
 ## 本版变化
 
@@ -23,10 +24,17 @@
 - **执行侧护栏**：单次输入上限 500 字；不认识的按键/鼠标键如实报错，不偷跑默认值；
   截图越界区域如实拒绝。全部原生 Win32（`SetCursorPos` / `mouse_event` / `keybd_event` /
   `SendInput` / GDI 截图），无 cgo。
+- **真机冒烟修出的两个 bug（0.5.29）**：
+  1. **截屏读不到像素**：`CreateDIBSection` + `GetDIBits` 在真机返回 **0 行**（DIB section 不能用 GetDIBits 取位）。
+     改用同包已跑通的 **`CreateCompatibleBitmap`（DDB）+ `GetDIBits(dstDC, bmp, …)`**，真机实测 1920×1080 / 132KB PNG、区域截图 120×80 均正确。
+  2. **`SendInput` 结构体布局错了**：把 C 的 **union** 写成了 Go struct（字段顺序排列 → 72 字节），
+     Windows 要的是 **40 字节**（4 type + 4 对齐 + 32 union），尺寸不对时 `SendInput` **静默返回 0**（表现就是"输入没反应"）。
+     改成 `U [32]byte` 的真实 union 区 + `newKeyInput()` 按地址写入，并加单测锁死 `unsafe.Sizeof == 40`。
 
 ## 验证
 
 - 桌面端 `go build` / `go vet` / `go test -count=1` 全绿；后端 `go build` / `go vet` 全绿，相关包测试通过。
+- **真机截屏冒烟**（本机真跑，非只编译）：全屏 `1920x1080`、PNG 可解码、132239 字节；区域 `120x80` 尺寸精确。
 - 新增桌面端单测（`desktop/gui_windows_test.go`）：
   - `guiGate`：**没开开关拒绝 / 空清单拒点击·输入·按键但放行截图 / 白名单内放行（`Chrome.exe` → `chrome` 归一命中）/
     认不出目标窗口拒绝盲发 / 未命中拒绝**；
@@ -34,7 +42,9 @@
   - `parseKeySpec` / `parseKeyCombo`（单字符 / 具名键 / f1-f24 / 组合键 / 认不出的报错）；
   - `guiInput` 参数缺失与超长拒绝、`guiClick` 不认识的鼠标键报错（不默认偷跑）；
   - `setGuiControl` 校验（**无 ack 拒绝、空白名单可开、合规开启成功、关闭不需 ack**）；
-  - `permCaps`：开关开了才上报 `gui.control`。
+  - `permCaps`：开关开了才上报 `gui.control`；
+  - `TestInputStructSize`：`unsafe.Sizeof(inputStruct{}) == 40`（union 布局回归）；
+  - `TestGuiScreenshotLive`：真机截屏全屏 + 区域尺寸（无交互桌面时自动 skip）。
 
 ## 兼容与说明
 
@@ -46,5 +56,5 @@
 
 ## 安装
 
-1. 下载并运行 `baize-desktop-setup-0.5.28.exe`（用户级安装，不需要管理员）。
+1. 下载并运行 `baize-desktop-setup-0.5.29.exe`（用户级安装，不需要管理员）。
 2. 已装过旧版：直接运行即可 —— 会自动认出来并按更新走，**安装位置可改**。

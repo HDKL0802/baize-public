@@ -1,1 +1,2 @@
-桌面端 0.5.28：电脑控制第 3 档「允许控制 GUI」（gui.screenshot/gui.click/gui.input/gui.key，本机开关 + 目标窗口白名单 + 强制审批三重闸门，默认关闭；空应用白名单 = 只许截图不许碰窗）+ 设置页 GUI 控制区（后端 0.9.36）。
+桌面端 0.5.29：电脑控制第 3 档「允许控制 GUI」（gui.screenshot/gui.click/gui.input/gui.key，本机开关 + 目标窗口白名单 + 强制审批三重闸门，默认关闭；空应用白名单 = 只许截图不许碰窗）+ 设置页 GUI 控制区 + 真机修复（截屏改用兼容位图 DDB、SendInput 的 INPUT union 修正为 40 字节）（后端 0.9.36）。
+

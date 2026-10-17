@@ -298,7 +298,7 @@ adb install -r android-app\bz-todo-v&lt;版本&gt;.apk</pre>
       <div class="code-wrap">
 <pre class="code-block"><span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -SkipBuild      <span class="cmt"># 跳过编译，直接上传现有二进制</span>
 <span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -NoRestart     <span class="cmt"># 只上传/构建，不动运行中的容器</span>
-<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -Tag v0.9.35    <span class="cmt"># 给镜像打版本标签</span>
+<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -Tag v0.9.36    <span class="cmt"># 给镜像打版本标签</span>
 <span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -Push           <span class="cmt"># 推送到 ghcr.io（需先在 NAS 上 docker login）</span></pre>
       </div>
 

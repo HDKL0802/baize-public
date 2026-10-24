@@ -524,19 +524,26 @@ func scanMarkdown(root string) ([]localNoteFile, int, int64, error) {
 	return out, skipped, total, nil
 }
 
-// findUIDir 定位界面目录。安装后是 exe 同级的 ui/；开发时 exe 在 desktop/bin/、
-// 界面在 desktop/ui/，所以也看上一级的 ui/，最后回退到当前工作目录。
+// findUIDir 定位界面目录。
+// 查找顺序：exe 同级 ui/ → exe 上一级 ui/ → exe 同级 webui/dist/（Vue3 构建产物）
+//          → cwd/webui/dist/ → cwd/ui/
+// 开发时 exe 在 desktop/bin/，Vue3 dist 在 desktop/webui/dist/，所以也看上一级。
 func findUIDir() (string, error) {
 	var cands []string
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
 		cands = append(cands,
-			filepath.Join(dir, "ui"),
-			filepath.Join(dir, "..", "ui"),
+			filepath.Join(dir, "ui"),                       // 安装形态：exe 同级 ui/
+			filepath.Join(dir, "..", "ui"),                 // 开发形态：desktop/bin/ → desktop/ui/
+			filepath.Join(dir, "webui", "dist"),            // exe 同级 webui/dist/
+			filepath.Join(dir, "..", "webui", "dist"),      // 开发形态：desktop/bin/ → desktop/webui/dist/
 		)
 	}
 	if wd, err := os.Getwd(); err == nil {
-		cands = append(cands, filepath.Join(wd, "ui"))
+		cands = append(cands,
+			filepath.Join(wd, "webui", "dist"),             // 当前目录 webui/dist/
+			filepath.Join(wd, "ui"),                        // 回退到旧 ui/
+		)
 	}
 	for _, c := range cands {
 		if fi, err := os.Stat(filepath.Join(c, "index.html")); err == nil && !fi.IsDir() {
@@ -544,5 +551,6 @@ func findUIDir() (string, error) {
 			return abs, nil
 		}
 	}
-	return "", errors.New("没找到 ui/index.html（安装后 exe 同级应有 ui 目录；开发时应在 desktop/ui）")
+	return "", errors.New("没找到界面目录（试过 exe 同级/上一级的 ui/ 和 webui/dist/，以及 cwd 下的同名目录）")
 }
+

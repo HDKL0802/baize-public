@@ -8,8 +8,8 @@ third_party/
 .idea/
 
 # 前端 / 手机 / 桌面产物，后端镜像用不到
-android-app/
-todo-app/
+mobile/android/
+mobile/todo/
 cli/
 tools/local-embed/models/
 

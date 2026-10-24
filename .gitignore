@@ -27,9 +27,9 @@ desktop/bin/
 desktop/*.exe
 desktop/*.exe.old
 desktop/ui/_viz.html
-android-app/*.apk
-android-app/*.apk.idsig
-android-app/debug.keystore
+mobile/android/*.apk
+mobile/android/*.apk.idsig
+mobile/android/debug.keystore
 
 # ---------- 依赖 / 缓存 ----------
 **/node_modules/

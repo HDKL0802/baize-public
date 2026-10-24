@@ -22,8 +22,8 @@ on:
     paths-ignore:
       - "**.md"
       - "desktop/**"
-      - "android-app/**"
-      - "todo-app/**"
+      - "mobile/android/**"
+      - "mobile/todo/**"
       - "cli/**"
       - "tools/**"
     tags: ["backend-v*"]

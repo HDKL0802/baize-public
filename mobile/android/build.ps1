@@ -41,8 +41,8 @@ $env:Path = "$JAVA_HOME\bin;$BT;$env:Path"
 
 # ---------- paths ----------
 $SRC     = $PSScriptRoot                       # source project (path may contain non-ASCII chars)
-$WEBAPP  = Join-Path $SRC "..\todo-app"        # web frontend
-$KERNEL  = Join-Path $SRC "..\core\bin\bzcore-android-arm64"   # Go kernel (linux/arm64)
+$WEBAPP  = Join-Path $SRC "..\todo"            # web frontend (sibling: mobile/todo)
+$KERNEL  = Join-Path $SRC "..\..\core\bin\bzcore-android-arm64"   # Go kernel (linux/arm64)
 $STAGE   = "C:\bz-apk-build"                   # ASCII-only staging dir for the toolchain
 $OUTNAME = "bz-todo-v0.10.16.apk"
 

@@ -1,4 +1,4 @@
-# 白泽官网部署 —— 把 website/ 目录发布到 GitHub Pages。
+# 白泽官网部署 —— 把 web/ 目录发布到 GitHub Pages。
 #
 # 触发：push 到 main 分支（任何改动）+ workflow_dispatch 手动触发。
 #   镜像仓 baize-public 也跑一次（不额外发什么，只是保持两仓行为一致）。
@@ -40,7 +40,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./website
+          path: ./web
 
       - name: Deploy to GitHub Pages
         id: deployment

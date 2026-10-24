@@ -41,7 +41,7 @@ $env:Path = "$JAVA_HOME\bin;$BT;$env:Path"
 
 # ---------- paths ----------
 $SRC     = $PSScriptRoot                       # source project (path may contain non-ASCII chars)
-$WEBAPP  = Join-Path $SRC "..\todo"            # web frontend (sibling: mobile/todo)
+$WEBAPP  = Join-Path $SRC "..\webui\dist"      # Vue3 build output (sibling: mobile/webui/dist)
 $KERNEL  = Join-Path $SRC "..\..\core\bin\bzcore-android-arm64"   # Go kernel (linux/arm64)
 $STAGE   = "C:\bz-apk-build"                   # ASCII-only staging dir for the toolchain
 $OUTNAME = "bz-todo-v0.10.16.apk"
@@ -62,12 +62,30 @@ Copy-Item (Join-Path $SRC "AndroidManifest.xml") $STAGE
 Get-ChildItem (Join-Path $SRC "res") | Copy-Item -Destination "$STAGE\res" -Recurse -Force
 Copy-Item (Join-Path $SRC "java") "$STAGE\java" -Recurse
 
-Write-Host "=== 1. copy web assets ===" -ForegroundColor Cyan
+# ---------- build webui (if dist/ missing, build it first) ----------
+if (-not (Test-Path (Join-Path $WEBAPP "index.html"))) {
+    Write-Host "=== 0.5 build webui dist/ ===" -ForegroundColor Yellow
+    $WEBUI_SRC = Join-Path $SRC "..\webui"
+    Push-Location $WEBUI_SRC
+    try {
+        & "C:\node-v22.14.0-win-x64\npm.cmd" run build
+        if ($LASTEXITCODE -ne 0) { throw "vite build failed" }
+    } finally {
+        Pop-Location
+    }
+}
+
+Write-Host "=== 1. copy web assets (Vue3 dist/) ===" -ForegroundColor Cyan
 Copy-Item (Join-Path $WEBAPP "index.html") "$STAGE\assets"
-Copy-Item (Join-Path $WEBAPP "icon.svg") "$STAGE\assets"
-Copy-Item (Join-Path $WEBAPP "manifest.webmanifest") "$STAGE\assets"
-foreach ($d in @("css", "js")) {
-    Copy-Item (Join-Path $WEBAPP $d) "$STAGE\assets\$d" -Recurse
+if (Test-Path (Join-Path $WEBAPP "icon.svg")) {
+    Copy-Item (Join-Path $WEBAPP "icon.svg") "$STAGE\assets"
+}
+if (Test-Path (Join-Path $WEBAPP "manifest.webmanifest")) {
+    Copy-Item (Join-Path $WEBAPP "manifest.webmanifest") "$STAGE\assets"
+}
+# Vue3 dist/ has index.html + assets/ subdirectory (JS/CSS chunks)
+if (Test-Path (Join-Path $WEBAPP "assets")) {
+    Copy-Item (Join-Path $WEBAPP "assets") "$STAGE\assets\assets" -Recurse
 }
 # drop QA-only files and sw.js (assets are local inside the APK, a service worker is pointless)
 Get-ChildItem "$STAGE\assets" -Recurse -File | Where-Object { $_.Name -like "_*" -or $_.Name -eq "sw.js" } | Remove-Item -Force

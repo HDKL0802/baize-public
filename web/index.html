@@ -235,13 +235,13 @@ desktop\bin\baize-desktop.exe --server http://&lt;NAS&gt;:8787 --token &lt;令�
       <div class="deploy-pane" data-pane="android">
         <div class="code-wrap">
 <pre class="code-block"><button class="copy-btn" data-copy>复制</button><span class="cmt"># 两步合一：先交叉编译 Go 内核（arm64），再打 APK</span>
-<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File android-app\build.ps1
+<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File mobile\android\build.ps1
 
-<span class="cmt"># 产物：android-app\bz-todo-v0.9.0.apk</span>
+<span class="cmt"># 产物：mobile\android\bz-todo-v0.9.0.apk</span>
 
 <span class="cmt"># 安装到设备（用 adb）</span>
 adb connect &lt;手机IP&gt;:5555
-adb install -r android-app\bz-todo-v0.9.0.apk
+adb install -r mobile\android\bz-todo-v0.9.0.apk
 
 <span class="cmt"># ⚠️ 三星等激进 ROM：系统设置里手动允许「自启动」</span></pre>
         </div>

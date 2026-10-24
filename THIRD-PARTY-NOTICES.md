@@ -29,7 +29,7 @@
 | `github.com/jchv/go-winloader` | v0.0.0-20250406163304-c1995be93bd1 | **模块内未找到 LICENSE 文件** ⚠️ | 上者的间接依赖；**发布前需向上游确认** |
 
 ### 1.3 前端 / 其它
-- 手机端 WebView 前端为本仓库自写（`todo-app/`），未引入第三方 JS 库。
+- 手机端 WebView 前端为本仓库自写（`mobile/todo/`），未引入第三方 JS 库。
 - Android 侧仅用系统 API，未引入第三方 AAR。
 
 ---

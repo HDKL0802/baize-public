@@ -14,7 +14,7 @@ const password = 'p@ss-测试-123';
 const salt = Buffer.from('0123456789abcdef', 'utf8'); // 固定 16 字节盐
 const iv = Buffer.from('abcdefghijkl', 'utf8'); // 固定 12 字节 IV
 
-// 与 todo-app/js/store.js 的 derive / hashOf / encryptBytes 完全一致
+// 与 mobile/todo/js/store.js 的 derive / hashOf / encryptBytes 完全一致
 const base = await crypto.subtle.importKey('raw', enc.encode('baize-todo-vault:' + password), 'PBKDF2', false, ['deriveBits', 'deriveKey']);
 const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 150000, hash: 'SHA-256' }, base, 256);
 const key = await crypto.subtle.deriveKey(

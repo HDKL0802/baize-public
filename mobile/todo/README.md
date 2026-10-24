@@ -57,10 +57,10 @@ python -m http.server 8080 --directory .
 node _selftest.js        # 启动 Edge 无头模式，跑 113 项功能断言（需本机 Edge）
 ```
 
-## Android 壳（`../android-app/`）
+## Android 壳（`../android/`）
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File ..\android-app\build.ps1   # 产物 bz-todo-v0.10.0.apk
+powershell -ExecutionPolicy Bypass -File ..\android\build.ps1   # 产物 bz-todo-v0.10.0.apk
 ```
 
 - **本地服务端口是固定且持久的**（首次运行写入 SharedPreferences）：WebView 的 localStorage 按 origin（含端口）隔离，端口一变数据全部看不见。同一进程内所有页面共用同一个端口 → 同一个 origin → 同一份数据。

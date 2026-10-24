@@ -570,7 +570,7 @@ async function askPrefill() {
 /* ================= 语音：转 WAV / 分段录音 =================
    MediaRecorder 出来的是 webm/opus，而听写只认 16k 单声道 WAV，
    所以先解码、再用 OfflineAudioContext 离线重采样到 16k。
-   三个函数抄自 todo-app/js/voice.js，保持一致。 */
+   三个函数抄自 mobile/todo/js/voice.js，保持一致。 */
 const TARGET_RATE = 16000;
 
 async function toWav16k(blob) {

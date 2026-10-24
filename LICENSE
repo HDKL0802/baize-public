@@ -34,7 +34,7 @@ SOFTWARE.
   - `agent/internal/voice/`    语音通道（TTS / STT）
 
 对其余目录（后端中枢 `agent/internal/{hub,store,httpapi,agentsvc,agentrt,kb,mcp,skills,backup,cron,llm,executor,sysinfo,activity,tools,hooks,config,logx}`、
-共享契约 `shared/`、手机内核与领域 `core/`、桌面端 `desktop/`、手机壳 `android-app/`、
-WebView 前端 `todo-app/`、CLI `cli/`、部署与工具 `tools/`、`deploy/`）适用 MIT。
+共享契约 `shared/`、手机内核与领域 `core/`、桌面端 `desktop/`、手机壳 `mobile/android/`、
+WebView 前端 `mobile/todo/`、官网 `web/`、CLI `cli/`、部署与工具 `tools/`、`deploy/`）适用 MIT。
 
 第三方依赖各自的许可证见 `THIRD-PARTY-NOTICES.md`。

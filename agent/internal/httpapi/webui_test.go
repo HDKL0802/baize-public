@@ -63,7 +63,7 @@ func TestWebUIVariants(t *testing.T) {
 		t.Fatalf("手机版首页状态 %d", code)
 	}
 	if !strings.Contains(body, "<title>白泽 · Baize</title>") {
-		t.Fatal("手机版没拿到 todo-app 那套前端")
+		t.Fatal("手机版没拿到 mobile/todo 那套前端")
 	}
 	if !strings.Contains(body, "js/webui-bridge.js") {
 		t.Fatal("手机版没有换成「后端直连」层")

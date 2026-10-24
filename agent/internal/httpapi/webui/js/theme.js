@@ -7,7 +7,7 @@
    不进后端设置：手机看暗色、平板看亮色是完全合理的。
 
    设置页那个「外观」分组也由这里**运行时注入**（renderGroup），
-   这样 todo-app/ 与后端控制台那份手机版副本（agent/internal/httpapi/webui/）不用各写一份一样的 HTML。 */
+   这样 mobile/todo/ 与后端控制台那份手机版副本（agent/internal/httpapi/webui/）不用各写一份一样的 HTML。 */
 'use strict';
 (function () {
   var KEY = 'bz_theme';

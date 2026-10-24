@@ -28,9 +28,11 @@
 | `shared/` | 跨端共享契约：消息定义（`proto`）+ 设备客户端（`client`） |
 | `core/` | 共享领域内核 + 手机端 Go 内核（`cmd/bzcore`） |
 | `desktop/` | Windows 桌面端（Go + 纯 Go WebView2，无 cgo） |
-| `android-app/` | 手机壳（Java，不打 Gradle）+ 打包脚本 |
-| `todo-app/` | 手机端 WebView 前端（原生 HTML/CSS/JS） |
+| `mobile/android/` | 手机壳（Java，不打 Gradle）+ 打包脚本 |
+| `mobile/todo/` | 手机端 WebView 前端（原生 HTML/CSS/JS） |
+| `web/` | 官网（GitHub Pages 静态站点） |
 | `cli/` | 电脑端小工具 `bz` |
+| `docs/` | 交接文档、开发文档、方案与待办清单 |
 | `tools/` | 部署与运维（`deploy-nas.ps1`、`sshrun`） |
 | `deploy/` | NAS 的 docker-compose |
 
@@ -52,7 +54,7 @@ desktop\bin\baize-desktop.exe --server http://<NAS>:8787 --token <令牌>
 **Android 手机端**
 ```powershell
 # 先交叉编译内核（arm64），再打 APK，两步都在脚本里
-powershell -ExecutionPolicy Bypass -File android-app\build.ps1
+powershell -ExecutionPolicy Bypass -File mobile\android\build.ps1
 ```
 
 ## 风险与免责声明（请务必先读）
@@ -71,7 +73,8 @@ powershell -ExecutionPolicy Bypass -File android-app\build.ps1
 
 ## 文档
 
-- **[白泽项目交接文档.md](白泽项目交接文档.md)** —— 架构、协议、部署、开发工作流、命令速查（**从这里开始**）
+- **[白泽项目交接文档](docs/白泽项目交接文档.md)** —— 架构、协议、部署、开发工作流、命令速查（**从这里开始**）
+- **[白泽下一步待办清单](docs/白泽下一步待办清单.md)** —— 1.0 目标与执行顺序
 - **[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)** —— 第三方依赖与许可证
 
 ## 许可（双许可）

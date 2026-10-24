@@ -197,11 +197,11 @@ desktop\bin\baize-desktop.exe --server http://&lt;NAS&gt;:8787 --token &lt;令�
       <h3>3 · 装 Android 手机端</h3>
       <div class="code-wrap">
 <pre class="code-block"><button class="copy-btn" data-copy>复制</button><span class="cmt"># 两步合一：先交叉编译 Go 内核（arm64），再打 APK</span>
-<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File android-app\build.ps1
+<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File mobile\android\build.ps1
 
 <span class="cmt"># 安装到设备</span>
 adb connect &lt;手机IP&gt;:5555
-adb install -r android-app\bz-todo-v&lt;版本&gt;.apk</pre>
+adb install -r mobile\android\bz-todo-v&lt;版本&gt;.apk</pre>
       </div>
       <div class="callout warn">
         <div><strong>三星等激进 ROM：</strong>装完要去系统设置里手动允许「自启动」和「后台运行」，否则前台服务会被杀掉，手机端就掉线了。</div>
@@ -244,9 +244,11 @@ adb install -r android-app\bz-todo-v&lt;版本&gt;.apk</pre>
           <tr><td><code>shared/</code></td><td>跨端共享契约：消息定义（proto）+ 设备客户端</td></tr>
           <tr><td><code>core/</code></td><td>共享领域内核 + 手机端 Go 内核（<code>cmd/bzcore</code>）</td></tr>
           <tr><td><code>desktop/</code></td><td>Windows 桌面端（Go + 纯 Go WebView2）</td></tr>
-          <tr><td><code>android-app/</code></td><td>手机壳（Java，不打 Gradle）+ 打包脚本</td></tr>
-          <tr><td><code>todo-app/</code></td><td>手机端 WebView 前端（原生 HTML/CSS/JS）</td></tr>
+          <tr><td><code>mobile/android/</code></td><td>手机壳（Java，不打 Gradle）+ 打包脚本</td></tr>
+          <tr><td><code>mobile/todo/</code></td><td>手机端 WebView 前端（原生 HTML/CSS/JS）</td></tr>
+          <tr><td><code>web/</code></td><td>官网静态站点（GitHub Pages）</td></tr>
           <tr><td><code>cli/</code></td><td>电脑端小工具 <code>bz</code></td></tr>
+          <tr><td><code>docs/</code></td><td>交接文档、开发文档、方案与待办清单</td></tr>
           <tr><td><code>tools/</code></td><td>部署与运维（<code>deploy-nas.ps1</code>、<code>sshrun</code>）</td></tr>
         </tbody>
       </table>

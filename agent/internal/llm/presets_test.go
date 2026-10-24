@@ -37,26 +37,70 @@ func TestPresetsValid(t *testing.T) {
 			t.Fatalf("云端模板 %s 应标 needsKey：%+v", p.ID, p)
 		}
 	}
-	// Agnes：国内 + 国际两条，端点用用户给的（.cn 国内；apihub.agnes-ai.com 国际）
+
+	// 按清单必须有的 id 全部到位（国内 14 家 + 外版 + 双版本 + 计费档位分离）
+	mustIDs := []string{
+		"deepseek",
+		"volcark-api", "volcark-coding",
+		"zhipu", "zhipu-coding", "zhipu-intl",
+		"moonshot", "moonshot-intl",
+		"dashscope", "dashscope-intl", "dashscope-coding",
+		"mimo",
+		"minimax", "minimax-intl",
+		"stepfun",
+		"baidu-qianfan",
+		"hunyuan", "hunyuan-intl",
+		"siliconflow",
+		"modelscope",
+		"ucloud",
+		"openrouter",
+		"aws",
+		"byteplus-modelark",
+		"agnes", "agnes-intl",
+	}
+	byID := map[string]*Preset{}
+	for i := range list {
+		byID[list[i].ID] = &list[i]
+	}
+	for _, id := range mustIDs {
+		if byID[id] == nil {
+			t.Fatalf("预置模板缺 %s", id)
+		}
+	}
+
+	// Agnes 双条（国内 + 国际），端点 + 默认主力模型名 agnes-3.0-flash
 	wantAgnes := map[string]string{
 		"agnes":      "https://api.agnes-ai.cn/v1",
 		"agnes-intl": "https://apihub.agnes-ai.com/v1",
 	}
 	for id, base := range wantAgnes {
-		var hit *Preset
-		for i := range list {
-			if list[i].ID == id {
-				hit = &list[i]
-			}
-		}
-		if hit == nil {
+		p := byID[id]
+		if p == nil {
 			t.Fatalf("预置模板缺 %s", id)
 		}
-		if hit.BaseURL != base {
-			t.Fatalf("%s 端点应为 %s，实际 %s", id, base, hit.BaseURL)
+		if p.BaseURL != base {
+			t.Fatalf("%s 端点应为 %s，实际 %s", id, base, p.BaseURL)
 		}
-		if !strings.Contains(hit.Note, "文档") && !strings.Contains(hit.Note, "模型名") {
-			t.Fatalf("%s 应提示模型名 / 文档：%s", id, hit.Note)
+		if p.Model != "agnes-3.0-flash" {
+			t.Fatalf("%s 默认主力模型应为 agnes-3.0-flash，实际 %q", id, p.Model)
 		}
+	}
+
+	// 火山方舟两档：API 按量 /api/v3 与 Coding Plan /api/coding/v3 必须分开
+	if byID["volcark-api"].BaseURL != "https://ark.cn-beijing.volces.com/api/v3" {
+		t.Fatalf("volcark-api 端点应为 /api/v3，实际 %s", byID["volcark-api"].BaseURL)
+	}
+	if byID["volcark-coding"].BaseURL != "https://ark.cn-beijing.volces.com/api/coding/v3" {
+		t.Fatalf("volcark-coding 端点应为 /api/coding/v3，实际 %s", byID["volcark-coding"].BaseURL)
+	}
+
+	// 百炼三档：国内按量 / 国际按量 / Coding Plan（coding.dashscope.aliyuncs.com）
+	if byID["dashscope-coding"].BaseURL != "https://coding.dashscope.aliyuncs.com/v1" {
+		t.Fatalf("dashscope-coding 端点应为 coding.dashscope.aliyuncs.com/v1，实际 %s", byID["dashscope-coding"].BaseURL)
+	}
+
+	// 智谱两条按量/套餐端点不同
+	if byID["zhipu-coding"].BaseURL != "https://open.bigmodel.cn/api/coding/paas/v4" {
+		t.Fatalf("zhipu-coding 端点应为 /api/coding/paas/v4，实际 %s", byID["zhipu-coding"].BaseURL)
 	}
 }

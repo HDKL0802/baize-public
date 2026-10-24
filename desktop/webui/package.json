@@ -1,0 +1,22 @@
+{
+  "name": "baize-webui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "白泽桌面主控台 Vue3 前端（Vite + Naive UI，动态 SPA）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "naive-ui": "^2.40.0",
+    "pinia": "^2.2.0",
+    "vue": "^3.4.0",
+    "vue-router": "^4.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.1.0",
+    "vite": "^5.4.0"
+  }
+}

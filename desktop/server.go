@@ -59,7 +59,8 @@ func buildHandler() http.Handler {
 	log.Printf("界面目录：%s", root)
 
 	// 浮窗独立静态目录（必须在根路由之前注册，不然 catch-all 会吞掉）
-	// root 可能是 webui/dist 或 ui/，往上两层就是 desktop/ 目录，float/dist 跟 webui/dist 同级
+	// findUIDir 返回 root = .../webui/dist（两层深）或 .../ui（一层深）
+	// 两种情况下 Dir(Dir(root)) 都能到达 desktop/ 目录，float/dist 跟 webui/dist 同级
 	floatDir := filepath.Join(filepath.Dir(filepath.Dir(root)), "float", "dist")
 	if fi, err := os.Stat(filepath.Join(floatDir, "index.html")); err == nil && !fi.IsDir() {
 		log.Printf("浮窗界面目录：%s", floatDir)

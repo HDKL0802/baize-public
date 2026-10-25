@@ -26,15 +26,14 @@ async function run() {
 
 // rev 变化（主进程推来新图）→ 重跑
 let lastRev = -1;
+let onEvent = null;
 onMounted(async () => {
-  lang.value = bus?.lang || 'zh';
+  lang.value = bus?.lang?.value || bus?.lang || 'zh';  // bus.lang 是 ref，兜底兼容旧写法
   const m = await local('/float/mode');
   if (m && m.hasImage) await run();
-});
 
-// 监听 bus 事件（rev 变化 / lang 变化）
-onMounted(() => {
-  const onEvent = (e) => {
+  // 监听 bus 事件（rev 变化 / lang 变化）—— 别在 onMounted 里 return cleanup（Vue3 不认）
+  onEvent = (e) => {
     if (e.detail.type === 'rev') {
       if (e.detail.rev !== lastRev) { lastRev = e.detail.rev; run(); }
     }
@@ -44,7 +43,10 @@ onMounted(() => {
     }
   };
   window.addEventListener('float-event', onEvent);
-  return () => window.removeEventListener('float-event', onEvent);
+});
+
+onBeforeUnmount(() => {
+  if (onEvent) window.removeEventListener('float-event', onEvent);
 });
 
 const ph = () => result.value ? '' : placeholder.value;

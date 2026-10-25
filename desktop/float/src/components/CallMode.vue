@@ -177,10 +177,11 @@ function postSignal(to, kind, payload) {
   return api('/api/agent/groups/' + encodeURIComponent(call.group) + '/calls/' + encodeURIComponent(call.callId) +
     '/signal', 'POST', { to, kind, payload });
 }
-async function startAV() {
-  if (rtc) return;
+// 只起本地媒体 + RTCPeerConnection，不发 offer（被 startAV / startAVForPeer 复用）
+async function startAVMedia() {
+  if (rtc) return true;
   if (!navigator.mediaDevices || !window.RTCPeerConnection) {
-    callStateText.value = '这个壳不支持 WebRTC（没有 RTCPeerConnection）'; return;
+    callStateText.value = '这个壳不支持 WebRTC（没有 RTCPeerConnection）'; return false;
   }
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true }); }
@@ -188,7 +189,7 @@ async function startAV() {
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
     catch (e2) {
       callStateText.value = '拿不到麦克风/摄像头：' + ((e2 && e2.name) === 'NotAllowedError' ? '权限被拒了' : ((e2 && e2.message) || '未知'));
-      return;
+      return false;
     }
   }
   const pc = new RTCPeerConnection();
@@ -201,9 +202,16 @@ async function startAV() {
   iceQ = [];
   pc.ontrack = ev => { const cvRemote = document.getElementById('cv-remote'); if (cvRemote) cvRemote.srcObject = ev.streams[0]; };
   pc.onicecandidate = ev => { if (ev.candidate) postSignal(call.peerId, 'ice', JSON.stringify(ev.candidate)); };
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  await postSignal(call.peerId, 'offer', JSON.stringify(pc.localDescription));
+  return true;
+}
+// 用户主动发起：起媒体 → createOffer → 发信令
+async function startAV() {
+  if (rtc) return;
+  const ok = await startAVMedia();
+  if (!ok) return;
+  const offer = await rtc.pc.createOffer();
+  await rtc.pc.setLocalDescription(offer);
+  await postSignal(call.peerId, 'offer', JSON.stringify(rtc.pc.localDescription));
 }
 async function handleSignal(s) {
   if (!rtc) {
@@ -221,7 +229,8 @@ async function handleSignal(s) {
 }
 async function startAVForPeer(sig) {
   if (rtc) return;
-  await startAV(); // 起本地媒体
+  const ok = await startAVMedia(); // 起本地媒体，不发 offer
+  if (!ok) return;
   try {
     await rtc.pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(sig.payload)));
     const ans = await rtc.pc.createAnswer();

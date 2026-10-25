@@ -57,6 +57,16 @@ func buildHandler() http.Handler {
 		log.Fatalf("找不到界面文件：%v", err)
 	}
 	log.Printf("界面目录：%s", root)
+
+	// 浮窗独立静态目录（必须在根路由之前注册，不然 catch-all 会吞掉）
+	floatDir := filepath.Join(filepath.Dir(root), "float", "dist")
+	if fi, err := os.Stat(filepath.Join(floatDir, "index.html")); err == nil && !fi.IsDir() {
+		log.Printf("浮窗界面目录：%s", floatDir)
+		mux.Handle("/float/", http.StripPrefix("/float/", http.FileServer(http.Dir(floatDir))))
+	} else {
+		log.Printf("（浮窗界面目录 %s 未就绪，跳过）", floatDir)
+	}
+
 	mux.Handle("/", http.FileServer(http.Dir(root)))
 
 	// 本机配置：只回"有没有令牌"，绝不回显令牌原文

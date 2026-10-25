@@ -470,7 +470,7 @@ func runFloatMode(mode, imgPath string) {
 	mainHWND = hwnd
 	floatPlace(hwnd, w, h, ix, iy)
 
-	wv.Navigate(localBaseURL + "/float.html#mode=" + mode)
+	wv.Navigate(localBaseURL + "/float/index.html#mode=" + mode)
 	wv.Run()
 	log.Printf("[浮窗] 已关闭：mode=%s", mode)
 }

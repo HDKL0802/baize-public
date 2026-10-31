@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>界面预览 · 白泽智能体</title>
+<style>
+:root{
+  --bg:#0A0D0F;--surface:#12181C;--surface-2:#171F24;--line:#212B31;--line-strong:#2E3B42;
+  --fg:#E8EEF1;--fg-2:#9AA8B0;--fg-3:#64727A;--accent:#3ED9C6;--accent-soft:rgba(62,217,198,.12);
+  --mono:ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: light){
+  :root{--bg:#F2F5F4;--surface:#FFFFFF;--surface-2:#E9EEEC;--line:#DCE4E2;--line-strong:#C4D0CD;
+  --fg:#0E1618;--fg-2:#4F5D65;--fg-3:#7A8890;--accent:#0F8A7E;--accent-soft:rgba(15,138,126,.10);}
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.7 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;padding:56px 20px 80px}
+.wrap{max-width:1020px;margin:0 auto}
+.eyebrow{font:11px var(--mono);letter-spacing:.12em;color:var(--fg-3);text-transform:uppercase}
+h1{font:600 34px/1.25 Georgia,"Songti SC","Noto Serif SC",serif;letter-spacing:-.02em;margin:14px 0 10px}
+p.lead{color:var(--fg-2);max-width:620px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:36px}
+a.card{display:flex;flex-direction:column;gap:10px;padding:24px;background:var(--surface);border:1px solid var(--line);border-radius:6px;color:inherit;text-decoration:none;transition:border-color .12s ease,background .12s ease}
+a.card:hover{border-color:var(--line-strong);background:var(--surface-2)}
+a.card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.card-top{display:flex;align-items:center;justify-content:space-between}
+.num{font:11px var(--mono);color:var(--accent);letter-spacing:.1em}
+.arrow{color:var(--fg-3);font-size:16px}
+h2{font-size:16px;font-weight:600}
+.desc{font-size:13px;line-height:1.65;color:var(--fg-2)}
+.tag{margin-top:auto;align-self:flex-start;font:11px var(--mono);color:var(--fg-3);border:1px solid var(--line);border-radius:4px;padding:3px 8px}
+.note{margin-top:32px;font-size:12px;color:var(--fg-3);border-top:1px solid var(--line);padding-top:16px}
+.note a{color:var(--fg-2)}
+@media (max-width:768px){.grid{grid-template-columns:1fr}body{padding-top:40px}h1{font-size:26px}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="eyebrow">BAIZE · UI PREVIEW</div>
+  <h1>墨青界面预览</h1>
+  <p class="lead">桌面主控台、手机端与桌面浮窗三套界面的静态预览，仅展示视觉与交互，不连接后端。</p>
+
+  <div class="grid">
+    <a class="card" href="./desktop/">
+      <div class="card-top"><span class="num">01</span><span class="arrow">→</span></div>
+      <h2>桌面主控台</h2>
+      <p class="desc">左侧导航、会话、设备、任务与设置。适合桌面宽度浏览。</p>
+      <span class="tag">desktop</span>
+    </a>
+    <a class="card" href="./mobile/">
+      <div class="card-top"><span class="num">02</span><span class="arrow">→</span></div>
+      <h2>手机端</h2>
+      <p class="desc">底部三栏、对话、待办、知识库、密码本与计划。建议用手机宽度查看。</p>
+      <span class="tag">mobile</span>
+    </a>
+    <a class="card" href="./float/">
+      <div class="card-top"><span class="num">03</span><span class="arrow">→</span></div>
+      <h2>桌面浮窗</h2>
+      <p class="desc">聊天、提取、听写、字幕与通话五种模式的小窗形态。</p>
+      <span class="tag">float</span>
+    </a>
+  </div>
+
+  <div class="note">预览为构建产物，数据为空态；正式版本由本机服务加载后端。返回 <a href="../">官网首页</a></div>
+</main>
+</body>
+</html>

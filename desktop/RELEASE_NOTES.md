@@ -38,11 +38,13 @@
 - `baize-nas` 的 `status / logs -f / rollback / uninstall` 保持原样，
   取消部署仍然要显式加 `--yes`。
 
-### 4. 版本号统一到 0.7.0
+### 4. 版本号
 
-桌面端、手机端（Android `versionName 0.7.0` / `versionCode 7000`）、
-后端（CI 用 `-ldflags -X main.version=<版本>` 注入）、官网下载页都报同一个版本号，
-设置页里的版本对比才有意义。
+桌面端与后端统一到 0.7.0（后端由 CI 用 `-ldflags -X main.version=<版本>` 注入），
+官网下载菜单里的版本号跟着 Release 走。
+手机端仍走自己的版本线（`bz-todo-v0.10.17`，`versionCode 1017`）——
+Android 不允许版本号往回退，旧的 0.10.16 只能往上升级；
+手机端设置页也一并加上「更新后端」卡片，连同这版一起装。
 
 ## 安装 / 升级
 

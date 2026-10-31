@@ -144,7 +144,7 @@ import { ref, reactive, onMounted } from 'vue';
 import { useStore } from '../store.js';
 import { bzCoreStatus, bzCoreConfigure, saveTextFile, pickTextFile, takePickedText, agentUpdateStatus, agentUpdateApply } from '../api.js';
 
-const appVersion = '0.7.0';
+const appVersion = '0.10.17';
 const store = useStore();
 
 const ai = reactive({ ...store.getSettings().ai });

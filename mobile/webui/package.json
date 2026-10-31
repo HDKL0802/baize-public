@@ -1,6 +1,6 @@
 {
   "name": "baize-mobile-webui",
-  "version": "0.7.0",
+  "version": "0.10.17",
   "private": true,
   "type": "module",
   "scripts": {

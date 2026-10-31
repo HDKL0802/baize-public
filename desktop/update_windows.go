@@ -1,10 +1,11 @@
 //go:build windows
 
-// 桌面端自动更新：从 NAS 拉 latest.json → 比版本 → 下载更新包（zip：exe + ui/）→ 校验 sha256
-// → 换掉 exe 与界面 → 重启。多文件形态下，包内是 baize-desktop.exe 与 ui/ 目录。
+// 桌面端自动更新：取清单 → 比版本 → 下载更新包（zip：exe + ui/ + float/）→ 校验 sha256
+// → 换掉 exe 与界面 → 重启。多文件形态下，包内是 baize-desktop.exe、ui/ 与 float/。
 //
-// 为什么把包放 NAS 而不是 GitHub Releases：NAS 本来就是这套系统的中枢，而且本机
-// 没法用 gh 上传发布物；`tools/release-desktop.ps1` 一条命令就能把 zip 与清单传上去。
+// 清单来源：**GitHub Releases 优先**（公开镜像仓 baize-public，匿名可下，不需要令牌），
+// 取不到再回退到自己的后端 /dl/latest.json。这样只要 GitHub 上发了新版，
+// 客户端下一次检查就会自动跟上；而后端分发仍然保留（内网 / 没外网出口的机器可用）。
 package main
 
 import (
@@ -28,12 +29,17 @@ import (
 
 type updateManifest struct {
 	Version    string `json:"version"`
-	URL        string `json:"url"` // 建议写相对路径（/dl/baize-desktop.exe），跟着当前配置的后端地址走
+	URL        string `json:"url"` // 可以是相对路径（跟随后端地址），也可以是绝对 URL（GitHub Release 资产）
 	SHA256     string `json:"sha256"`
 	SizeBytes  int64  `json:"sizeBytes"`
 	Notes      string `json:"notes"`
 	ReleasedAt string `json:"releasedAt"`
 }
+
+// githubManifestURL 公开镜像仓的「最新 Release」清单地址。
+// latest/download/ 是 GitHub 的固定跳转，永远指向最新一个 Release 的同名资产 ——
+// 不需要 API、不需要令牌，客户端只管请求它。
+const githubManifestURL = "https://github.com/HDKL0802/baize-public/releases/latest/download/latest.json"
 
 func init() {
 	// 平台专属路由：自动更新 + 截图提问（截图那组见 shot_windows.go）+ 悬浮球迷你小窗 + 临时浮窗
@@ -72,10 +78,24 @@ func newBackendRequest(method, path string) (*http.Request, error) {
 	return req, nil
 }
 
+// fetchManifest 取更新清单：先问 GitHub Releases，失败再回退到后端。
 func fetchManifest() (updateManifest, error) {
 	var m updateManifest
+	// GitHub 是公开仓：匿名请求，**不要**带本机令牌（令牌只应该发给自己的后端）。
+	ghErr := getJSON(githubManifestURL, false, 20*time.Second, &m)
+	if ghErr == nil && strings.TrimSpace(m.Version) != "" {
+		return m, nil
+	}
+	if ghErr != nil {
+		log.Printf("[更新] GitHub 清单取不到：%v（改用后端）", ghErr)
+	}
+
+	m = updateManifest{}
 	req, err := newBackendRequest(http.MethodGet, "/dl/latest.json")
 	if err != nil {
+		if ghErr != nil {
+			return m, fmt.Errorf("GitHub 与后端都取不到更新清单（GitHub：%v）", ghErr)
+		}
 		return m, err
 	}
 	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
@@ -92,6 +112,30 @@ func fetchManifest() (updateManifest, error) {
 	return m, nil
 }
 
+// getJSON 请求一个 URL 并解析 JSON。withToken=true 时走 newBackendRequest
+// （补上本机配置的后端地址与令牌）；false 时按原样请求（用于 GitHub 这类公开地址）。
+func getJSON(rawURL string, withToken bool, timeout time.Duration, out any) error {
+	var req *http.Request
+	var err error
+	if withToken {
+		req, err = newBackendRequest(http.MethodGet, rawURL)
+	} else {
+		req, err = http.NewRequest(http.MethodGet, rawURL, nil)
+	}
+	if err != nil {
+		return err
+	}
+	resp, err := (&http.Client{Timeout: timeout}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out)
+}
+
 // CheckUpdate 问后端有没有新版本（不下载）
 func CheckUpdate() (map[string]any, error) {
 	m, err := fetchManifest()
@@ -105,7 +149,7 @@ func CheckUpdate() (map[string]any, error) {
 	}, nil
 }
 
-// ApplyUpdate 下载更新包（zip：含 baize-desktop.exe + ui/）→ 校验 → 换掉 exe 与界面 → 起新进程 → 自己退出。
+// ApplyUpdate 下载更新包（zip：含 baize-desktop.exe + ui/ + float/）→ 校验 → 换掉 exe 与界面 → 起新进程 → 自己退出。
 //
 // ★为什么能覆盖「正在运行的自己」：Windows 不允许覆盖正在运行的 exe，但**允许改名**。
 // 顺序：先换 ui/（不是被占用的文件，可原地覆盖）→ 把自己改名为 xxx.old → 写新 exe → 起新进程 → 退出。
@@ -150,6 +194,14 @@ func ApplyUpdate() (map[string]any, error) {
 	if src := filepath.Join(pkgDir, "browser-ext"); dirExists(src) {
 		if err := copyTree(src, filepath.Join(exeDir, "browser-ext")); err != nil {
 			return nil, fmt.Errorf("替换扩展目录失败：%w", err)
+		}
+	}
+
+	// 1c) 浮窗界面（实时字幕小窗）。包内是 float/dist/，装到 exe 同级的 float/ 下。
+	//     整目录替换：旧版的 hash 资源文件名会残留，不删会越滚越大。
+	if src := filepath.Join(pkgDir, "float"); dirExists(src) {
+		if err := replaceDir(src, filepath.Join(exeDir, "float")); err != nil {
+			return nil, fmt.Errorf("替换浮窗界面失败：%w", err)
 		}
 	}
 
@@ -273,7 +325,15 @@ func downloadVerified(m updateManifest) (string, error) {
 	if u == "" {
 		u = "/dl/baize-desktop.zip"
 	}
-	req, err := newBackendRequest(http.MethodGet, u)
+	// 绝对 URL（GitHub Release 资产）直接请求，不要求先配置后端；
+	// 相对路径才补上本机配置的后端地址和令牌。
+	var req *http.Request
+	var err error
+	if strings.HasPrefix(u, "http") {
+		req, err = http.NewRequest(http.MethodGet, u, nil)
+	} else {
+		req, err = newBackendRequest(http.MethodGet, u)
+	}
 	if err != nil {
 		return "", err
 	}

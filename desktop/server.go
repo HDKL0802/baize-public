@@ -59,14 +59,13 @@ func buildHandler() http.Handler {
 	log.Printf("界面目录：%s", root)
 
 	// 浮窗独立静态目录（必须在根路由之前注册，不然 catch-all 会吞掉）
-	// findUIDir 返回 root = .../webui/dist（两层深）或 .../ui（一层深）
-	// 两种情况下 Dir(Dir(root)) 都能到达 desktop/ 目录，float/dist 跟 webui/dist 同级
-	floatDir := filepath.Join(filepath.Dir(filepath.Dir(root)), "float", "dist")
-	if fi, err := os.Stat(filepath.Join(floatDir, "index.html")); err == nil && !fi.IsDir() {
+	// 按 exe 定位，不依赖 ui 目录的层级：安装形态是 exe 同级 float/dist，
+	// 开发形态是 desktop/bin → desktop/float/dist。
+	if floatDir, ok := findFloatDir(); ok {
 		log.Printf("浮窗界面目录：%s", floatDir)
 		mux.Handle("/float/", http.StripPrefix("/float/", http.FileServer(http.Dir(floatDir))))
 	} else {
-		log.Printf("（浮窗界面目录 %s 未就绪，跳过）", floatDir)
+		log.Printf("（浮窗界面目录未就绪，跳过）")
 	}
 
 	mux.Handle("/", http.FileServer(http.Dir(root)))
@@ -573,5 +572,29 @@ func findUIDir() (string, error) {
 		}
 	}
 	return "", errors.New("没找到界面目录（试过 webui/dist/ 和 ui/，在 exe 同级/上一级 以及 cwd 下）")
+}
+
+// findFloatDir 定位浮窗界面（float/dist）。
+// 安装形态：exe 同级 float/dist；开发形态：desktop/bin → desktop/float/dist。
+// 只看 exe 位置，不跟着 ui 目录的层级走 —— 安装时 ui 是一层深，开发时它是两层深。
+func findFloatDir() (string, bool) {
+	var cands []string
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		cands = append(cands,
+			filepath.Join(dir, "float", "dist"),      // 安装形态：exe 同级
+			filepath.Join(dir, "..", "float", "dist"), // 开发形态：desktop/bin/
+		)
+	}
+	if wd, err := os.Getwd(); err == nil {
+		cands = append(cands, filepath.Join(wd, "float", "dist"))
+	}
+	for _, c := range cands {
+		if fi, err := os.Stat(filepath.Join(c, "index.html")); err == nil && !fi.IsDir() {
+			abs, _ := filepath.Abs(c)
+			return abs, true
+		}
+	}
+	return "", false
 }
 

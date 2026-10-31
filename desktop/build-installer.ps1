@@ -53,11 +53,21 @@ New-Item -ItemType Directory -Path $Stage | Out-Null
 Copy-Item -LiteralPath $Nsi  -Destination (Join-Path $Stage "installer.nsi") -Force
 Copy-Item -LiteralPath $Exe  -Destination (Join-Path $Stage "baize-desktop.exe") -Force
 
-# Multi-file layout: bundle the ui/ folder into the installer so the install has exe + ui/.
-$Ui = Join-Path $Src "ui"
-if (-not (Test-Path $Ui)) { throw "missing ui dir: $Ui (the ui folder is part of the installer)" }
+# Multi-file layout: bundle the built UIs into the installer so the install has
+# exe + ui/ + float/dist/. UIs are Vite builds (desktop\webui\dist, desktop\float\dist);
+# run build.ps1 first, which builds them and copies them into bin\.
+$Ui = Join-Path $Src "webui\dist"
+if (-not (Test-Path (Join-Path $Ui "index.html"))) { throw "missing UI build: $Ui (run build.ps1 first)" }
 Copy-Item -LiteralPath $Ui -Destination (Join-Path $Stage "ui") -Recurse -Force
 $UiStage = Join-Path $Stage "ui"
+
+# Float (live-subtitle mini window): installs to $INSTDIR\float\dist; server.go
+# looks for it next to the exe.
+$Float = Join-Path $Src "float\dist"
+if (-not (Test-Path (Join-Path $Float "index.html"))) { throw "missing float build: $Float (run build.ps1 first)" }
+New-Item -ItemType Directory -Force -Path (Join-Path $Stage "float") | Out-Null
+Copy-Item -LiteralPath $Float -Destination (Join-Path $Stage "float\dist") -Recurse -Force
+$FloatStage = Join-Path $Stage "float"
 
 # Chrome 扩展（浏览器双方案）：跟安装包一起装到 $INSTDIR\browser-ext
 $Ext = Join-Path $Src "browser-ext"
@@ -76,7 +86,7 @@ $OutStage = Join-Path $Stage "baize-desktop-setup.exe"
 $OutFinal = Join-Path $Bin ("baize-desktop-setup-" + $Version + ".exe")
 
 Write-Host "=== build installer: Baize $Version ===" -ForegroundColor Cyan
-& $Maker "/V2" "/DVERSION=$Version" "/DVERNUM=$VerNum" "/DOUTFILE=$OutStage" "/DUIDIR=$UiStage" (Join-Path $Stage "installer.nsi")
+& $Maker "/V2" "/DVERSION=$Version" "/DVERNUM=$VerNum" "/DOUTFILE=$OutStage" "/DUIDIR=$UiStage" "/DFLOATDIR=$FloatStage" (Join-Path $Stage "installer.nsi")
 if ($LASTEXITCODE -ne 0) { throw "makensis failed (exit $LASTEXITCODE)" }
 if (-not (Test-Path $OutStage)) { throw "makensis produced no output" }
 

@@ -1,0 +1,172 @@
+# 白泽桌面端自动发版 —— 打 tag 即构建 Windows exe / 更新包 / 安装包，并发布到 GitHub Releases。
+#
+# 触发：
+#   - push 形如 desktop-v0.6.0 的 tag（推荐）
+#   - workflow_dispatch 手动触发（在默认分支上构建并发布）
+#
+# 只在公开镜像仓 HDKL0802/baize-public 发 Release：
+#   - 官网 https://baize.wydhd.fun 的「下载」菜单从该仓的 Releases API 拉最新版本
+#   - 桌面端自动更新读
+#     https://github.com/HDKL0802/baize-public/releases/latest/download/latest.json
+#   私有仓 baize 的 Release 匿名不可达，发在那里客户端拿不到。
+#
+# 产物（每个 Release 都带）：
+#   baize-desktop-<ver>.zip             自动更新包（exe + ui/ + float/ + browser-ext/）
+#   baize-desktop-setup-<ver>.exe       安装包（NSIS，用户级安装）
+#   latest.json                         更新清单（含 sha256 / size / notes，URL 为绝对地址）
+#
+# 版本号唯一来源：desktop/device_windows.go 的 desktopAppVersion。
+name: desktop-release
+
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    if: github.repository == 'HDKL0802/baize-public'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        shell: pwsh
+        run: |
+          $m = Select-String -Path desktop/device_windows.go -Pattern 'desktopAppVersion\s*=\s*"([^"]+)"'
+          if (-not $m) { throw "cannot parse desktopAppVersion" }
+          $ver = $m.Matches[0].Groups[1].Value
+          "VERSION=$ver"   >> $env:GITHUB_ENV
+          "TAG=desktop-v$ver" >> $env:GITHUB_ENV
+          Write-Host "version = $ver"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            desktop/webui/package-lock.json
+            desktop/float/package-lock.json
+
+      - name: Build desktop UI
+        shell: pwsh
+        run: |
+          Push-Location desktop/webui
+          npm ci --no-audit --no-fund
+          npm run build
+          Pop-Location
+
+      - name: Build float UI
+        shell: pwsh
+        run: |
+          Push-Location desktop/float
+          npm ci --no-audit --no-fund
+          npm run build
+          Pop-Location
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: desktop/go.sum
+
+      - name: Build desktop exe
+        shell: pwsh
+        run: |
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          New-Item -ItemType Directory -Force -Path desktop/bin | Out-Null
+          go -C desktop build -trimpath -ldflags "-s -w -H windowsgui" -o bin/baize-desktop.exe .
+          if (-not (Test-Path desktop/bin/baize-desktop.exe)) { throw "exe not built" }
+
+      - name: Pack update zip
+        shell: pwsh
+        run: |
+          $stage = "build/pkg"
+          New-Item -ItemType Directory -Force -Path "$stage/ui", "$stage/float/dist", "$stage/browser-ext" | Out-Null
+          Copy-Item desktop/bin/baize-desktop.exe $stage/
+          Copy-Item "desktop/webui/dist/*" "$stage/ui/" -Recurse
+          Copy-Item "desktop/float/dist/*" "$stage/float/dist/" -Recurse
+          Copy-Item "desktop/browser-ext/*" "$stage/browser-ext/" -Recurse
+          $zip = "desktop/bin/baize-desktop-$env:VERSION.zip"
+          Compress-Archive -Path "$stage/*" -DestinationPath $zip -Force
+          if (-not (Test-Path $zip)) { throw "zip not created" }
+
+      - name: Write latest.json
+        shell: pwsh
+        run: |
+          $zip = "desktop/bin/baize-desktop-$env:VERSION.zip"
+          $sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $size = (Get-Item $zip).Length
+          $notes = Get-Content desktop/RELEASE_NOTES.txt -Raw -Encoding UTF8
+          $url = "https://github.com/HDKL0802/baize-public/releases/download/$env:TAG/baize-desktop-$env:VERSION.zip"
+          $man = [ordered]@{
+            version    = $env:VERSION
+            url        = $url
+            sha256     = $sha
+            sizeBytes  = $size
+            notes      = $notes.Trim()
+            releasedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+          }
+          $json = $man | ConvertTo-Json
+          Set-Content -Path "desktop/bin/latest.json" -Value $json -Encoding utf8NoBOM
+          Write-Host "sha256 = $sha  size = $size"
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis --no-progress -y
+          if (-not (Test-Path "C:\Program Files (x86)\NSIS\makensis.exe")) { throw "makensis missing" }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $ns = "build/nsis"
+          New-Item -ItemType Directory -Force -Path "$ns/float" | Out-Null
+          Copy-Item desktop/installer.nsi $ns/
+          Copy-Item desktop/bin/baize-desktop.exe $ns/
+          Copy-Item desktop/assets/icon.ico "$ns/icon.ico"
+          Copy-Item desktop/webui/dist -Destination "$ns/ui" -Recurse
+          Copy-Item desktop/float/dist -Destination "$ns/float/dist" -Recurse
+          Copy-Item desktop/browser-ext -Destination "$ns/browser-ext" -Recurse
+          $verNum = "$env:VERSION.0"
+          $setup = "$ns/baize-desktop-setup-$env:VERSION.exe"
+          & "C:\Program Files (x86)\NSIS\makensis.exe" "/V2" `
+            "/DVERSION=$env:VERSION" "/DVERNUM=$verNum" "/DOUTFILE=$setup" `
+            "/DUIDIR=$ns/ui" "/DFLOATDIR=$ns/float" "$ns/installer.nsi"
+          if ($LASTEXITCODE -ne 0) { throw "makensis failed ($LASTEXITCODE)" }
+          if (-not (Test-Path $setup)) { throw "installer not produced" }
+          Copy-Item $setup "desktop/bin/"
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $assets = @(
+            "desktop/bin/baize-desktop-$env:VERSION.zip",
+            "desktop/bin/baize-desktop-setup-$env:VERSION.exe",
+            "desktop/bin/latest.json"
+          )
+          foreach ($a in $assets) { if (-not (Test-Path $a)) { throw "missing asset: $a" } }
+          $exists = $false
+          gh release view $env:TAG --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { $exists = $true }
+          if ($exists) {
+            gh release upload $env:TAG $assets --clobber
+          } else {
+            gh release create $env:TAG $assets `
+              --title "白泽桌面端 $env:VERSION" `
+              --notes-file desktop/RELEASE_NOTES.md
+          }
+          Write-Host "released $env:TAG"

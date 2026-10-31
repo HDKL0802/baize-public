@@ -32,6 +32,10 @@ Unicode true
 !ifndef UIDIR
   !define UIDIR "${__FILEDIR__}\ui"
 !endif
+; 浮窗界面目录（float/dist）：build-installer.ps1 用 /DFLOATDIR 传进来
+!ifndef FLOATDIR
+  !define FLOATDIR "${__FILEDIR__}\float"
+!endif
 ; Chrome 扩展目录（浏览器双方案；用户手动在 chrome://extensions 里加载）
 !ifndef EXTDIR
   !define EXTDIR "${__FILEDIR__}\browser-ext"
@@ -177,6 +181,9 @@ Section "白泽桌面端（必需）" SEC_MAIN
   ; 界面目录（多文件形态：装出来是 exe + ui/ 多个文件）
   SetOutPath "$INSTDIR\ui"
   File /r "${UIDIR}\*.*"
+  ; 浮窗界面（实时字幕小窗）：$INSTDIR\float\dist
+  SetOutPath "$INSTDIR\float\dist"
+  File /r "${FLOATDIR}\*.*"
   ; Chrome 扩展（用户手动加载；不存在就跳过，不影响主程序）
   SetOutPath "$INSTDIR\browser-ext"
   File /r "${EXTDIR}\*.*"
@@ -226,6 +233,7 @@ Section "Uninstall"
   Delete "$INSTDIR\${APPEXE}.old"
   Delete "$INSTDIR\uninstall.exe"
   RMDir /r "$INSTDIR\ui"
+  RMDir /r "$INSTDIR\float"
   RMDir /r "$INSTDIR\browser-ext"
   ; User data under %LOCALAPPDATA%\Baize (config / cache) is left alone.
   RMDir "$INSTDIR"

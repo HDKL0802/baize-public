@@ -48,13 +48,17 @@ Write-Host "version = $ver"
 & powershell -ExecutionPolicy Bypass -File (Join-Path $desk "build.ps1")
 $exe = Join-Path $desk "bin\baize-desktop.exe"
 if (-not (Test-Path $exe)) { throw "build output missing: $exe" }
-$ui = Join-Path $desk "ui"
-if (-not (Test-Path $ui)) { throw "missing ui dir: $ui (multi-file layout needs it)" }
-$ext = Join-Path $desk "browser-ext"
-$pack = @($exe, $ui)
+# The UIs are Vite builds copied into bin\ by build.ps1 (ui/, float/dist/).
+# Pack the bin layout so the zip mirrors an installed copy: exe + ui/ + float/ + browser-ext/.
+$ui = Join-Path $desk "bin\ui"
+if (-not (Test-Path (Join-Path $ui "index.html"))) { throw "missing UI build: $ui (build.ps1 should have produced it)" }
+$float = Join-Path $desk "bin\float"
+if (-not (Test-Path (Join-Path $float "dist\index.html"))) { throw "missing float build: $float (build.ps1 should have produced it)" }
+$ext = Join-Path $desk "bin\browser-ext"
+$pack = @($exe, $ui, $float)
 if (Test-Path $ext) { $pack += $ext } else { Write-Host "WARN: missing browser-ext dir ($ext)" -ForegroundColor Yellow }
 
-# ---- 3b. pack the multi-file update (zip: baize-desktop.exe + ui/ + browser-ext/) ----
+# ---- 3b. pack the multi-file update (zip: baize-desktop.exe + ui/ + float/ + browser-ext/) ----
 $zip = Join-Path $desk ("bin\baize-desktop-" + $ver + ".zip")
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path $pack -DestinationPath $zip -Force

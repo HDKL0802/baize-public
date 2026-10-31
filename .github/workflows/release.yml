@@ -131,7 +131,7 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          $ns = "build/nsis"
+          $ns = Join-Path $PWD "build/nsis"
           New-Item -ItemType Directory -Force -Path "$ns/float" | Out-Null
           Copy-Item desktop/installer.nsi $ns/
           Copy-Item desktop/bin/baize-desktop.exe $ns/
@@ -141,9 +141,13 @@ jobs:
           Copy-Item desktop/browser-ext -Destination "$ns/browser-ext" -Recurse
           $verNum = "$env:VERSION.0"
           $setup = "$ns/baize-desktop-setup-$env:VERSION.exe"
+          # makensis 的 ${__FILEDIR__} 在相对脚本路径下会二次拼接，必须用绝对路径；
+          # 其余目录同理，全部显式传绝对路径。
           & "C:\Program Files (x86)\NSIS\makensis.exe" "/V2" `
             "/DVERSION=$env:VERSION" "/DVERNUM=$verNum" "/DOUTFILE=$setup" `
-            "/DUIDIR=$ns/ui" "/DFLOATDIR=$ns/float" "$ns/installer.nsi"
+            "/DICON=$ns/icon.ico" "/DROOTEXE=$ns/baize-desktop.exe" `
+            "/DUIDIR=$ns/ui" "/DFLOATDIR=$ns/float" "/DEXTDIR=$ns/browser-ext" `
+            "$ns/installer.nsi"
           if ($LASTEXITCODE -ne 0) { throw "makensis failed ($LASTEXITCODE)" }
           if (-not (Test-Path $setup)) { throw "installer not produced" }
           Copy-Item $setup "desktop/bin/"

@@ -1,4 +1,4 @@
-/* 白泽文档站 · 复用 app.css 的墨青 token / 导航 / 代码块 */
+/* 白泽文档站 · 复用 app.css 的墨玉 token / 导航 / 代码块 */
 
 .docs-shell {
   max-width: 1320px;
@@ -6,7 +6,7 @@
   display: grid;
   grid-template-columns: 220px minmax(0, 760px) 180px;
   gap: 48px;
-  padding: 40px 24px 96px;
+  padding: 48px 40px 112px;
   align-items: start;
 }
 
@@ -31,9 +31,9 @@
   margin: 0 0 16px;
   color: var(--fg-3);
   font-size: 13px;
-  background: var(--surface-2);
+  background: transparent;
   border: 1px solid var(--line);
-  border-radius: var(--r-btn);
+  border-radius: 2px;
 }
 .ds-search svg { width: 14px; height: 14px; flex: none; }
 
@@ -61,6 +61,7 @@
   color: var(--accent);
   border-left-color: var(--accent);
   font-weight: 600;
+  background: transparent;
 }
 
 /* ---------- 正文 ---------- */
@@ -78,17 +79,17 @@
 }
 .docs-main h1 {
   font-family: var(--font-display);
-  font-size: 40px;
-  font-weight: 600;
-  line-height: 1.25;
+  font-size: 44px;
+  font-weight: 500;
+  line-height: 1.15;
   letter-spacing: -.02em;
-  margin: 0 0 16px;
+  margin: 0 0 18px;
   color: var(--fg);
 }
 .docs-main .doc-lead {
   margin: 0 0 8px;
   font-size: 16px;
-  line-height: 1.75;
+  line-height: 1.85;
   color: var(--fg-2);
 }
 
@@ -101,10 +102,10 @@
 
 .docs-main h2 {
   font-family: var(--font-display);
-  font-size: 28px;
-  font-weight: 600;
+  font-size: 30px;
+  font-weight: 500;
   letter-spacing: -.02em;
-  line-height: 1.3;
+  line-height: 1.2;
   margin: 0 0 16px;
   color: var(--fg);
   scroll-margin-top: 88px;
@@ -120,14 +121,14 @@
 .docs-main p {
   margin: 0 0 16px;
   font-size: 15px;
-  line-height: 1.75;
+  line-height: 1.85;
   color: var(--fg-2);
 }
 .docs-main ul, .docs-main ol {
   margin: 0 0 20px;
   padding-left: 22px;
   font-size: 15px;
-  line-height: 1.75;
+  line-height: 1.85;
   color: var(--fg-2);
 }
 .docs-main li { margin-bottom: 8px; }
@@ -154,32 +155,34 @@
   padding: 14px 18px;
   margin: 0 0 20px;
   font-size: 14px;
-  line-height: 1.75;
+  line-height: 1.85;
   color: var(--fg-2);
   background: var(--accent-soft);
   border-left: 2px solid var(--accent);
-  border-radius: 0 var(--r-card) var(--r-card) 0;
+  border-radius: 0;
 }
-.callout.warn { border-left-color: var(--warn); background: rgba(227, 169, 60, .12); }
+.callout.warn { border-left-color: var(--jade-deep); background: rgba(11, 110, 99, .10); }
 .callout strong { color: var(--fg); }
 
-/* 小卡片网格 */
+/* 小卡片网格 → 细线清单 */
 .feat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 14px;
+  gap: 0;
   margin: 0 0 20px;
+  border-top: 1px solid var(--line);
 }
 .feat {
-  padding: 18px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
+  padding: 20px 22px 6px;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--line);
 }
-.feat .f-ic { display: flex; color: var(--accent); margin-bottom: 10px; }
+.feat:first-child { border-left: 0; padding-left: 0; }
+.feat .f-ic { display: flex; color: var(--accent); margin-bottom: 12px; }
 .feat .f-ic svg { width: 18px; height: 18px; }
-.feat .f-t { font-size: 14px; font-weight: 600; color: var(--fg); margin-bottom: 4px; }
-.feat .f-d { font-size: 13px; line-height: 1.65; color: var(--fg-2); }
+.feat .f-t { font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--fg); margin-bottom: 6px; }
+.feat .f-d { font-size: 13px; line-height: 1.8; color: var(--fg-2); }
 
 /* 表格 */
 .docs-main table {

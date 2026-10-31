@@ -93,8 +93,20 @@ function Push-Main {
   $url = "https://gitee.com/$Owner/$Name.git"
   $hdr = "http.extraheader=Authorization: Basic $b64"
   Write-Host "push -> $url ($Branch + tags)" -ForegroundColor Cyan
-  & git -c $hdr push $url $Branch 2>&1 | ForEach-Object { Write-Host "  $_" }
-  & git -c $hdr push $url --tags 2>&1 | ForEach-Object { Write-Host "  $_" }
+  # git writes progress to stderr; with ErrorActionPreference=Stop a redirected
+  # stderr line aborts the script, so relax it around the native calls.
+  $eap = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $out = (& git -c $hdr push $url $Branch 2>&1) | Out-String
+    $code = $LASTEXITCODE
+    ($out -split "`r?`n") | Where-Object { $_ } | ForEach-Object { Write-Host "  $_" }
+    if ($code -ne 0) { throw "push $Name $Branch failed (exit $code)" }
+    $out = (& git -c $hdr push $url --tags 2>&1) | Out-String
+    $code = $LASTEXITCODE
+    ($out -split "`r?`n") | Where-Object { $_ } | ForEach-Object { Write-Host "  $_" }
+    if ($code -ne 0) { throw "push $Name tags failed (exit $code)" }
+  } finally { $ErrorActionPreference = $eap }
 }
 
 function Upload-Asset {
@@ -136,6 +148,22 @@ function Upload-Asset {
 
 function Get-Release {
   try { return (GiteeApi -Method Get -Path "/repos/$Owner/$PublicRepo/releases/tags/$Tag") } catch { return $null }
+}
+
+# Gitee's release payload does not carry attachment ids, so ask attach_files.
+function Get-AttachIds {
+  param([long]$ReleaseId)
+  $map = @{}
+  try {
+    $list = @(GiteeApi -Method Get -Path "/repos/$Owner/$PublicRepo/releases/$ReleaseId/attach_files")
+    foreach ($a in $list) { if ($a.name) { $map[$a.name] = $a.id } }
+  } catch { }
+  return $map
+}
+
+function Remove-Attach {
+  param([long]$ReleaseId, [long]$FileId)
+  GiteeApi -Method Delete -Path "/repos/$Owner/$PublicRepo/releases/$ReleaseId/attach_files/$FileId" | Out-Null
 }
 
 # --- 1. repos ----------------------------------------------------------------
@@ -183,13 +211,12 @@ if ($rel) {
 }
 
 # --- 4. upload assets (drop same-named ones first so re-runs are clean) ------
-$existing = @{}
-foreach ($a in $rel.assets) { if ($a.name) { $existing[$a.name] = $a.id } }
+$existing = Get-AttachIds -ReleaseId $rel.id
 foreach ($path in $Assets) {
   if (-not (Test-Path $path)) { throw "asset not found: $path" }
   $fname = Split-Path (Resolve-Path $path).Path -Leaf
   if ($existing.ContainsKey($fname)) {
-    GiteeApi -Method Delete -Path "/repos/$Owner/$PublicRepo/releases/$($rel.id)/attach_files/$($existing[$fname])" | Out-Null
+    Remove-Attach -ReleaseId $rel.id -FileId $existing[$fname]
     Write-Host "  removed old asset: $fname" -ForegroundColor Yellow
   }
   Upload-Asset -ReleaseId $rel.id -File $path
@@ -218,15 +245,18 @@ if ($zipUrl -and (Test-Path $zipFile)) {
     notes      = $notes
     releasedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
   }
-  $out = Join-Path "desktop\bin" "latest-gitee.json"
-  Set-Content -Path $out -Value ($man | ConvertTo-Json) -Encoding utf8NoBOM
+  # must be named exactly latest.json: the desktop updater looks that asset up by name
+  $out = Join-Path (Get-Location).Path "desktop\bin\latest.json"
+  # PS 5.1 has no utf8NoBOM encoding literal; write UTF-8 without BOM explicitly.
+  $json = $man | ConvertTo-Json
+  [IO.File]::WriteAllText($out, $json, (New-Object Text.UTF8Encoding($false)))
 
-  # replace the GitHub latest.json that may have been uploaded, then add ours as
-  # the canonical "latest.json" name used by the desktop updater
-  foreach ($a in (Get-Release).assets) {
-    if ($a.name -eq "latest.json") {
-      GiteeApi -Method Delete -Path "/repos/$Owner/$PublicRepo/releases/$($rel.id)/attach_files/$($a.id)" | Out-Null
-      Write-Host "  removed old latest.json" -ForegroundColor Yellow
+  # drop whatever latest.json was uploaded before (GitHub-flavoured one), then add ours
+  $ids = Get-AttachIds -ReleaseId $rel.id
+  foreach ($name in @("latest.json", "latest-gitee.json")) {
+    if ($ids.ContainsKey($name)) {
+      Remove-Attach -ReleaseId $rel.id -FileId $ids[$name]
+      Write-Host "  removed old $name" -ForegroundColor Yellow
     }
   }
   Upload-Asset -ReleaseId $rel.id -File $out

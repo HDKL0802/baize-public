@@ -1,1 +1,1 @@
-桌面端 0.6.1：换掉「白」字方块 logo，全端统一为白泽独角瑞兽线描图标（桌面侧栏 / 官网 logo 与 favicon / 安装包与 exe / NAS 面板 / 移动端）；NAS 部署改成一条 curl 命令，装完自带 baize-nas（deploy/status/start/stop/restart/logs/rollback/uninstall），取消部署会停容器并清空数据，每次部署自动保留上一版镜像供回滚。
+桌面端 0.7.0：发布源拆成国内 Gitee 与国外 GitHub 双镜像，官网下载菜单自动探测并支持手动切换，仓库与文档链接随镜像改写，桌面端检查更新走 GitHub→Gitee→后端三级回退；桌面端与手机端设置页新增「更新后端」，后端自取新二进制、sha256 校验后落盘，容器重启时自动替换接管，无需 Docker socket 与 SSH；NAS 一键脚本按镜像挑地址并校验 sha256，容器内新增 entrypoint 提升机制；全端版本号统一为 0.7.0。

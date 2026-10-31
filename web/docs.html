@@ -60,10 +60,12 @@
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div class="nav-download-menu" role="menu">
-          <div class="ndm-loading">正在从 GitHub 获取最新版本…</div>
+          <div class="ndm-loading">正在获取最新版本…</div>
         </div>
       </div>
-      <a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener" class="nav-cta">GitHub</a>
+      <a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener" class="nav-cta"
+         data-github="https://github.com/HDKL0802/baize" data-gitee="https://gitee.com/szk0037/baize"
+         data-github-label="GitHub" data-gitee-label="Gitee">GitHub</a>
     </div>
   </div>
 </nav>
@@ -213,7 +215,7 @@ adb install -r mobile\android\bz-todo-v&lt;版本&gt;.apk</pre>
         <thead><tr><th>需要</th><th>说明</th></tr></thead>
         <tbody>
           <tr><td>NAS 上有 Docker</td><td>镜像在 NAS 本地构建，电脑端不需要 Docker</td></tr>
-          <tr><td>NAS 能访问 GitHub</td><td>一键脚本从公开 Release 下载后端二进制（内网可用 <code>--binary</code> 走本地文件）</td></tr>
+          <tr><td>NAS 能访问 Gitee 或 GitHub</td><td>一键脚本从公开 Release 下载后端二进制（内网可用 <code>--binary</code> 走本地文件）</td></tr>
           <tr><td>sudo 权限</td><td>写 <code>/vol1/@appdata/baize</code> 与操作 Docker 需要 root</td></tr>
           <tr><td>可选：基础镜像</td><td>默认用 daocloud 镜像；可用 <code>BAIZE_BASE_IMAGE</code> 覆盖</td></tr>
         </tbody>
@@ -291,7 +293,7 @@ adb install -r mobile\android\bz-todo-v&lt;版本&gt;.apk</pre>
 
       <h3>运行形态</h3>
       <ul>
-        <li>Docker 单容器，镜像在 NAS 本地从 GitHub Release 下载的 linux/amd64 二进制构建</li>
+        <li>Docker 单容器，镜像在 NAS 本地从 Gitee / GitHub Release 下载的 linux/amd64 二进制构建</li>
         <li>默认端口 <code>8787</code>，健康检查走 <code>/api/health</code></li>
         <li>数据目录默认 <code>/vol1/@appdata/baize</code>，SQLite 存正本</li>
         <li>每次部署把旧镜像标记为 <code>baize-backend:previous</code>，健康检查失败自动回滚</li>
@@ -579,7 +581,7 @@ adb install -r mobile\android\bz-todo-v&lt;版本&gt;.apk</pre>
       <p>多半是系统把前台服务杀了。去系统设置里允许「自启动」和「后台运行」，并把电池策略改成「不限制」。</p>
 
       <h3>下载链接是最新的吗？</h3>
-      <p>是。官网的下载菜单每次打开都从 GitHub Releases API 拉最新版本，发新版后不需要改网页。</p>
+      <p>是。官网的下载菜单每次打开都从 Gitee / GitHub Releases API 拉最新版本（国内自动走 Gitee、国外走 GitHub，也可在菜单里手动切换），发新版后不需要改网页。</p>
     </section>
 
     <!-- ========== 许可与安全 ========== -->
@@ -589,7 +591,9 @@ adb install -r mobile\android\bz-todo-v&lt;版本&gt;.apk</pre>
       <ul>
         <li><strong>主体：MIT</strong></li>
         <li><strong>例外：</strong><code>agent/internal/memory</code> 与 <code>agent/internal/voice</code> 为 GPL-3.0</li>
-        <li>第三方依赖清单见 <a href="https://github.com/HDKL0802/baize/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener">THIRD-PARTY-NOTICES.md</a></li>
+        <li>第三方依赖清单见 <a href="https://github.com/HDKL0802/baize/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener"
+              data-github="https://github.com/HDKL0802/baize/blob/main/THIRD-PARTY-NOTICES.md"
+              data-gitee="https://gitee.com/szk0037/baize/blob/main/THIRD-PARTY-NOTICES.md">THIRD-PARTY-NOTICES.md</a></li>
       </ul>
 
       <h3>风险声明</h3>
@@ -607,7 +611,8 @@ adb install -r mobile\android\bz-todo-v&lt;版本&gt;.apk</pre>
         <span class="pg-dir">返回</span>
         首页
       </a>
-      <a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener" class="next">
+      <a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener" class="next"
+         data-github="https://github.com/HDKL0802/baize" data-gitee="https://gitee.com/szk0037/baize">
         <span class="pg-dir">下一步</span>
         查看源码 →
       </a>

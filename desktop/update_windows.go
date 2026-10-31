@@ -41,6 +41,51 @@ type updateManifest struct {
 // 不需要 API、不需要令牌，客户端只管请求它。
 const githubManifestURL = "https://github.com/HDKL0802/baize-public/releases/latest/download/latest.json"
 
+// giteeLatestReleaseURL 国内镜像的「最新 Release」API（Gitee 允许匿名跨域读公开仓）。
+const giteeLatestReleaseURL = "https://gitee.com/api/v5/repos/szk0037/baize-public/releases/latest"
+
+// giteeRelease 只取清单需要的字段。
+type giteeRelease struct {
+	TagName string `json:"tag_name"`
+	Assets  []struct {
+		Name string `json:"name"`
+		URL  string `json:"browser_download_url"`
+	} `json:"assets"`
+}
+
+// fetchGiteeManifest 国内网络下 GitHub 常常连不上：从 Gitee 最新 Release 里
+// 先取 latest.json（版本 / 说明 / sha256），再把下载地址换成 Gitee 自己托管的 zip。
+func fetchGiteeManifest() (updateManifest, error) {
+	var rel giteeRelease
+	if err := getJSON(giteeLatestReleaseURL, false, 20*time.Second, &rel); err != nil {
+		return updateManifest{}, err
+	}
+	version := strings.TrimPrefix(rel.TagName, "desktop-v")
+	var m updateManifest
+	var zipURL string
+	for _, a := range rel.Assets {
+		if a.Name == "latest.json" && a.URL != "" {
+			var man updateManifest
+			if err := getJSON(a.URL, false, 20*time.Second, &man); err == nil {
+				m = man
+			}
+		}
+		if version != "" && a.Name == "baize-desktop-"+version+".zip" {
+			zipURL = a.URL
+		}
+	}
+	if m.Version == "" {
+		m.Version = version
+	}
+	if zipURL != "" {
+		m.URL = zipURL
+	}
+	if m.Version == "" || m.URL == "" {
+		return m, errors.New("Gitee 最新 Release 缺 latest.json / 更新包")
+	}
+	return m, nil
+}
+
 func init() {
 	// 平台专属路由：自动更新 + 截图提问（截图那组见 shot_windows.go）+ 悬浮球迷你小窗 + 临时浮窗
 	registerPlatformRoutes = func(mux *http.ServeMux) {
@@ -78,7 +123,7 @@ func newBackendRequest(method, path string) (*http.Request, error) {
 	return req, nil
 }
 
-// fetchManifest 取更新清单：先问 GitHub Releases，失败再回退到后端。
+// fetchManifest 取更新清单：GitHub → Gitee → 后端，依次回退。
 func fetchManifest() (updateManifest, error) {
 	var m updateManifest
 	// GitHub 是公开仓：匿名请求，**不要**带本机令牌（令牌只应该发给自己的后端）。
@@ -87,16 +132,22 @@ func fetchManifest() (updateManifest, error) {
 		return m, nil
 	}
 	if ghErr != nil {
-		log.Printf("[更新] GitHub 清单取不到：%v（改用后端）", ghErr)
+		log.Printf("[更新] GitHub 清单取不到：%v（改用 Gitee）", ghErr)
+	} else {
+		log.Printf("[更新] GitHub 清单为空（改用 Gitee）")
 	}
+
+	var geErr error
+	m, geErr = fetchGiteeManifest()
+	if geErr == nil {
+		return m, nil
+	}
+	log.Printf("[更新] Gitee 清单取不到：%v（改用后端）", geErr)
 
 	m = updateManifest{}
 	req, err := newBackendRequest(http.MethodGet, "/dl/latest.json")
 	if err != nil {
-		if ghErr != nil {
-			return m, fmt.Errorf("GitHub 与后端都取不到更新清单（GitHub：%v）", ghErr)
-		}
-		return m, err
+		return m, fmt.Errorf("GitHub、Gitee 与后端都取不到更新清单（GitHub：%v；Gitee：%v）", ghErr, geErr)
 	}
 	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
 	if err != nil {

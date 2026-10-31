@@ -234,6 +234,26 @@ code, pre { font-family: var(--mono); }
   border-radius: 2px;
   cursor: pointer;
 }
+/* 下载源切换：自动 / 国内 Gitee / 国外 GitHub */
+.ndm-mirror { display: flex; align-items: center; gap: 10px; padding: 6px 12px 8px; }
+.ndm-mirror-label { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; color: var(--text-3); flex: none; }
+.ndm-mirror-btns { display: flex; flex: 1; gap: 4px; }
+.ndm-mirror-btn {
+  flex: 1;
+  height: 26px;
+  padding: 0 6px;
+  font-family: var(--font);
+  font-size: 11px;
+  color: var(--text-3);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+}
+.ndm-mirror-btn:hover { color: var(--text); border-color: var(--jade); }
+.ndm-mirror-btn.on { color: var(--ink); background: var(--jade); border-color: var(--jade); }
 
 .nav-toggle {
   display: none;

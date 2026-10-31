@@ -20,17 +20,22 @@
 #   help               显示帮助
 #
 # 常用参数：
-#   deploy --version 0.6.0     装指定版本（默认取 GitHub 最新 Release）
+#   deploy --version 0.6.0     装指定版本（默认自动选 Gitee / GitHub 最新 Release）
 #   deploy --binary <路径>     用本地已编译好的 linux/amd64 二进制（开发调试）
 #   uninstall --yes [--keep-data]
 #
 # 可覆盖的环境变量：BAIZE_HOME / BAIZE_DATA_DIR / BAIZE_PORT / BAIZE_BASE_IMAGE /
-#                   BAIZE_TOKEN（健康检查用）/ BAIZE_REPO / BAIZE_BIN_DIR
+#                   BAIZE_TOKEN（健康检查用）/ BAIZE_MIRROR（auto|gitee|github）/
+#                   BAIZE_GITHUB_REPO / BAIZE_GITEE_REPO / BAIZE_BIN_DIR
 #
 set -uo pipefail
 
 SCRIPT_URL="${BAIZE_INSTALL_URL:-https://baize.wydhd.fun/nas/install.sh}"
-REPO="${BAIZE_REPO:-HDKL0802/baize-public}"
+# 发布仓：国内走 Gitee，国外走 GitHub；BAIZE_MIRROR 可强制指定 auto|gitee|github
+GITHUB_REPO="${BAIZE_GITHUB_REPO:-HDKL0802/baize-public}"
+GITEE_REPO="${BAIZE_GITEE_REPO:-szk0037/baize-public}"
+REPO="$GITHUB_REPO"
+MIRROR="${BAIZE_MIRROR:-auto}"
 BASE_DIR="${BAIZE_HOME:-/vol1/@appdata/baize}"
 DATA_DIR="${BAIZE_DATA_DIR:-$BASE_DIR/data}"
 BUILD_DIR="$BASE_DIR/build"
@@ -98,27 +103,61 @@ health_ok() {
   # 没配令牌时 /api/health 可能要鉴权：退化为「容器在跑」即视为可用
   [ -z "$TOKEN" ] && container_running
 }
-latest_release() {
-  curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
-    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1
+release_api() { # $1=mirror
+  if [ "$1" = "gitee" ]; then
+    echo "https://gitee.com/api/v5/repos/$GITEE_REPO/releases/latest"
+  else
+    echo "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+  fi
+}
+release_json() { curl -fsSL -m 15 "$(release_api "$1")" 2>/dev/null; }
+latest_release() { # $1=mirror
+  release_json "$1" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1
+}
+asset_url() { # $1=mirror $2=资产名（含 .sha256 也算名字的一部分）
+  release_json "$1" | grep -o '"browser_download_url": *"[^"]*"' \
+    | grep -F "$2" | head -n1 | cut -d'"' -f4
+}
+pick_mirror() { # auto：先试 Gitee（国内快），取不到再 GitHub
+  case "$MIRROR" in
+    gitee|github) echo "$MIRROR" ;;
+    *) if [ -n "$(latest_release gitee)" ]; then echo gitee; else echo github; fi ;;
+  esac
 }
 
 write_stack_files() {
-  as_root mkdir -p "$BUILD_DIR" "$COMPOSE_DIR" "$DATA_DIR"
-  as_root chown 1000:1001 "$DATA_DIR" 2>/dev/null || true
-  as_root chmod 775 "$DATA_DIR" 2>/dev/null || true
+  as_root mkdir -p "$BUILD_DIR" "$COMPOSE_DIR" "$DATA_DIR" "$DATA_DIR/bin"
+  as_root chown -R 1000:1001 "$DATA_DIR" 2>/dev/null || true
+  as_root chmod 775 "$DATA_DIR" "$DATA_DIR/bin" 2>/dev/null || true
+  cat > "$BUILD_DIR/entrypoint.sh" <<'ENTRYPOINT'
+#!/bin/sh
+# 白泽后端容器入口：优先执行 <数据目录>/bin 下的后端二进制。
+# 设置页「更新后端」把新版下载成 baize-backend.new，重启容器时在这里提升为正式版本；
+# 想回滚到镜像内置版本，删掉 /data/bin/baize-backend 即可。
+set -e
+DIR=/data/bin
+if [ -f "$DIR/baize-backend.new" ]; then
+  mv -f "$DIR/baize-backend.new" "$DIR/baize-backend"
+  chmod +x "$DIR/baize-backend"
+fi
+if [ -x "$DIR/baize-backend" ]; then
+  exec "$DIR/baize-backend" "$@"
+fi
+exec /app/baize-backend "$@"
+ENTRYPOINT
   cat > "$BUILD_DIR/Dockerfile.nas" <<'DOCKERFILE'
 ARG BASE_IMAGE=docker.m.daocloud.io/library/alpine:3.20
 FROM ${BASE_IMAGE}
 RUN apk add --no-cache ca-certificates tzdata chromium fontconfig font-noto-cjk
 RUN fc-cache -f
-ENV TZ=Asia/Shanghai
+ENV TZ=Asia/Shanghai BAIZE_IN_CONTAINER=1
 WORKDIR /app
 COPY baize-backend /app/baize-backend
-RUN chmod +x /app/baize-backend
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/baize-backend /app/entrypoint.sh
 VOLUME ["/data"]
 EXPOSE 8787
-ENTRYPOINT ["/app/baize-backend"]
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["--addr", "0.0.0.0:8787", "--data", "/data"]
 DOCKERFILE
   cat > "$COMPOSE_DIR/docker-compose.yml" <<COMPOSE
@@ -131,6 +170,8 @@ services:
     network_mode: host
     environment:
       - TZ=Asia/Shanghai
+      - BAIZE_IN_CONTAINER=1
+      - BAIZE_MIRROR=$MIRROR
     volumes:
       - $DATA_DIR:/data
     command: ["--addr", "0.0.0.0:$PORT", "--data", "/data"]
@@ -159,24 +200,27 @@ cmd_deploy() {
     esac
   done
 
-  as_root mkdir -p "$BUILD_DIR" "$COMPOSE_DIR" "$DATA_DIR"
+  as_root mkdir -p "$BUILD_DIR" "$COMPOSE_DIR" "$DATA_DIR" "$DATA_DIR/bin"
 
   # 1) 取版本 & 二进制
-  local tag
+  local tag mirror url sha_url
   if [ -n "$binary" ]; then
     [ -f "$binary" ] || die "找不到二进制：$binary"
     version="${version:-local}"
     say "=== 1/6 使用本地二进制 $binary ==="
     as_root cp "$binary" "$BUILD_DIR/baize-backend"
   else
-    say "=== 1/6 拉取最新后端二进制（GitHub Release） ==="
-    tag="$(latest_release)"
-    [ -n "$tag" ] || die "拿不到 $REPO 的最新 Release（网络或仓库问题）。也可用 --binary 指定本地二进制。"
+    mirror="$(pick_mirror)"
+    say "=== 1/6 拉取最新后端二进制（来源：$mirror） ==="
+    tag="$(latest_release "$mirror")"
+    [ -n "$tag" ] || die "拿不到最新 Release（Gitee / GitHub 都不通）。也可用 --binary 指定本地二进制。"
     version="${version:-${tag#desktop-v}}"
-    local url="https://github.com/$REPO/releases/download/$tag/baize-backend-linux-amd64"
+    url="$(asset_url "$mirror" baize-backend-linux-amd64)"
+    [ -n "$url" ] || die "该 Release 还没带后端二进制（baize-backend-linux-amd64），稍后再试或用 --binary"
     as_root curl -fL --retry 3 -o "$BUILD_DIR/baize-backend" "$url" \
-      || die "下载失败：$url（该 Release 可能还没带后端二进制，稍后再试或用 --binary）"
-    if curl -fsSL -o /tmp/baize.sha256 "$url.sha256" 2>/dev/null; then
+      || die "下载失败：$url（可用 --binary 指定本地二进制）"
+    sha_url="$(asset_url "$mirror" 'baize-backend-linux-amd64.sha256')"
+    if [ -n "$sha_url" ] && curl -fsSL -o /tmp/baize.sha256 "$sha_url" 2>/dev/null; then
       local want got
       want="$(awk '{print $1}' /tmp/baize.sha256)"
       got="$(sha256sum "$BUILD_DIR/baize-backend" | awk '{print $1}')"
@@ -186,7 +230,7 @@ cmd_deploy() {
     else
       warn "该 Release 没有 .sha256，跳过校验"
     fi
-    ok "版本 $version"
+    ok "版本 $version（来源：$mirror）"
   fi
 
   # 2) 落地 Dockerfile / compose

@@ -78,7 +78,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         文档
       </a>
-      <!-- 下载按钮：hover/click 展开；链接由 JS 从 GitHub API 动态填充 -->
+      <!-- 下载按钮：hover/click 展开；链接由 JS 按「国内 Gitee / 国外 GitHub」动态填充 -->
       <div class="nav-download">
         <button class="nav-download-btn" type="button" aria-haspopup="menu" aria-expanded="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -86,10 +86,12 @@
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div class="nav-download-menu" role="menu">
-          <div class="ndm-loading">正在从 GitHub 获取最新版本…</div>
+          <div class="ndm-loading">正在获取最新版本…</div>
         </div>
       </div>
-      <a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener" class="nav-cta">GitHub</a>
+      <a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener" class="nav-cta"
+         data-github="https://github.com/HDKL0802/baize" data-gitee="https://gitee.com/szk0037/baize"
+         data-github-label="GitHub" data-gitee-label="Gitee">GitHub</a>
     </div>
   </div>
 </nav>
@@ -125,7 +127,8 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           一条命令部署
         </a>
-        <a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener" class="btn text-link">
+        <a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener" class="btn text-link"
+           data-github="https://github.com/HDKL0802/baize" data-gitee="https://gitee.com/szk0037/baize">
           查看源码
           <span class="arr" aria-hidden="true">→</span>
         </a>
@@ -346,7 +349,7 @@ adb install -r mobile\android\bz-todo-v0.9.0.apk
 
       <div class="deploy-pane" data-pane="manual">
         <div class="code-wrap">
-<pre class="code-block"><button class="copy-btn" data-copy>复制</button><span class="cmt"># 从 GitHub Releases 下载对应平台的独立 zip</span>
+<pre class="code-block"><button class="copy-btn" data-copy>复制</button><span class="cmt"># 从 Gitee / GitHub Releases 下载对应平台的独立 zip</span>
 <span class="cmt"># 所有产物均为静态编译，解压即用，无需安装</span>
 
 <span class="cmt"># 后端（Linux amd64 / arm64 / 含 Dockerfile）</span>
@@ -675,9 +678,12 @@ adb install -r mobile\android\bz-todo-v0.9.0.apk
       <div class="footer-col">
         <h4>源码与下载</h4>
         <ul>
-          <li><a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener">GitHub · 工作仓</a></li>
-          <li><a href="https://github.com/HDKL0802/baize-public" target="_blank" rel="noopener">GitHub · 公开镜像</a></li>
-          <li><a href="https://github.com/HDKL0802/baize/releases" target="_blank" rel="noopener">Release · 桌面安装包 / 手机 APK</a></li>
+          <li><a href="https://gitee.com/szk0037/baize" target="_blank" rel="noopener">国内 · Gitee 工作仓</a></li>
+          <li><a href="https://gitee.com/szk0037/baize-public" target="_blank" rel="noopener">国内 · Gitee 公开镜像</a></li>
+          <li><a href="https://gitee.com/szk0037/baize-public/releases" target="_blank" rel="noopener">国内 · Gitee Releases（安装包 / APK）</a></li>
+          <li><a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener">国外 · GitHub 工作仓</a></li>
+          <li><a href="https://github.com/HDKL0802/baize-public" target="_blank" rel="noopener">国外 · GitHub 公开镜像</a></li>
+          <li><a href="https://github.com/HDKL0802/baize-public/releases" target="_blank" rel="noopener">国外 · GitHub Releases（安装包 / APK）</a></li>
           <li><a href="https://github.com/HDKL0802/baize-plugins" target="_blank" rel="noopener">插件市场源</a></li>
         </ul>
       </div>
@@ -686,10 +692,18 @@ adb install -r mobile\android\bz-todo-v0.9.0.apk
         <h4>更多</h4>
         <ul>
           <li><a href="docs.html">使用文档 · 项目介绍 / 快速开始 / 三端说明</a></li>
-          <li><a href="https://github.com/HDKL0802/baize/blob/main/白泽项目交接文档.md" target="_blank" rel="noopener">开发者交接文档</a></li>
-          <li><a href="https://github.com/HDKL0802/baize/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a></li>
-          <li><a href="https://github.com/HDKL0802/baize/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener">第三方许可清单</a></li>
-          <li><a href="https://github.com/HDKL0802/baize/issues" target="_blank" rel="noopener">Issue / Discussions</a></li>
+          <li><a href="https://github.com/HDKL0802/baize/blob/main/白泽项目交接文档.md" target="_blank" rel="noopener"
+                  data-github="https://github.com/HDKL0802/baize/blob/main/白泽项目交接文档.md"
+                  data-gitee="https://gitee.com/szk0037/baize/blob/main/白泽项目交接文档.md">开发者交接文档</a></li>
+          <li><a href="https://github.com/HDKL0802/baize/blob/main/LICENSE" target="_blank" rel="noopener"
+                  data-github="https://github.com/HDKL0802/baize/blob/main/LICENSE"
+                  data-gitee="https://gitee.com/szk0037/baize/blob/main/LICENSE">MIT License</a></li>
+          <li><a href="https://github.com/HDKL0802/baize/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener"
+                  data-github="https://github.com/HDKL0802/baize/blob/main/THIRD-PARTY-NOTICES.md"
+                  data-gitee="https://gitee.com/szk0037/baize/blob/main/THIRD-PARTY-NOTICES.md">第三方许可清单</a></li>
+          <li><a href="https://github.com/HDKL0802/baize/issues" target="_blank" rel="noopener"
+                  data-github="https://github.com/HDKL0802/baize/issues"
+                  data-gitee="https://gitee.com/szk0037/baize/issues">Issue / Discussions</a></li>
         </ul>
       </div>
     </div>
@@ -697,13 +711,17 @@ adb install -r mobile\android\bz-todo-v0.9.0.apk
     <div class="footer-bottom">
       <div class="fb-copy"><span class="fb-mark" aria-hidden="true"></span>© 2026 白泽智能体 · Built on Go · MIT License</div>
       <div class="social-links">
-        <a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener" aria-label="GitHub">
+        <a href="https://github.com/HDKL0802/baize" target="_blank" rel="noopener" aria-label="GitHub"
+           data-github="https://github.com/HDKL0802/baize" data-gitee="https://gitee.com/szk0037/baize">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.9 1.2 1.9 1.2 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.3-3.2-.1-.3-.6-1.6.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.7 1.6.2 2.9.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>
         </a>
-        <a href="https://github.com/HDKL0802/baize/issues" target="_blank" rel="noopener" aria-label="Issues">
+        <a href="https://github.com/HDKL0802/baize/issues" target="_blank" rel="noopener" aria-label="Issues"
+           data-github="https://github.com/HDKL0802/baize/issues" data-gitee="https://gitee.com/szk0037/baize/issues">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         </a>
-        <a href="https://raw.githubusercontent.com/HDKL0802/baize/main/白泽项目交接文档.md" target="_blank" rel="noopener" aria-label="Docs">
+        <a href="https://raw.githubusercontent.com/HDKL0802/baize/main/白泽项目交接文档.md" target="_blank" rel="noopener" aria-label="Docs"
+           data-github="https://raw.githubusercontent.com/HDKL0802/baize/main/白泽项目交接文档.md"
+           data-gitee="https://gitee.com/szk0037/baize/raw/main/白泽项目交接文档.md">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         </a>
       </div>

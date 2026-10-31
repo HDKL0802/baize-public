@@ -1,7 +1,7 @@
-/* 白泽官网 · 交互脚本 v3.2
+/* 白泽官网 · 交互脚本 v3.3
    1. 快速开始 4 卡片展开切换
    2. 代码块复制按钮
-   3. 下载按钮：从 GitHub API 动态拉 latest release，自动填充三端直链（1h 缓存）
+   3. 下载按钮：双源（国内 Gitee / 国外 GitHub）拉 latest release，自动填充三端直链（1h 缓存）
    4. 移动端导航菜单
    5. 滚动渐入动画
 */
@@ -10,16 +10,29 @@
   "use strict";
 
   // ===================== 配置 =====================
-  // 注意：工作仓 HDKL0802/baize 是私有仓库，匿名 API 会 404；
-  // 官网面向公网，必须读公开镜像仓 HDKL0802/baize-public。
-  const GITHUB_OWNER = "HDKL0802";
-  const GITHUB_REPO  = "baize-public";
-  const API_BASE     = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}`;
-  const RELEASE_API  = `${API_BASE}/releases/latest`;
-  const RELEASES_API = `${API_BASE}/releases?per_page=30`;
-  const COMPOSE_URL  = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/deploy/nas-docker-compose.yml`;
-  const CACHE_KEY    = "baize-latest-release-v3";
-  const CACHE_TTL_MS = 60 * 60 * 1000;  // 1 小时
+  // 双源发布：国内走 Gitee（szk0037/baize-public），国外走 GitHub（HDKL0802/baize-public）。
+  // 默认自动判定（GitHub API 2.5 秒内不通就用 Gitee），也可以在下载菜单里手动切换。
+  const MIRRORS = {
+    github: {
+      label: "GitHub",
+      api: "https://api.github.com/repos/HDKL0802/baize-public",
+      releases: "https://github.com/HDKL0802/baize-public/releases",
+      raw: "https://raw.githubusercontent.com/HDKL0802/baize-public/main",
+      headers: { Accept: "application/vnd.github+json" },
+    },
+    gitee: {
+      label: "Gitee",
+      api: "https://gitee.com/api/v5/repos/szk0037/baize-public",
+      releases: "https://gitee.com/szk0037/baize-public/releases",
+      raw: "https://gitee.com/szk0037/baize-public/raw/main",
+      headers: {},
+    },
+  };
+  const MIRROR_KEY   = "baize-mirror";           // auto | gitee | github
+  const CACHE_PREFIX = "baize-latest-release-v4-";
+  const CACHE_TTL_MS = 60 * 60 * 1000;           // 1 小时
+  let mirrorName = "github";
+  let mirrorInfo = MIRRORS.github;
 
   // 匹配规则：从 release assets 里按文件名找到对应文件
   const ASSET_MATCHERS = {
@@ -81,11 +94,53 @@
   const downloadWrap  = document.querySelector(".nav-download");
   const downloadBtn   = document.querySelector(".nav-download-btn");
   const downloadMenu  = document.querySelector(".nav-download-menu");
-  const releasesUrl   = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
+
+  // ---------- 下载源：自动探测 / 手动切换 ----------
+  function readMirrorPref() {
+    try { return localStorage.getItem(MIRROR_KEY) || "auto"; } catch { return "auto"; }
+  }
+  function saveMirrorPref(v) {
+    try {
+      if (v === "auto") localStorage.removeItem(MIRROR_KEY);
+      else localStorage.setItem(MIRROR_KEY, v);
+    } catch {}
+  }
+  function setMirror(name) {
+    mirrorName = MIRRORS[name] ? name : "github";
+    mirrorInfo = MIRRORS[mirrorName];
+    applySiteLinks();
+  }
+  // 站点里的仓库 / 文档 / Issue 链接跟着下载源走（国内 Gitee，国外 GitHub）
+  function applySiteLinks() {
+    document.querySelectorAll("[data-github][data-gitee]").forEach((el) => {
+      const url = mirrorName === "gitee" ? el.dataset.gitee : el.dataset.github;
+      if (url) el.href = url;
+      const label = mirrorName === "gitee" ? el.dataset.giteeLabel : el.dataset.githubLabel;
+      if (label) el.textContent = label;
+    });
+  }
+  // 2.5 秒内能连上 api.github.com 就用 GitHub，否则认为在国内网络环境，改用 Gitee。
+  function probeGitHub(ms) {
+    return new Promise((resolve) => {
+      const ac = new AbortController();
+      const timer = setTimeout(() => { ac.abort(); resolve(false); }, ms);
+      fetch(`${MIRRORS.github.api}/releases/latest`, {
+        headers: MIRRORS.github.headers, cache: "no-store", signal: ac.signal,
+      })
+        .then((res) => { clearTimeout(timer); resolve(res.ok); })
+        .catch(() => { clearTimeout(timer); resolve(false); });
+    });
+  }
+  async function resolveMirror() {
+    const pref = readMirrorPref();
+    if (MIRRORS[pref]) { setMirror(pref); return; }
+    const ghOK = await probeGitHub(2500);
+    setMirror(ghOK ? "github" : "gitee");
+  }
 
   function setLoading() {
     if (!downloadMenu) return;
-    downloadMenu.innerHTML = `<div class="ndm-loading">正在从 GitHub 获取最新版本…</div>`;
+    downloadMenu.innerHTML = `<div class="ndm-loading">正在从 ${mirrorInfo.label} 获取最新版本…</div>`;
   }
   function setError(msg, onRetry) {
     if (!downloadMenu) return;
@@ -98,20 +153,37 @@
     if (b && onRetry) b.addEventListener("click", onRetry);
   }
   function setFallback() {
-    // API 拿不到时的兜底：给个 GitHub Releases 链接
+    // API 拿不到时的兜底：直接给当前下载源的 Releases 页
     if (!downloadMenu) return;
     downloadMenu.innerHTML = `
-      <a class="ndm-item ndm-more" href="${releasesUrl}" target="_blank" rel="noopener">
+      <a class="ndm-item ndm-more" href="${mirrorInfo.releases}" target="_blank" rel="noopener">
         <div class="ndm-ic ndm-ic-more">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </div>
         <div class="ndm-body">
-          <div class="ndm-title">GitHub Releases</div>
+          <div class="ndm-title">${mirrorInfo.label} Releases</div>
           <div class="ndm-sub">手动查看所有下载资源</div>
         </div>
         <svg class="ndm-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-      </a>`;
+      </a>
+      ${mirrorSwitchHtml()}`;
   }
+
+  // 下载源切换：自动 / 国内 Gitee / 国外 GitHub（选择记在 localStorage）
+  function mirrorSwitchHtml() {
+    const pref = readMirrorPref();
+    const btn = (v, label) =>
+      `<button type="button" class="ndm-mirror-btn${pref === v ? " on" : ""}" data-mirror="${v}">${label}</button>`;
+    return `
+      <div class="ndm-divider"></div>
+      <div class="ndm-mirror">
+        <span class="ndm-mirror-label">下载源</span>
+        <div class="ndm-mirror-btns">
+          ${btn("auto", "自动")}${btn("gitee", "国内 Gitee")}${btn("github", "国外 GitHub")}
+        </div>
+      </div>`;
+  }
+
   function setMenuHtml(items) {
     if (!downloadMenu) return;
     let html = "";
@@ -132,75 +204,99 @@
     });
     html += `
       <div class="ndm-divider"></div>
-      <a class="ndm-item ndm-more" href="${releasesUrl}" target="_blank" rel="noopener">
+      <a class="ndm-item ndm-more" href="${mirrorInfo.releases}" target="_blank" rel="noopener">
         <div class="ndm-ic ndm-ic-more">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </div>
         <div class="ndm-body">
           <div class="ndm-title">查看全部 Releases</div>
-          <div class="ndm-sub">GitHub 版本页 · 含历史版本</div>
+          <div class="ndm-sub">${mirrorInfo.label} 版本页 · 含历史版本</div>
         </div>
         <svg class="ndm-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-      </a>`;
+      </a>
+      ${mirrorSwitchHtml()}`;
     downloadMenu.innerHTML = html;
   }
 
   // 桌面端和手机端是两条独立的 release 线（desktop-v* / mobile-v*），
   // 所以要拿「最新 release」+「release 列表」两份数据。
-  async function fetchRelease() {
-    // 读缓存
-    try {
-      const raw = localStorage.getItem(CACHE_KEY);
-      if (raw) {
-        const cached = JSON.parse(raw);
-        if (Date.now() - cached.ts < CACHE_TTL_MS && cached.data && cached.data.items.length) {
-          setMenuHtml(cached.data.items);
-          return;
-        }
+  async function loadItems() {
+    const headers = mirrorInfo.headers || {};
+    const [latestRes, listRes] = await Promise.all([
+      fetch(`${mirrorInfo.api}/releases/latest`, { headers, cache: "no-store" }),
+      fetch(`${mirrorInfo.api}/releases?per_page=30`, { headers, cache: "no-store" }),
+    ]);
+    if (!latestRes.ok) throw new Error(`${mirrorInfo.label} API ${latestRes.status}`);
+
+    const latest = await latestRes.json();
+    const list = listRes.ok ? await listRes.json() : [];
+
+    const items = [];
+
+    // 桌面端：latest release 里的 .exe
+    const deskAsset = (latest.assets || []).find((a) => ASSET_MATCHERS.desktop.match(a.name));
+    if (deskAsset) items.push({ asset: deskAsset, meta: ASSET_MATCHERS.desktop });
+
+    // 手机端：在 release 列表里找最新的 bz-todo-*.apk
+    if (Array.isArray(list)) {
+      for (const rel of list) {
+        const apk = (rel.assets || []).find((a) => ASSET_MATCHERS.android.match(a.name));
+        if (apk) { items.push({ asset: apk, meta: ASSET_MATCHERS.android }); break; }
       }
-    } catch {}
+    }
+
+    // NAS compose：随 main 分支走，始终最新
+    items.push({
+      asset: {
+        name: "nas-docker-compose.yml",
+        size: 0,
+        browser_download_url: `${mirrorInfo.raw}/deploy/nas-docker-compose.yml`,
+      },
+      meta: ASSET_MATCHERS.compose,
+    });
+
+    return { tag: latest.tag_name || "", items };
+  }
+
+  async function fetchRelease(force) {
+    await resolveMirror();
+    const cacheKey = CACHE_PREFIX + mirrorName;
+
+    // 读缓存（手动切换下载源时跳过）
+    if (!force) {
+      try {
+        const raw = localStorage.getItem(cacheKey);
+        if (raw) {
+          const cached = JSON.parse(raw);
+          if (Date.now() - cached.ts < CACHE_TTL_MS && cached.data && cached.data.items.length) {
+            setMenuHtml(cached.data.items);
+            return;
+          }
+        }
+      } catch {}
+    }
 
     setLoading();
-    try {
-      const headers = { "Accept": "application/vnd.github+json" };
-      const [latestRes, listRes] = await Promise.all([
-        fetch(RELEASE_API, { headers, cache: "no-store" }),
-        fetch(RELEASES_API, { headers, cache: "no-store" }),
-      ]);
-      if (!latestRes.ok) throw new Error(`GitHub API ${latestRes.status}`);
 
-      const latest = await latestRes.json();
-      const list = listRes.ok ? await listRes.json() : [];
+    // 自动模式下，首选源失败就换另一个源再试
+    const auto = !MIRRORS[readMirrorPref()];
+    const tries = [mirrorName];
+    if (auto) tries.push(mirrorName === "github" ? "gitee" : "github");
 
-      const items = [];
-
-      // 桌面端：latest release 里的 .exe
-      const deskAsset = (latest.assets || []).find((a) => ASSET_MATCHERS.desktop.match(a.name));
-      if (deskAsset) items.push({ asset: deskAsset, meta: ASSET_MATCHERS.desktop });
-
-      // 手机端：在 release 列表里找最新的 bz-todo-*.apk
-      if (Array.isArray(list)) {
-        for (const rel of list) {
-          const apk = (rel.assets || []).find((a) => ASSET_MATCHERS.android.match(a.name));
-          if (apk) { items.push({ asset: apk, meta: ASSET_MATCHERS.android }); break; }
-        }
-      }
-
-      // NAS compose：随 main 分支走，始终最新
-      items.push({
-        asset: { name: "nas-docker-compose.yml", size: 0, browser_download_url: COMPOSE_URL },
-        meta: ASSET_MATCHERS.compose,
-      });
-
-      const data = { tag: latest.tag_name || "", items };
+    for (const name of tries) {
+      setMirror(name);
       try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data }));
-      } catch {}
-      setMenuHtml(items);
-    } catch (err) {
-      console.warn("[baize] release fetch failed:", err.message);
-      setFallback();
+        const data = await loadItems();
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data }));
+        } catch {}
+        setMenuHtml(data.items);
+        return;
+      } catch (err) {
+        console.warn(`[baize] ${mirrorInfo.label} release fetch failed:`, err.message);
+      }
     }
+    setFallback();
   }
 
   // 页面加载即取
@@ -230,8 +326,17 @@
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeMenu();
     });
-    downloadWrap.querySelectorAll(".ndm-item").forEach((item) => {
-      item.addEventListener("click", () => closeMenu());
+    // 菜单内容会被整体重绘，所以用事件委托：点条目就收起，点下载源按钮就切换
+    downloadMenu?.addEventListener("click", (e) => {
+      const mb = e.target.closest("[data-mirror]");
+      if (mb) {
+        e.preventDefault();
+        e.stopPropagation();
+        saveMirrorPref(mb.dataset.mirror);
+        fetchRelease(true);
+        return;
+      }
+      if (e.target.closest(".ndm-item")) closeMenu();
     });
   }
 

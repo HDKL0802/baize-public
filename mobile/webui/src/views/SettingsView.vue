@@ -90,6 +90,19 @@
       </div>
     </div>
 
+    <!-- 后端更新 -->
+    <div class="m-card">
+      <div class="m-card-title">后端更新</div>
+      <div class="about-row"><span>当前版本</span><span>{{ upd.current || '—' }}</span></div>
+      <div class="about-row"><span>最新版本</span><span>{{ upd.latest || '—' }}</span></div>
+      <div class="about-row"><span>下载源</span><span>{{ upd.mirror || '自动' }}{{ upd.inDocker ? ' · 容器' : '' }}</span></div>
+      <div v-if="updMsg" class="data-hint">{{ updMsg }}</div>
+      <div class="update-actions">
+        <button class="m-btn" :disabled="updBusy" @click="checkUpd(false)">检查更新</button>
+        <button class="m-btn" :disabled="!upd.hasUpdate || updBusy" @click="applyUpd">更新后端</button>
+      </div>
+    </div>
+
     <!-- 数据管理 -->
     <div class="m-card">
       <div class="m-card-title">数据管理</div>
@@ -105,7 +118,7 @@
     <div class="m-card">
       <div class="m-card-title">关于</div>
       <div class="about-row"><span>应用</span><span>白泽 Baize 个人智能体</span></div>
-      <div class="about-row"><span>版本</span><span>0.1.0</span></div>
+      <div class="about-row"><span>版本</span><span>{{ appVersion }}</span></div>
       <div class="about-row"><span>模式</span><span>{{ store.kbMode ? '知识库（NAS）' : '本机' }}</span></div>
     </div>
 
@@ -129,8 +142,9 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
 import { useStore } from '../store.js';
-import { bzCoreStatus, bzCoreConfigure, saveTextFile, pickTextFile, takePickedText } from '../api.js';
+import { bzCoreStatus, bzCoreConfigure, saveTextFile, pickTextFile, takePickedText, agentUpdateStatus, agentUpdateApply } from '../api.js';
 
+const appVersion = '0.7.0';
 const store = useStore();
 
 const ai = reactive({ ...store.getSettings().ai });
@@ -144,9 +158,55 @@ const showDevToken = ref(false);
 const showClearConfirm = ref(false);
 const core = ref(bzCoreStatus());
 
+/* ---- 后端更新：后端自己从 Gitee / GitHub 拉新二进制，容器重启后生效 ---- */
+const upd = ref({ current: '', latest: '', mirror: '', hasUpdate: false, inDocker: false });
+const updBusy = ref(false);
+const updMsg = ref('');
+
+async function checkUpd(silent) {
+  updBusy.value = true;
+  if (!silent) updMsg.value = '正在检查后端版本…';
+  try {
+    const r = await agentUpdateStatus();
+    const d = (r && r.data) || r || {};
+    if (d.current) {
+      upd.value = d;
+      updMsg.value = `当前 ${d.current} · 最新 ${d.latest || '—'}${d.mirror ? '（' + d.mirror + '）' : ''}`;
+      if (!silent) store.toast(d.hasUpdate ? '发现新版本：' + d.latest : '后端已是最新版本', d.hasUpdate ? 'warn' : 'ok');
+    } else {
+      updMsg.value = '检查失败：' + ((r && r.error) || '未知');
+      if (!silent) store.toast(updMsg.value, 'err');
+    }
+  } finally {
+    updBusy.value = false;
+  }
+}
+
+async function applyUpd() {
+  updBusy.value = true;
+  updMsg.value = '正在下载新后端并校验…';
+  try {
+    const r = await agentUpdateApply(upd.value.mirror || '');
+    const d = (r && r.data) || r || {};
+    if (d.ok) {
+      updMsg.value = d.inDocker
+        ? `已装好 ${d.to}，容器会在几秒内自动重启，稍后刷新即可`
+        : `已装好 ${d.to}，重启后端后生效`;
+      store.toast('后端更新完成', 'ok');
+      setTimeout(() => checkUpd(true), 8000);
+    } else {
+      updMsg.value = '更新失败：' + (d.error || (r && r.error) || '未知');
+      store.toast(updMsg.value, 'err');
+    }
+  } finally {
+    updBusy.value = false;
+  }
+}
+
 onMounted(async () => {
   core.value = bzCoreStatus();
   await store.refreshRemote();
+  checkUpd(true);
   // H5 导入回调用
   window.__bzFileContent = async (name, text) => {
     try {
@@ -258,6 +318,13 @@ function doClear() {
   line-height: 1.5;
   color: var(--fg-3);
 }
+.update-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+.update-actions .m-btn { height: 44px; }
 
 .about-row {
   display: flex;

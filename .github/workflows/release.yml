@@ -14,8 +14,11 @@
 #   baize-desktop-<ver>.zip             自动更新包（exe + ui/ + float/ + browser-ext/）
 #   baize-desktop-setup-<ver>.exe       安装包（NSIS，用户级安装）
 #   latest.json                         更新清单（含 sha256 / size / notes，URL 为绝对地址）
+#   baize-backend-linux-amd64           NAS 后端二进制（安装脚本 / 设置页「更新后端」用）
+#   baize-backend-linux-amd64.sha256    后端二进制校验值
 #
 # 版本号唯一来源：desktop/device_windows.go 的 desktopAppVersion。
+# 后端二进制的版本号由 -ldflags 注入同一个版本，设置页「更新后端」靠它比较新旧。
 name: desktop-release
 
 on:
@@ -89,7 +92,8 @@ jobs:
           $env:GOOS = "linux"
           $env:GOARCH = "amd64"
           New-Item -ItemType Directory -Force -Path desktop/bin | Out-Null
-          go -C agent build -trimpath -ldflags "-s -w" -o ../desktop/bin/baize-backend-linux-amd64 ./cmd/backend
+          # 版本号与桌面端一致：设置页「更新后端」按 /api/agent/update 返回的 current 比较新旧
+          go -C agent build -trimpath -ldflags "-s -w -X main.version=$env:VERSION" -o ../desktop/bin/baize-backend-linux-amd64 ./cmd/backend
           if (-not (Test-Path desktop/bin/baize-backend-linux-amd64)) { throw "backend not built" }
           $sha = (Get-FileHash desktop/bin/baize-backend-linux-amd64 -Algorithm SHA256).Hash.ToLower()
           "$sha  baize-backend-linux-amd64" | Set-Content -Path desktop/bin/baize-backend-linux-amd64.sha256 -Encoding ascii

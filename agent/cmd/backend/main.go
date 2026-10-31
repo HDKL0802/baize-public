@@ -35,7 +35,9 @@ import (
 	"baize/shared/proto"
 )
 
-const version = "0.9.37"
+// version 是产品版本号（与桌面端 / 手机端同一版本线），发版时由 CI 用
+// -ldflags "-X main.version=<tag 里的版本>" 注入；本地直接编译则用下面的默认值。
+var version = "0.7.0"
 
 func main() {
 	var (

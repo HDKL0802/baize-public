@@ -1,42 +1,53 @@
-# 白泽 0.6.1
+# 白泽 0.7.0
 
-图标与 NAS 部署这两件事一起改完：全端换成同一枚「白泽」独角瑞兽线描图标，
-NAS 端从「本机 PowerShell 推过去」改成「在 NAS 上一条 curl 命令」。
+这一版解决两件事：**国内能下、国外能下**，以及**不用重装就能换后端**。
 
 ## 本版变化
 
-### 1. 新图标：白泽独角瑞兽线描（全端同一枚）
+### 1. 双源发布：国内 Gitee / 国外 GitHub
 
-- 源图是矢量：`desktop/assets/icon.svg`（墨玉底 + 象牙线条 + 玉青独角与眼），
-  由 `desktop/build-icon.ps1` 一次栅格化成所有落点，不再有第二张图。
-- 替换范围：
-  - 桌面主控台侧栏品牌标（`desktop/webui/src/App.vue`，原来是「白」字方块）
-  - 安装包 / exe / 任务栏（`desktop/assets/icon.ico` + `desktop/rsrc.syso`）
-  - 官网 logo 与 favicon（`web/assets/logo.png`、`web/assets/favicon.ico`，缓存号升到 `?v=3`）
-  - NAS WebUI 与管理控制台（`agent/internal/httpapi/webui/icon.png`，`/icon.png` 即它）
-  - 桌面浮窗球面图标（`desktop/webui/public/icon.png` → `bin/ui/icon.png`）
-  - 手机端 `icon.svg`（webui / todo / android assets）
+- 发布源拆成两个镜像：国内 `gitee.com/szk0037/baize-public`，国外
+  `github.com/HDKL0802/baize-public`，两个仓内容与 Release 资产完全一致。
+- 官网下载菜单会自动探测 GitHub 可达性（2.5 秒超时），不通就走 Gitee；
+  菜单底部还留了「下载源：自动 / 国内 Gitee / 国外 GitHub」的手动切换，
+  选择记在本地，下次打开还是它。
+- 官网与文档里的仓库地址、Releases、文档原文链接都按镜像切换：
+  国外点进去是 GitHub，国内点进去是 Gitee。
+- 桌面端检查更新不再只认 GitHub：清单依次从 GitHub → Gitee → 本地后端取，
+  哪条通走哪条，国内网络不会卡在「检查更新失败」。
+- NAS 一键脚本同样双源：哪边快用哪边，也可以 `BAIZE_MIRROR=gitee` 固定。
 
-### 2. NAS 部署：一条 curl 命令 + 自带运维命令
+### 2. 设置页新增「更新后端」
 
-```bash
-curl -fsSL https://baize.wydhd.fun/nas/install.sh | sudo bash
-```
+桌面端与手机端的设置页都多了一张「后端更新」卡片：
 
-- 脚本源在 `web/nas/install.sh`，随官网一起发到 Pages；安装后自身落到
-  `/usr/local/bin/baize-nas`，之后直接用短命令：
-  `deploy / status / start / stop / restart / logs -f / rollback / uninstall / version`。
-- 部署流程：拉 GitHub 最新 Release 的 `baize-backend-linux-amd64` → sha256 校验 →
-  NAS 本地 `docker build`（alpine + chromium + 中文字体）→ `docker compose up -d` →
-  健康检查（失败自动回滚上一版镜像）。
-- 「取消部署」=`baize-nas uninstall --yes`：停容器、删容器与镜像、清空
-  `/vol1/@appdata/baize/data`（可加 `--keep-data` 保留数据），必须显式加 `--yes`。
-- 每次 deploy 会把正在跑的镜像标记为 `baize-backend:previous`，`rollback` 一键回退。
-- 发版流水线新增后端二进制（linux/amd64）与 `.sha256` 资产，供一键脚本下载。
+- 显示当前后端版本、发布源最新版本、正在使用的下载源；
+- 「检查更新」只比对版本，不动文件；
+- 「更新后端」让后端自己从发布源下载新二进制、sha256 校验、落到
+  `<dataDir>/bin/baize-backend.new`，容器重启时自动替换并接管，
+  不需要 Docker socket、不需要 SSH、不用重新部署整套服务。
+- 非容器（本机直接跑二进制）的情况下只下载不重启，会提示落盘路径，
+  由你重启后端后生效。
+
+### 3. NAS 部署与更新更顺
+
+- `install.sh` 的 `deploy` 现在按镜像自动挑下载地址，带 sha256 校验失败即中止。
+- 容器内新增 `BAIZE_IN_CONTAINER=1` 与 `entrypoint.sh`：
+  启动时若发现 `baize-backend.new`，先提升为正式二进制再启动，
+  配合 compose 的 `restart: unless-stopped` 实现「点一下按钮就换后端」。
+- `baize-nas` 的 `status / logs -f / rollback / uninstall` 保持原样，
+  取消部署仍然要显式加 `--yes`。
+
+### 4. 版本号统一到 0.7.0
+
+桌面端、手机端（Android `versionName 0.7.0` / `versionCode 7000`）、
+后端（CI 用 `-ldflags -X main.version=<版本>` 注入）、官网下载页都报同一个版本号，
+设置页里的版本对比才有意义。
 
 ## 安装 / 升级
 
-1. 新装：下载 `baize-desktop-setup-0.6.1.exe`（用户级安装，不需要管理员）。
-2. 已装旧版：桌面端「设置 → 关于」里点检查更新即可自动升级（GitHub 优先）；
-   也可以直接运行新安装包，会按更新流程沿用原安装目录。
-3. NAS 升级：`baize-nas deploy`，或重新跑一遍 curl 那条命令。
+1. 新装：下载 `baize-desktop-setup-0.7.0.exe`（用户级安装，不需要管理员）。
+2. 已装旧版：桌面端「设置 → 关于」点检查更新即可自动升级；
+   也可以直接运行新安装包，会沿用原安装目录。
+3. NAS 升级：`baize-nas deploy`，或设置页里点「更新后端」（更快，只换二进制）；
+   也可以重跑一遍 `curl -fsSL https://baize.wydhd.fun/nas/install.sh | sudo bash`。

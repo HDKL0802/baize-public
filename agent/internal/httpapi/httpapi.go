@@ -61,6 +61,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerKB(mux)
 	s.registerVoice(mux)
 	s.registerDL(mux)
+	s.registerUpdate(mux) // 设置页里「更新后端」：后端自取新二进制并重启生效
 	s.registerWebUI(mux) // 手机版控制台的静态资源（/css、/js）+ 应用图标（/icon.png）
 	return corsMiddleware(mux)
 }

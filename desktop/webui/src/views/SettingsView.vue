@@ -61,6 +61,57 @@ async function testConn() {
     toast('连接失败：' + e.message, 'err');
   }
 }
+
+/* ---- 后端更新：由后端自己从 Gitee / GitHub 拉新二进制，重启容器后生效 ---- */
+const upd = ref({ current: '', latest: '', mirror: '', hasUpdate: false, inDocker: false });
+const updBusy = ref(false);
+const updMsg = ref('');
+
+async function checkBackendUpdate(silent) {
+  updBusy.value = true;
+  if (!silent) updMsg.value = '正在检查后端版本…';
+  try {
+    const r = await API.get('/api/agent/update');
+    if (r.ok && r.data && r.data.current) {
+      upd.value = r.data;
+      updMsg.value = `当前 ${r.data.current} · 最新 ${r.data.latest || '—'}${r.data.mirror ? '（' + r.data.mirror + '）' : ''}`;
+      if (!silent) toast(r.data.hasUpdate ? '发现新版本：' + r.data.latest : '后端已是最新版本', r.data.hasUpdate ? 'warn' : 'ok');
+    } else {
+      updMsg.value = '检查失败：' + (r.error || '未知');
+      if (!silent) toast(updMsg.value, 'err');
+    }
+  } catch (e) {
+    updMsg.value = '检查失败：' + e.message;
+    if (!silent) toast(updMsg.value, 'err');
+  } finally {
+    updBusy.value = false;
+  }
+}
+
+async function applyBackendUpdate() {
+  updBusy.value = true;
+  updMsg.value = '正在下载新后端并校验 sha256…';
+  try {
+    const r = await API.post('/api/agent/update', { mirror: upd.value.mirror || '' });
+    if (r.ok && r.data && r.data.ok) {
+      updMsg.value = r.data.inDocker
+        ? `已装好 ${r.data.to}，容器会在几秒内自动重启，稍后刷新即可`
+        : `已装好 ${r.data.to}，重启后端进程后生效`;
+      toast('后端更新完成', 'ok');
+      setTimeout(() => checkBackendUpdate(true), 8000);
+    } else {
+      updMsg.value = '更新失败：' + ((r.data && r.data.error) || r.error || '未知');
+      toast(updMsg.value, 'err');
+    }
+  } catch (e) {
+    updMsg.value = '更新失败：' + e.message;
+    toast(updMsg.value, 'err');
+  } finally {
+    updBusy.value = false;
+  }
+}
+
+onMounted(() => checkBackendUpdate(true));
 </script>
 
 <template>
@@ -111,6 +162,32 @@ async function testConn() {
             <i class="bz-dot" :class="{ on: device.online }"></i>{{ device.online ? '在线' : '离线' }}
           </span>
         </div>
+      </div>
+    </section>
+
+    <section class="bz-card set-sec">
+      <div class="set-sec-head">
+        <h2 class="set-sec-title">后端更新</h2>
+        <p class="set-sec-desc">从 Gitee（国内）/ GitHub（国外）拉最新后端二进制，校验 sha256 后切换。NAS 容器部署会自己重启，桌面端只需重启后台程序。</p>
+      </div>
+      <div class="set-rows">
+        <div class="set-row">
+          <span class="set-row-label">当前版本</span>
+          <span class="set-row-value set-mono">{{ upd.current || '—' }}</span>
+        </div>
+        <div class="set-row">
+          <span class="set-row-label">最新版本</span>
+          <span class="set-row-value set-mono">{{ upd.latest || '—' }}</span>
+        </div>
+        <div class="set-row">
+          <span class="set-row-label">下载源</span>
+          <span class="set-row-value">{{ upd.mirror || '自动' }}{{ upd.inDocker ? ' · 容器部署' : '' }}</span>
+        </div>
+      </div>
+      <p v-if="updMsg" class="set-sec-desc">{{ updMsg }}</p>
+      <div class="set-actions">
+        <NButton :loading="updBusy" @click="checkBackendUpdate(false)">检查更新</NButton>
+        <NButton type="primary" :disabled="!upd.hasUpdate || updBusy" @click="applyBackendUpdate">更新后端</NButton>
       </div>
     </section>
 

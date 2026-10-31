@@ -49,6 +49,10 @@ function deviceStatus() { return call('/api/device', 'GET'); }
 /** 探测后端通不通 */
 function probeRemote() { return call('/api/remote', 'GET'); }
 
+/** 后端更新：查最新版本 / 下载并切换（由后端自己从 Gitee / GitHub 拉） */
+function agentUpdateStatus() { return call('/api/agent/update', 'GET'); }
+function agentUpdateApply(mirror) { return call('/api/agent/update', 'POST', JSON.stringify({ mirror: mirror || '' })); }
+
 /** Agent 运行 */
 function agentRun(goal, wait, provider) {
   const body = { goal, wait: !!wait };
@@ -236,6 +240,7 @@ export {
   call, remoteState, remoteOp, deviceStatus, probeRemote,
   agentRun, agentState, agentProviders, agentRunDetail, agentCommands,
   agentApprovals, agentApprove, agentReject, agentSetActiveProvider,
+  agentUpdateStatus, agentUpdateApply,
   bzCoreStatus, bzCoreConfigure,
   pickAttachment, pickAttachmentFor, takeAttachmentFor,
   attachPath, hasAllFiles, openAllFilesSetting,

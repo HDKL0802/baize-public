@@ -60,6 +60,12 @@ func (s *Service) Partition(p accounts.Principal) (*memory.Store, *kb.Service, e
 		mem.Close()
 		return nil, nil, fmt.Errorf("打开分区「%s」的笔记库失败：%w", key, err)
 	}
+	// 分区里的旧笔记同样要搬一次家
+	if res, err := nb.ImportLegacyNotes(mem.Path()); err != nil {
+		s.lg.Warn("分区旧笔记迁移失败（不影响运行）", "principal", key, "err", err)
+	} else if res.Notes > 0 {
+		s.lg.Info("已把分区旧笔记迁移到笔记库", "principal", key, "notes", res.Notes)
+	}
 	kbSvc, err := kb.Open(dir, s.lg)
 	if err != nil {
 		mem.Close()

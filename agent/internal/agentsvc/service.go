@@ -57,7 +57,7 @@ type ProviderInfo struct {
 	Model     string   `json:"model"`
 	Kinds     []string `json:"kinds,omitempty"`
 	Fallback  bool     `json:"fallback"`
-	Default   bool     `json:"default"`          // 该通道是否被标记为"默认首选"
+	Default   bool     `json:"default"`            // 该通道是否被标记为"默认首选"
 	IsActive  bool     `json:"isActive,omitempty"` // 是否是用户当前在界面上选的（ActiveProvider 字段匹配）
 	Cost      string   `json:"cost,omitempty"`
 	Privacy   string   `json:"privacy,omitempty"`
@@ -155,7 +155,7 @@ type Service struct {
 	mem      *memory.Store
 	nb       *notebook.Vault // 笔记库（文件为正本，独立于记忆库）
 	embedder llm.Embedder    // 可选：记忆的向量化通道
-	embedErr string       // 配了但用不了时的原因（要显示出来，不能静默失效）
+	embedErr string          // 配了但用不了时的原因（要显示出来，不能静默失效）
 	accounts *accounts.Registry
 	// partMu/parts 多用户数据分区（用户/用户组各自的记忆库+知识库），按需打开并缓存
 	partMu      sync.Mutex
@@ -226,6 +226,12 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 	if err != nil {
 		mem.Close()
 		return nil, err
+	}
+	// 旧版把笔记存成记忆分块：升级后一次性还原成 .md（幂等，跑过就跳过）
+	if res, err := nb.ImportLegacyNotes(mem.Path()); err != nil {
+		lg.Warn("旧笔记迁移失败（不影响运行）", "err", err)
+	} else if res.Notes > 0 {
+		lg.Info("已把旧笔记迁移到笔记库", "notes", res.Notes, "skipped", res.Skipped)
 	}
 	runs, err := agentrt.OpenStore(dataDir)
 	if err != nil {
@@ -681,7 +687,7 @@ func (s *Service) rebuildProviders() {
 		info := ProviderInfo{
 			Name: p.Name, Protocol: p.Protocol, BaseURL: p.BaseURL, Model: p.Model,
 			Kinds: p.Kinds, Fallback: p.Fallback, Default: p.Default,
-			IsActive: strings.EqualFold(strings.TrimSpace(p.Name), strings.TrimSpace(s.cfg.ActiveProvider)),
+			IsActive:  strings.EqualFold(strings.TrimSpace(p.Name), strings.TrimSpace(s.cfg.ActiveProvider)),
 			HasAPIKey: p.APIKey != "",
 			Cost:      p.Cost, Privacy: p.Privacy,
 		}

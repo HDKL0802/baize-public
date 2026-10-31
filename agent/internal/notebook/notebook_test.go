@@ -1,6 +1,7 @@
 package notebook
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -299,4 +300,60 @@ func openTestVault(t *testing.T) *Vault {
 	}
 	t.Cleanup(func() { v.Close() })
 	return v
+}
+
+func TestImportLegacyNotes(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "memory.db")
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(dbPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE chunks(
+		namespace TEXT NOT NULL DEFAULT 'default',
+		source TEXT NOT NULL DEFAULT '',
+		kind TEXT NOT NULL DEFAULT '',
+		source_ref TEXT NOT NULL DEFAULT '',
+		title TEXT NOT NULL DEFAULT '',
+		content TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO chunks(namespace,source,kind,source_ref,title,content)
+		VALUES('default','note','note','旧笔记.md','旧笔记','# 旧笔记\n\n指向 [[另一篇]]'),
+		      ('work','note','note','周报.md','周报','# 周报\n\n本周进度')`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+
+	v, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+
+	res, err := v.ImportLegacyNotes(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Notes != 2 {
+		t.Fatalf("应迁移 2 篇旧笔记，实际 %d：%#v", res.Notes, res)
+	}
+	if n, ok, err := v.Read("旧笔记.md"); err != nil || !ok || !strings.Contains(n.Content, "指向") {
+		t.Fatalf("默认命名空间的旧笔记没还原：ok=%v err=%v", ok, err)
+	}
+	if _, ok, err := v.Read("legacy/work/周报.md"); err != nil || !ok {
+		t.Fatalf("非默认命名空间的旧笔记没落到 legacy/work 下：ok=%v err=%v", ok, err)
+	}
+
+	// 幂等：再跑一次不应重复导入
+	again, err := v.ImportLegacyNotes(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Notes != 0 {
+		t.Fatalf("迁移不是幂等的：又导入了 %d 篇", again.Notes)
+	}
 }

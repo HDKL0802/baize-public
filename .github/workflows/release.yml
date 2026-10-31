@@ -131,26 +131,28 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          $ns = Join-Path $PWD "build/nsis"
-          New-Item -ItemType Directory -Force -Path "$ns/float" | Out-Null
-          Copy-Item desktop/installer.nsi $ns/
-          Copy-Item desktop/bin/baize-desktop.exe $ns/
-          Copy-Item desktop/assets/icon.ico "$ns/icon.ico"
-          Copy-Item desktop/webui/dist -Destination "$ns/ui" -Recurse
-          Copy-Item desktop/float/dist -Destination "$ns/float/dist" -Recurse
-          Copy-Item desktop/browser-ext -Destination "$ns/browser-ext" -Recurse
+          # 全部用反斜杠：NSIS 的 File 命令对正斜杠路径会报 no files found。
+          $ns = Join-Path $PWD "build\nsis"
+          New-Item -ItemType Directory -Force -Path "$ns\float" | Out-Null
+          Copy-Item desktop\installer.nsi -Destination $ns
+          Copy-Item desktop\bin\baize-desktop.exe -Destination $ns
+          Copy-Item desktop\assets\icon.ico -Destination "$ns\icon.ico"
+          Copy-Item desktop\webui\dist -Destination "$ns\ui" -Recurse
+          Copy-Item desktop\float\dist -Destination "$ns\float\dist" -Recurse
+          Copy-Item desktop\browser-ext -Destination "$ns\browser-ext" -Recurse
+          foreach ($f in @("$ns\installer.nsi", "$ns\baize-desktop.exe", "$ns\icon.ico", "$ns\ui\index.html", "$ns\float\dist\index.html")) {
+            if (-not (Test-Path $f)) { throw "missing in nsis stage: $f" }
+          }
           $verNum = "$env:VERSION.0"
-          $setup = "$ns/baize-desktop-setup-$env:VERSION.exe"
-          # makensis 的 ${__FILEDIR__} 在相对脚本路径下会二次拼接，必须用绝对路径；
-          # 其余目录同理，全部显式传绝对路径。
+          $setup = "$ns\baize-desktop-setup-$env:VERSION.exe"
           & "C:\Program Files (x86)\NSIS\makensis.exe" "/V2" `
             "/DVERSION=$env:VERSION" "/DVERNUM=$verNum" "/DOUTFILE=$setup" `
-            "/DICON=$ns/icon.ico" "/DROOTEXE=$ns/baize-desktop.exe" `
-            "/DUIDIR=$ns/ui" "/DFLOATDIR=$ns/float" "/DEXTDIR=$ns/browser-ext" `
-            "$ns/installer.nsi"
+            "/DICON=$ns\icon.ico" "/DROOTEXE=$ns\baize-desktop.exe" `
+            "/DUIDIR=$ns\ui" "/DFLOATDIR=$ns\float" "/DEXTDIR=$ns\browser-ext" `
+            "$ns\installer.nsi"
           if ($LASTEXITCODE -ne 0) { throw "makensis failed ($LASTEXITCODE)" }
           if (-not (Test-Path $setup)) { throw "installer not produced" }
-          Copy-Item $setup "desktop/bin/"
+          Copy-Item $setup -Destination "desktop\bin"
 
       - name: Publish GitHub Release
         shell: pwsh

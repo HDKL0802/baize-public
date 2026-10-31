@@ -64,6 +64,8 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 			// 与 autoApprove 同时给时 strictness 优先。
 			Strictness string `json:"strictness"`
 			Wait       bool   `json:"wait"`
+			// Provider 可空：指定这次用哪个模型通道（按通道名）；空=按 Router 自动路由（优先 ActiveProvider）。
+			Provider string `json:"provider,omitempty"`
 		}
 		if err := decodeBody(r, &req); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
@@ -98,7 +100,7 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 		if req.Wait {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
-			res, err := a.Run(ctx, req.Goal, req.Recipe, mode)
+			res, err := a.Run(ctx, req.Goal, req.Recipe, mode, req.Provider)
 			if err != nil {
 				writeJSON(w, http.StatusOK, map[string]any{"result": res, "error": err.Error()})
 				return
@@ -107,12 +109,12 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 			return
 		}
 		// 异步：立刻返回运行 id，控制台拿它跟踪这次运行（危险操作会挂在审批队列里等人批）
-		id, err := a.Start(req.Goal, req.Recipe, mode)
+		id, err := a.Start(req.Goal, req.Recipe, mode, req.Provider)
 		if err != nil {
 			writeErr(w, http.StatusConflict, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusAccepted, map[string]any{"started": true, "runId": id, "goal": req.Goal})
+		writeJSON(w, http.StatusAccepted, map[string]any{"started": true, "runId": id, "goal": req.Goal, "provider": req.Provider})
 	}))
 
 	mux.HandleFunc("GET /api/agent/runs", s.api(func(w http.ResponseWriter, r *http.Request) {
@@ -384,9 +386,10 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agent/providers", s.api(func(w http.ResponseWriter, r *http.Request) {
 		cfg := a.Config()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"providers":   a.Providers(),
-			"allowRemote": cfg.AllowRemote,
-			"presets":     llm.Presets(), // 预置模板（界面「从模板新建」用）
+			"providers":      a.Providers(),
+			"allowRemote":    cfg.AllowRemote,
+			"activeProvider": cfg.ActiveProvider,
+			"presets":        llm.Presets(), // 预置模板（界面「从模板新建」用）
 		})
 	}))
 
@@ -463,8 +466,20 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 				out["error"] = err.Error()
 			}
 			writeJSON(w, http.StatusOK, out)
+		case "active":
+			// 切换"默认首选"模型通道（req.Name 为空 = 恢复自动路由）
+			err := a.SetActiveProvider(req.Name)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			cfg2 := a.Config()
+			writeJSON(w, http.StatusOK, map[string]any{
+				"activeProvider": cfg2.ActiveProvider,
+				"providers":      a.Providers(),
+			})
 		default:
-			writeErr(w, http.StatusBadRequest, "不支持的 action："+action+"（可用 upsert | remove | test | discover）")
+			writeErr(w, http.StatusBadRequest, "不支持的 action："+action+"（可用 upsert | remove | test | discover | active）")
 		}
 	}))
 

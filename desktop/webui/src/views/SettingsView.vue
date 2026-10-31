@@ -1,9 +1,7 @@
 <!-- 设置页：连接 + 本机设备 + 外观（替换旧 renderSettings 的核心部分）。 -->
 <script setup>
 import { ref, onMounted } from 'vue';
-import {
-  NCard, NInput, NButton, NSpace, NTag, NRadioGroup, NRadio,
-} from 'naive-ui';
+import { NButton, NInput } from 'naive-ui';
 import { API, localDeviceInfo } from '../api.js';
 
 function toast(msg, kind) {
@@ -19,6 +17,11 @@ const token = ref('');
 const info = ref({});
 const device = ref({});
 const themePref = ref('system');
+const THEMES = [
+  { v: 'light', label: '浅色' },
+  { v: 'dark', label: '深色' },
+  { v: 'system', label: '跟随系统' },
+];
 
 onMounted(async () => {
   const c = await API.localConfig();
@@ -28,10 +31,15 @@ onMounted(async () => {
   themePref.value = localStorage.getItem('bz_theme') || 'system';
 });
 
+// 主题交由 main.js 的 __bzTheme 统一处理，data-theme 变化会同步到 Naive 主题
 function applyTheme() {
   if (window.__bzTheme) window.__bzTheme.setPref(themePref.value);
-  document.documentElement.setAttribute('data-theme', themePref.value === 'system' ? 'light' : themePref.value);
   toast('已应用主题：' + themePref.value, 'ok');
+}
+
+function pickTheme(v) {
+  themePref.value = v;
+  applyTheme();
 }
 
 async function saveConfig() {
@@ -56,53 +64,102 @@ async function testConn() {
 </script>
 
 <template>
-  <div class="set" style="max-width: 680px">
-    <n-card title="连接" size="small">
-      <n-space vertical size="10">
-        <div>
-          <label class="set-label">后端地址</label>
-          <n-input v-model:value="server" placeholder="http://192.168.1.100:8787" />
-        </div>
-        <div>
-          <label class="set-label">配对令牌（留空 = 不改）</label>
-          <n-input v-model:value="token" type="password" placeholder="留空则保留已保存的" show-eye-on-hover />
-        </div>
-        <n-space>
-          <n-button type="primary" @click="saveConfig">保存</n-button>
-          <n-button @click="testConn">连接测试</n-button>
-        </n-space>
-      </n-space>
-    </n-card>
+  <div class="bz-page set-page">
+    <header class="bz-head">
+      <div class="bz-head-main">
+        <h1 class="bz-title">设置</h1>
+        <p class="bz-sub">本机配置只保存在这台电脑上，配对令牌不会进入网页。</p>
+      </div>
+    </header>
 
-    <n-card title="本机设备" size="small" style="margin-top:14px">
-      <n-space vertical size="4">
-        <div class="set-line"><b>设备 ID</b><span class="set-mono">{{ device.deviceId || '—' }}</span></div>
-        <div class="set-line"><b>平台</b><span>{{ device.platform || '—' }}</span></div>
-        <div class="set-line"><b>在线</b>
-          <n-tag :type="device.online ? 'success' : 'default'" size="small">{{ device.online ? '在线' : '离线' }}</n-tag>
-        </div>
-      </n-space>
-    </n-card>
+    <section class="bz-card set-sec">
+      <div class="set-sec-head">
+        <h2 class="set-sec-title">连接</h2>
+        <p class="set-sec-desc">填写 NAS 后端地址与配对令牌；留空令牌表示沿用已保存的那一个。</p>
+      </div>
+      <div class="set-field">
+        <label class="set-label">后端地址</label>
+        <NInput v-model:value="server" placeholder="http://192.168.1.100:8787" />
+      </div>
+      <div class="set-field">
+        <label class="set-label">配对令牌（留空 = 不改）</label>
+        <NInput v-model:value="token" type="password" placeholder="留空则保留已保存的" show-eye-on-hover />
+      </div>
+      <div class="set-actions">
+        <NButton type="primary" @click="saveConfig">保存配置</NButton>
+        <NButton @click="testConn">连接测试</NButton>
+      </div>
+    </section>
 
-    <n-card title="外观" size="small" style="margin-top:14px">
-      <n-space vertical size="10">
-        <n-radio-group v-model:value="themePref" @update:value="applyTheme">
-          <n-space>
-            <n-radio value="light">浅色</n-radio>
-            <n-radio value="dark">深色</n-radio>
-            <n-radio value="system">跟随系统</n-radio>
-          </n-space>
-        </n-radio-group>
-        <div class="set-sub">主题作用于整个控制台与临时浮窗。「跟随系统」跟 Windows 的浅色/深色设置走。</div>
-      </n-space>
-    </n-card>
+    <section class="bz-card set-sec">
+      <div class="set-sec-head">
+        <h2 class="set-sec-title">本机设备</h2>
+        <p class="set-sec-desc">这台电脑在 NAS 上的设备身份，用于把任务派回来执行。</p>
+      </div>
+      <div class="set-rows">
+        <div class="set-row">
+          <span class="set-row-label">设备 ID</span>
+          <span class="set-row-value set-mono">{{ device.deviceId || '—' }}</span>
+        </div>
+        <div class="set-row">
+          <span class="set-row-label">平台</span>
+          <span class="set-row-value">{{ device.platform || '—' }}</span>
+        </div>
+        <div class="set-row">
+          <span class="set-row-label">在线状态</span>
+          <span class="set-row-value set-status" :class="device.online ? 'on' : 'off'">
+            <i class="bz-dot" :class="{ on: device.online }"></i>{{ device.online ? '在线' : '离线' }}
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <section class="bz-card set-sec">
+      <div class="set-sec-head">
+        <h2 class="set-sec-title">外观</h2>
+        <p class="set-sec-desc">主题作用于整个控制台与临时浮窗。「跟随系统」跟 Windows 的浅色 / 深色设置走。</p>
+      </div>
+      <div class="set-theme">
+        <button
+          v-for="opt in THEMES"
+          :key="opt.v"
+          class="set-theme-btn"
+          :class="{ on: themePref === opt.v }"
+          @click="pickTheme(opt.v)"
+        >{{ opt.label }}</button>
+      </div>
+    </section>
   </div>
 </template>
 
 <style>
-.set-label { display: block; font-size: 12px; color: var(--fg3); margin-bottom: 4px; }
-.set-line { display: flex; gap: 8px; font-size: 13px; }
-.set-line b { color: var(--fg3); min-width: 56px; font-weight: 600; }
-.set-mono { font-family: var(--mono); font-size: 12px; word-break: break-all; }
-.set-sub { color: var(--fg3); font-size: 12px; }
+.set-page { display: flex; flex-direction: column; max-width: 720px; }
+.set-sec { display: flex; flex-direction: column; gap: 14px; }
+.set-sec-head { display: flex; flex-direction: column; gap: 3px; }
+.set-sec-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--fg); }
+.set-sec-desc { margin: 0; font-size: 12px; color: var(--fg-3); line-height: 1.55; }
+.set-field { display: flex; flex-direction: column; gap: 5px; }
+.set-label { font-size: 11px; color: var(--fg-3); letter-spacing: .04em; }
+.set-actions { display: flex; gap: 8px; padding-top: 2px; }
+.set-rows { display: flex; flex-direction: column; }
+.set-row {
+  display: flex; align-items: center; gap: 12px;
+  min-height: 44px; border-top: 1px solid var(--line);
+}
+.set-row:first-child { border-top: 0; }
+.set-row-label { flex: none; width: 76px; font-size: 12px; color: var(--fg-3); }
+.set-row-value { min-width: 0; font-size: 13px; color: var(--fg); word-break: break-all; }
+.set-mono { font-family: var(--mono); font-size: 12px; color: var(--fg-2); }
+.set-status { display: inline-flex; align-items: center; gap: 6px; }
+.set-status.on { color: var(--ok); }
+.set-status.off { color: var(--fg-3); }
+.set-theme { display: flex; gap: 8px; flex-wrap: wrap; }
+.set-theme-btn {
+  height: 32px; min-width: 88px; padding: 0 14px; border-radius: 4px;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--fg-2);
+  font-family: inherit; font-size: 13px; cursor: pointer;
+  transition: background 120ms cubic-bezier(.2,0,0,1), color 120ms cubic-bezier(.2,0,0,1), border-color 120ms cubic-bezier(.2,0,0,1);
+}
+.set-theme-btn:hover { border-color: var(--line-strong); color: var(--fg); }
+.set-theme-btn.on { background: var(--accent-soft); border-color: var(--accent-soft); color: var(--accent); font-weight: 500; }
 </style>

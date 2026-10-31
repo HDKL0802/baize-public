@@ -12,6 +12,7 @@ import (
 	"baize/internal/kb"
 	"baize/internal/llm"
 	"baize/internal/memory"
+	"baize/internal/notebook"
 )
 
 // partition 一个数据分区：某个用户（或某个用户组）独立的记忆库 + 知识库。
@@ -23,6 +24,7 @@ import (
 type partition struct {
 	key    string
 	mem    *memory.Store
+	nb     *notebook.Vault
 	kb     *kb.Service
 	shared *kb.FileStore    // 用户组的共享文档仓库（用户分区为 nil）
 	conf   *conflicts.Store // 用户组的冲突协商记录（用户分区为 nil）
@@ -53,9 +55,15 @@ func (s *Service) Partition(p accounts.Principal) (*memory.Store, *kb.Service, e
 	if err != nil {
 		return nil, nil, fmt.Errorf("打开分区「%s」的记忆库失败：%w", key, err)
 	}
+	nb, err := notebook.Open(dir)
+	if err != nil {
+		mem.Close()
+		return nil, nil, fmt.Errorf("打开分区「%s」的笔记库失败：%w", key, err)
+	}
 	kbSvc, err := kb.Open(dir, s.lg)
 	if err != nil {
 		mem.Close()
+		nb.Close()
 		return nil, nil, fmt.Errorf("打开分区「%s」的知识库失败：%w", key, err)
 	}
 
@@ -73,16 +81,19 @@ func (s *Service) Partition(p accounts.Principal) (*memory.Store, *kb.Service, e
 		shared, err = kb.OpenFileStore(filepath.Join(dir, "shared"))
 		if err != nil {
 			mem.Close()
+			nb.Close()
 			return nil, nil, fmt.Errorf("打开分区「%s」的共享文档库失败：%w", key, err)
 		}
 		conf, err = conflicts.Open(dir)
 		if err != nil {
 			mem.Close()
+			nb.Close()
 			return nil, nil, fmt.Errorf("打开分区「%s」的协商记录库失败：%w", key, err)
 		}
 		cs, err = calls.Open(dir)
 		if err != nil {
 			mem.Close()
+			nb.Close()
 			return nil, nil, fmt.Errorf("打开分区「%s」的通话记录库失败：%w", key, err)
 		}
 	}
@@ -90,7 +101,7 @@ func (s *Service) Partition(p accounts.Principal) (*memory.Store, *kb.Service, e
 	if s.parts == nil {
 		s.parts = map[string]*partition{}
 	}
-	s.parts[key] = &partition{key: key, mem: mem, kb: kbSvc, shared: shared, conf: conf, calls: cs}
+	s.parts[key] = &partition{key: key, mem: mem, nb: nb, kb: kbSvc, shared: shared, conf: conf, calls: cs}
 	s.lg.Info("已打开数据分区", "principal", key, "dir", dir)
 	return mem, kbSvc, nil
 }
@@ -105,6 +116,26 @@ func (s *Service) PartitionMemory(p accounts.Principal) (*memory.Store, error) {
 func (s *Service) PartitionKB(p accounts.Principal) (*kb.Service, error) {
 	_, k, err := s.Partition(p)
 	return k, err
+}
+
+// Notebook 默认主体的笔记库（未接多用户分区时就是它）
+func (s *Service) Notebook() *notebook.Vault { return s.nb }
+
+// PartitionNotebook 取某个主体的笔记库（按登录身份隔离）
+func (s *Service) PartitionNotebook(p accounts.Principal) (*notebook.Vault, error) {
+	if s.accounts == nil || p.IsDefault() {
+		return s.nb, nil
+	}
+	if _, _, err := s.Partition(p); err != nil {
+		return nil, err
+	}
+	s.partMu.Lock()
+	pt := s.parts[p.Key()]
+	s.partMu.Unlock()
+	if pt == nil || pt.nb == nil {
+		return nil, errors.New("笔记库未就绪")
+	}
+	return pt.nb, nil
 }
 
 // GroupDocs 取某个用户组的共享文档仓库（非用户组主体返回错误）
@@ -165,6 +196,9 @@ func (s *Service) closePartitions() {
 	for _, pt := range s.parts {
 		if pt.mem != nil {
 			pt.mem.Close()
+		}
+		if pt.nb != nil {
+			pt.nb.Close()
 		}
 		if pt.conf != nil {
 			pt.conf.Close()

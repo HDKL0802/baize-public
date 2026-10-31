@@ -2,23 +2,28 @@
   <div class="chat-view">
     <!-- 顶部 -->
     <header class="m-page-head">
-      <div>
+      <div class="m-head-text">
         <h1 class="m-page-title">白泽智能体</h1>
         <p class="m-page-sub">{{ agentLabel }} · 本地会话</p>
       </div>
-      <button class="m-btn ghost" @click="onNewChat">新会话</button>
+      <button class="m-icon-btn accent" title="新会话" @click="onNewChat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5H6.5A2.5 2.5 0 0 0 4 7v9.5A2.5 2.5 0 0 0 6.5 19H16a2.5 2.5 0 0 0 2.5-2.5V11"/><path d="M16.2 4.3l3.5 3.5L12.5 15l-3.8.6.6-3.8 6.9-7.5z"/></svg>
+      </button>
     </header>
 
     <!-- 消息区 -->
     <div ref="listEl" class="chat-list">
-      <div v-if="!msgs.length" class="m-empty">暂无消息，下方输入一条试试吧</div>
+      <div v-if="!msgs.length" class="m-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.3 9.3 0 0 1-3.9-.8L3 21l1.9-5.1A8.3 8.3 0 0 1 3 11.5 8.4 8.4 0 0 1 11.5 3a8.5 8.5 0 0 1 9.5 8.5z"/></svg>
+        <p>还没有对话，在下方说第一句话吧</p>
+      </div>
       <div v-for="(m, i) in msgs" :key="i" :class="['msg-row', m.role === 'user' ? 'mine' : 'agent']">
         <!-- 卡片消息 -->
         <div v-if="m.kind === 'card' && m.card" class="msg-card">
           <div class="m-card-title">{{ m.card.title || '确认' }}</div>
           <div class="msg-card-body">{{ m.card.text || m.card.detail || '' }}</div>
           <div v-if="m.pending" class="msg-card-actions">
-            <button class="m-btn" @click="onCardOk(m, i)">确认</button>
+            <button class="m-btn sm" @click="onCardOk(m, i)">确认</button>
             <button class="m-btn ghost" @click="onCardCancel(m, i)">取消</button>
           </div>
           <div v-else-if="m.cardResult" class="msg-card-result">{{ m.cardResult }}</div>
@@ -36,15 +41,25 @@
 
     <!-- 输入区 -->
     <div class="chat-input">
+      <!-- 附件菜单 -->
+      <div v-if="attachMenu" class="chat-attach-menu">
+        <button class="attach-item" @click="onAttach('todo')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 12l2.8 2.8L16.5 9"/></svg>
+          添加待办卡片
+        </button>
+        <button class="attach-item" @click="onAttach('password')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="14" r="4"/><path d="M11 11l8-8M16 4l3 3M14 6l2.5 2.5"/></svg>
+          添加密码卡片
+        </button>
+        <button class="attach-item" @click="onAttach('file')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+          添加文件（暂不支持）
+        </button>
+      </div>
       <div class="chat-input-row">
-        <!-- Agent 选择器 -->
-        <select class="chat-agent" v-model="agentName">
-          <option value="">白泽（默认）</option>
-          <option v-for="a in agents" :key="a" :value="a">{{ a }}</option>
-        </select>
-        <!-- 附件菜单 -->
-        <button class="chat-plus" @click="attachMenu = !attachMenu" title="附件">＋</button>
-        <!-- 文本输入 -->
+        <button class="chat-tool" title="附件" @click="attachMenu = !attachMenu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
         <input
           v-model="draft"
           class="m-input chat-text"
@@ -52,13 +67,16 @@
           placeholder="给白泽说点什么…"
           @keyup.enter="onSend"
         />
-        <button class="m-btn" :disabled="sending || !draft.trim()" @click="onSend">发送</button>
+        <button class="chat-send" title="发送" :disabled="sending || !draft.trim()" @click="onSend">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>
+        </button>
       </div>
-      <!-- 附件菜单弹层 -->
-      <div v-if="attachMenu" class="chat-attach-menu">
-        <button class="attach-item" @click="onAttach('todo')">添加待办卡片</button>
-        <button class="attach-item" @click="onAttach('password')">添加密码卡片</button>
-        <button class="attach-item" @click="onAttach('file')">添加文件（暂不支持）</button>
+      <div class="chat-foot">
+        <select class="chat-agent" v-model="agentName">
+          <option value="">白泽（默认）</option>
+          <option v-for="a in agents" :key="a" :value="a">{{ a }}</option>
+        </select>
+        <span class="chat-hint">Enter 发送</span>
       </div>
     </div>
   </div>
@@ -166,72 +184,153 @@ onMounted(() => {
 
 <style scoped>
 .chat-view {
-  display: flex; flex-direction: column;
-  height: calc(100vh - var(--nav-h) - 20px);
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--nav-h) - env(safe-area-inset-bottom) - 22px);
+  height: calc(100dvh - var(--nav-h) - env(safe-area-inset-bottom) - 22px);
 }
 .chat-list {
-  flex: 1; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 4px 0 10px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 0 8px;
 }
 .msg-row { display: flex; }
 .msg-row.mine { justify-content: flex-end; }
 .msg-row.agent { justify-content: flex-start; }
 .msg-bubble {
-  max-width: 78%; padding: 8px 12px;
-  border-radius: 12px; font-size: 14px; line-height: 1.55;
-  position: relative; word-break: break-word;
+  max-width: 82%;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.55;
+  word-break: break-word;
 }
 .bubble-user {
-  background: var(--accent); color: #fff;
-  border-bottom-right-radius: 4px;
+  background: var(--accent-soft);
+  border-left: 2px solid var(--accent);
+  color: var(--fg);
 }
+.bubble-user .msg-time { text-align: right; }
 .bubble-agent {
-  background: var(--surface-2); color: var(--fg);
+  background: var(--surface-2);
   border: 1px solid var(--line);
-  border-bottom-left-radius: 4px;
+  color: var(--fg);
 }
-.msg-time { display: block; font-size: 10px; opacity: .6; margin-top: 2px; }
+.msg-time {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--fg-3);
+}
 .typing { color: var(--fg-2); }
 
-/* 卡片 */
+/* 卡片消息 */
 .msg-card {
-  max-width: 85%;
-  background: var(--surface); border: 1px solid var(--accent);
-  border-radius: 12px; padding: 10px 12px;
+  max-width: 82%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px;
 }
-.msg-card-body { font-size: 13px; color: var(--fg-2); margin-bottom: 8px; word-break: break-word; }
+.msg-card .m-card-title { margin-bottom: 6px; }
+.msg-card-body {
+  font-size: 13px;
+  color: var(--fg-2);
+  margin-bottom: 10px;
+  word-break: break-word;
+}
 .msg-card-actions { display: flex; gap: 8px; }
-.msg-card-result { font-size: 12px; color: var(--fg-3); }
+.msg-card-result { font-size: 11px; color: var(--fg-3); }
 
 /* 输入区 */
-.chat-input {
-  position: sticky; bottom: 0;
-  background: var(--bg); padding: 8px 0 4px;
+.chat-input { flex: none; padding-top: 8px; }
+.chat-input-row { display: flex; align-items: center; gap: 8px; }
+.chat-tool {
+  flex: none;
+  width: 44px; height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--fg-2);
+  cursor: pointer;
+  transition: background 120ms var(--ease-in), color 120ms var(--ease-in);
 }
-.chat-input-row { display: flex; align-items: center; gap: 6px; }
+.chat-tool:active { background: var(--surface-3); color: var(--fg); }
+.chat-tool svg { width: 18px; height: 18px; }
+.chat-text { flex: 1; min-width: 0; }
+.chat-send {
+  flex: none;
+  width: 44px; height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+  transition: background 120ms var(--ease-in), opacity 120ms var(--ease-in);
+}
+.chat-send:active { background: var(--accent-2); }
+.chat-send:disabled { opacity: .45; cursor: default; }
+.chat-send svg { width: 20px; height: 20px; }
+.chat-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
 .chat-agent {
-  max-width: 90px; padding: 8px 6px;
-  background: var(--surface-2); border: 1px solid var(--line);
-  border-radius: 8px; color: var(--fg); font-size: 12px;
+  height: 44px;
+  max-width: 150px;
+  padding: 0 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
 }
-.chat-plus {
-  width: 34px; height: 38px; flex: none;
-  border-radius: 8px; border: 1px solid var(--line-2);
-  background: var(--surface-2); color: var(--fg-2);
-  font-size: 18px; line-height: 1; cursor: pointer;
-}
-.chat-text { flex: 1; }
+.chat-agent:focus { border-color: var(--accent); }
+.chat-hint { font-size: 11px; letter-spacing: .04em; color: var(--fg-3); }
+
+/* 附件菜单 */
 .chat-attach-menu {
-  display: flex; flex-direction: column; margin-bottom: 8px;
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: 10px; overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
 }
 .attach-item {
-  padding: 10px 14px; font-size: 13px; text-align: left;
-  background: none; border: none; color: var(--fg-2); cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 14px;
+  background: none;
+  border: none;
   border-bottom: 1px solid var(--line);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
 }
 .attach-item:last-child { border-bottom: none; }
+.attach-item svg { width: 18px; height: 18px; color: var(--fg-3); flex: none; }
 .attach-item:active { background: var(--surface-2); }
 </style>

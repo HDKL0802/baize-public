@@ -1,13 +1,16 @@
 <template>
   <div class="kb-view">
     <header class="m-page-head">
-      <div>
+      <div class="m-head-text">
         <h1 class="m-page-title">知识库</h1>
         <p class="m-page-sub">
+          <span :class="['kb-status-dot', (store.kbMode && store.kbOnline) ? 'ok' : '']"></span>
           {{ store.kbMode ? (store.kbOnline ? '已连接白泽后端' : '后端离线') : '本机模式' }}
         </p>
       </div>
-      <button class="m-btn ghost" @click="onSync">同步</button>
+      <button class="m-icon-btn" title="同步" @click="onSync">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v4h-4"/></svg>
+      </button>
     </header>
 
     <!-- 子 tab -->
@@ -26,9 +29,10 @@
       <VaultView v-else-if="tab === 'vault'" embedded />
 
       <!-- 占位 -->
-      <div v-else class="m-card kb-placeholder">
-        <div class="m-card-title">{{ activeLabel }}</div>
-        <div class="kb-placeholder-text">该模块开发中，敬请期待</div>
+      <div v-else class="m-empty kb-placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l8.5 4.5L12 12.5 3.5 8 12 3.5z"/><path d="M3.5 12l8.5 4.5 8.5-4.5"/><path d="M3.5 16l8.5 4.5 8.5-4.5"/></svg>
+        <p>{{ activeLabel }}模块开发中，敬请期待</p>
+        <button class="m-btn ghost" @click="tab = 'todo'">返回待办</button>
       </div>
     </div>
   </div>
@@ -67,20 +71,45 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.kb-status-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: var(--fg-3);
+  vertical-align: 1px;
+}
+.kb-status-dot.ok { background: var(--ok); }
+
 .kb-tabs {
-  display: flex; gap: 6px; margin-bottom: 12px;
-  overflow-x: auto; scrollbar-width: none;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .kb-tabs::-webkit-scrollbar { display: none; }
 .kb-tab {
-  flex: none; padding: 6px 14px; border-radius: 16px;
-  font-size: 12px; background: var(--surface);
-  border: 1px solid var(--line); color: var(--fg-2); cursor: pointer;
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  position: relative;
+  transition: background 120ms var(--ease-in), color 120ms var(--ease-in);
 }
-.kb-tab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-
-.kb-placeholder-text { font-size: 13px; color: var(--fg-3); padding: 10px 0; }
-
-/* 嵌入模式下去掉子组件自带的大标题区，避免重复 */
-:deep(.embedded > header) { margin-bottom: 8px; }
+.kb-tab::after { content: ''; position: absolute; inset: -4px; }
+.kb-tab.on {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+.kb-placeholder { padding-bottom: 56px; }
 </style>

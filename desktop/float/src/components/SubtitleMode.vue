@@ -29,7 +29,7 @@ function saveCfg() {
 }
 function addSubLine(src, dst, dstErr) {
   subItems.value.push({ src, dst, dstErr, key: Date.now() + Math.random() });
-  while (subItems.value.length > 3) subItems.value.shift();
+  while (subItems.value.length > 2) subItems.value.shift();   // 最多两条，字幕不占太多屏
 }
 async function onSegment(blob, startAt, segErr) {
   if (segErr) { on = false; toggleText.value = '开始'; err = '录音器起不来：' + ((segErr && segErr.message) || segErr); paintStat(); return; }
@@ -90,19 +90,34 @@ onMounted(async () => {
 <template>
   <div class="f-sub">
     <div class="f-subbar">
-      <button class="fsbtn" @click="toggle">{{ toggleText }}</button>
-      <button class="fsbtn" @click="toggleLang">{{ cfg.to === 'zh' ? '中' : 'EN' }}</button>
-      <button :class="['fsbtn', { on: cfg.showSource }]" @click="toggleSrc">显示原文</button>
+      <button class="fsbtn" :title="toggleText" @click="toggle">
+        <svg v-if="toggleText === '暂停'" class="ic" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="7" y="7" width="10" height="10" rx="2" />
+        </svg>
+        <svg v-else class="ic" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+          <path d="M12 18v3" />
+        </svg>
+        {{ toggleText }}
+      </button>
+      <button class="fsbtn mono" @click="toggleLang">{{ cfg.to === 'zh' ? '中' : 'EN' }}</button>
+      <button :class="['fsbtn', { on: cfg.showSource }]" @click="toggleSrc">原文</button>
       <span class="fsfont">
         <button v-for="f in ['s','m','l']" :key="f" :class="['fsbtn', { on: cfg.font === f }]" @click="setFont(f)">
           {{ f === 's' ? '小' : f === 'm' ? '中' : '大' }}
         </button>
       </span>
       <span :class="['fsstat', statCls]">{{ stat }}</span>
-      <button class="fsbtn" @click="close">关闭</button>
+      <button class="fsbtn icon" title="关闭浮窗" @click="close">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+        </svg>
+      </button>
     </div>
     <div :class="['f-sublist', 'f-' + cfg.font, { 'hide-src': !cfg.showSource }]">
-      <div v-for="(it, i) in subItems" :key="it.key" class="f-sub-item">
+      <div v-if="!subItems.length" class="f-empty">点「开始」后，这里会滚动显示实时字幕。</div>
+      <div v-for="(it, i) in subItems" :key="it.key" :class="['f-sub-item', { older: i < subItems.length - 1 }]">
         <div class="f-src">{{ it.src }}</div>
         <div :class="['f-dst', { bad: it.dstErr }]">{{ it.dstErr ? '翻译失败：' + it.dstErr : it.dst }}</div>
       </div>
@@ -111,36 +126,66 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.f-sub { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* 字幕条始终压在深色半透明底上，所以这里不走主题变量，固定高对比配色 */
+.f-sub {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  background: rgba(7,8,7,.82); border: 1px solid var(--line); border-radius: 2px;
+  overflow: hidden;
+  --sd-line: rgba(230,225,214,.16);
+  --sd-text: #E6E1D6;
+  --sd-dim: #A6A296;
+  --sd-faint: #6F6C62;
+}
 .f-subbar {
-  display: flex; align-items: center; gap: 4px; padding: 2px 6px;
-  background: var(--surface); border-bottom: 1px solid var(--border);
-  opacity: .32; transition: opacity .15s; user-select: none;
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-bottom: 1px solid var(--sd-line);
+  opacity: .38; transition: opacity 120ms cubic-bezier(.2,0,0,1); user-select: none;
 }
 .f-subbar:hover { opacity: 1; }
 .fsbtn {
-  border: 1px solid var(--border-strong); background: transparent; color: var(--text-2);
-  border-radius: 4px; padding: 1px 7px; font: inherit; font-size: 11px; line-height: 1.6;
-  cursor: pointer; white-space: nowrap;
+  height: 24px; padding: 0 7px; display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid var(--sd-line); border-radius: 4px; background: transparent;
+  color: var(--sd-dim); font: inherit; font-size: 11px; line-height: 1; cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms cubic-bezier(.2,0,0,1), color 120ms cubic-bezier(.2,0,0,1),
+              border-color 120ms cubic-bezier(.2,0,0,1);
 }
-.fsbtn:hover { background: var(--surface-2); color: var(--text); }
-.fsbtn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.fsbtn:hover { background: rgba(255,255,255,.07); color: var(--sd-text); }
+.fsbtn.on {
+  background: rgba(59,224,196,.12); border-color: var(--accent); color: var(--accent); font-weight: 600;
+}
+/* 图标按钮：24×24 命中区 */
+.fsbtn.icon { width: 24px; padding: 0; justify-content: center; border-color: transparent; }
+.fsbtn .ic { width: 13px; height: 13px; stroke-width: 1.7; }
 .fsfont { display: inline-flex; gap: 2px; }
 .fsstat {
-  flex: 1; min-width: 0; margin-left: 6px; color: var(--text-3); font-size: 10.5px;
+  flex: 1; min-width: 0; color: var(--sd-faint); font-size: 10.5px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right;
 }
 .fsstat.err { color: var(--err); }
+
+/* 字幕正文：15px/1.5，最多两行 */
 .f-sublist {
   flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end;
-  gap: 10px; padding: 10px 18px 16px; overflow: hidden; text-align: center; --sub-size: 22px;
+  gap: 8px; padding: 10px 14px 12px; overflow: hidden; text-align: center;
+  --sub-size: 15px;
 }
-.f-sublist.f-s { --sub-size: 16px; }
-.f-sublist.f-m { --sub-size: 22px; }
-.f-sublist.f-l { --sub-size: 30px; }
-.f-sub-item { transition: opacity .2s; }
-.f-src { color: var(--text-2); font-size: var(--sub-size); line-height: 1.4; word-break: break-word; }
-.f-dst { color: var(--accent); font-size: calc(var(--sub-size) * .92); font-weight: 600; line-height: 1.45; margin-top: 2px; word-break: break-word; }
+.f-sublist.f-s { --sub-size: 13px; }
+.f-sublist.f-m { --sub-size: 15px; }
+.f-sublist.f-l { --sub-size: 18px; }
+.f-empty { color: var(--sd-faint); font-size: 12px; line-height: 1.55; }
+.f-sub-item { min-height: 0; transition: opacity 200ms cubic-bezier(.2,0,0,1); }
+.f-sub-item.older { opacity: .38; }
+.f-src {
+  color: var(--sd-dim); font-size: calc(var(--sub-size) - 3px); line-height: 1.4;
+  word-break: break-word; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+}
+.f-dst {
+  color: var(--accent); font-size: var(--sub-size); font-weight: 600; line-height: 1.5;
+  margin-top: 2px; word-break: break-word; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
 .f-dst.bad { color: var(--warn); font-weight: 400; }
 .f-sublist.hide-src .f-src { display: none; }
 </style>

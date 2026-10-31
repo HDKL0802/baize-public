@@ -62,7 +62,22 @@ func (s *Server) Handler() http.Handler {
 	s.registerVoice(mux)
 	s.registerDL(mux)
 	s.registerWebUI(mux) // 手机版控制台的静态资源（/css、/js）+ 应用图标（/icon.png）
-	return mux
+	return corsMiddleware(mux)
+}
+
+// corsMiddleware 允许任意 origin 跨端口访问（开发/调试用，生产可收紧）
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Baize-Token, X-Baize-Session, Authorization")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 /* ---------- 中间件与工具 ---------- */

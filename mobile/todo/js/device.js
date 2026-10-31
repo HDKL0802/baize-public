@@ -125,15 +125,21 @@ window.BzDevice = (function () {
   }
 
   /** 跟白泽智能体说话：转给后端 Agent（走内核代理，令牌不出原生层） */
-  function agentRun(goal, wait) {
-    return call('/api/agent/run', 'POST', JSON.stringify({ goal: goal, wait: !!wait }));
+  function agentRun(goal, wait, provider) {
+    var body = { goal: goal, wait: !!wait };
+    if (provider) body.provider = provider;
+    return call('/api/agent/run', 'POST', JSON.stringify(body));
   }
   function agentState() { return call('/api/agent/state', 'GET'); }
+  function agentProviders() { return call('/api/agent/providers', 'GET'); }
   function agentRunDetail(id) { return call('/api/agent/runs/' + encodeURIComponent(id), 'GET'); }
   function agentCommands() { return call('/api/agent/commands', 'GET'); }
   function agentApprovals() { return call('/api/agent/approvals', 'GET'); }
   function agentApprove(id) { return call('/api/agent/approvals/' + encodeURIComponent(id) + '/approve', 'POST', JSON.stringify({ by: '手机' })); }
   function agentReject(id, reason) { return call('/api/agent/approvals/' + encodeURIComponent(id) + '/reject', 'POST', JSON.stringify({ by: '手机', reason: reason || '' })); }
+  function agentSetActiveProvider(name) {
+    return call('/api/agent/providers', 'POST', JSON.stringify({ action: 'active', name: name }));
+  }
 
   /* ---- 待办镜像（纯本机模式下的老路子：把整表推给内核，让后端查得到） ---- */
 
@@ -172,7 +178,8 @@ window.BzDevice = (function () {
   return {
     available, processStatus, linkStatus, call, configure,
     refreshRemote, remoteInfo, remoteLastError, remoteConfigured, remoteReady, remoteOp, remoteState,
-    agentRun, agentState, agentRunDetail, agentCommands, agentApprovals, agentApprove, agentReject,
+    agentRun, agentState, agentProviders, agentRunDetail, agentCommands, agentApprovals, agentApprove, agentReject,
+    agentSetActiveProvider,
     pushTodos, mirrorWhenReady, lastSyncInfo,
   };
 })();

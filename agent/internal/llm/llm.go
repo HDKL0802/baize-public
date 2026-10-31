@@ -141,8 +141,10 @@ func New(cfg Config) (Provider, error) {
 
 // Route 一条路由规则
 type Route struct {
+	Name     string   // 通道名（PickByName 用；与 config.Provider.Name 对应）
 	Kinds    []string // 任务类型（chat / plan / summarize / extract / code …），空表示通吃
 	Provider Provider
+	Default  bool // 是否是"默认首选"（多个 default 时取第一个）
 }
 
 // Router 按任务类型选模型，并保存回退链
@@ -157,9 +159,14 @@ func NewRouter(allowRemote bool) *Router {
 	return &Router{allowRemote: allowRemote}
 }
 
-// Add 注册一条路由
+// Add 注册一条路由（旧接口，向后兼容；name 留空、default=false）
 func (r *Router) Add(kinds []string, p Provider) {
 	r.routes = append(r.routes, Route{Kinds: kinds, Provider: p})
+}
+
+// AddNamed 注册一条路由，同时记录通道名与"默认首选"标记
+func (r *Router) AddNamed(name string, kinds []string, p Provider, isDefault bool) {
+	r.routes = append(r.routes, Route{Name: name, Kinds: kinds, Provider: p, Default: isDefault})
 }
 
 // AddFallback 注册回退通道（主通道失败时按顺序尝试）
@@ -176,7 +183,14 @@ func (r *Router) Providers() []Provider {
 	return append(out, r.fallbacks...)
 }
 
-// Pick 选一条通道
+// RouteInfos 已注册的路由通道（含 name/default/kinds），供界面列出
+func (r *Router) RouteInfos() []Route {
+	out := make([]Route, len(r.routes))
+	copy(out, r.routes)
+	return out
+}
+
+// Pick 按任务类型选一条通道
 func (r *Router) Pick(kind string) (Provider, error) {
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	for _, rt := range r.routes {
@@ -202,6 +216,51 @@ func (r *Router) Pick(kind string) (Provider, error) {
 		return r.routes[0].Provider, nil
 	}
 	return nil, ErrNoProvider
+}
+
+// PickByName 按通道名选一条通道（界面切换模型时用）。
+// 同时查 routes 和 fallbacks（回退通道也可以被强制选）。找不到返回 ErrNoProvider。
+func (r *Router) PickByName(name string) (Provider, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, ErrNoProvider
+	}
+	for _, rt := range r.routes {
+		if strings.EqualFold(strings.TrimSpace(rt.Name), name) {
+			return rt.Provider, nil
+		}
+	}
+	for _, fb := range r.fallbacks {
+		if strings.EqualFold(strings.TrimSpace(fb.Name()), name) {
+			return fb, nil
+		}
+	}
+	return nil, fmt.Errorf("找不到名为 %q 的模型通道", name)
+}
+
+// PickFirstDefault 取第一个标记 Default=true 的主通道（界面"恢复默认"时用）。
+// 没有 default 标记的就退回普通 Pick("") 逻辑。
+func (r *Router) PickFirstDefault() (Provider, error) {
+	for _, rt := range r.routes {
+		if rt.Default {
+			return rt.Provider, nil
+		}
+	}
+	return r.Pick("")
+}
+
+// RouteByName 查某条通道的路由信息（含 Kinds / Default）；找不到返回 nil
+func (r *Router) RouteByName(name string) *Route {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	for i := range r.routes {
+		if strings.EqualFold(strings.TrimSpace(r.routes[i].Name), name) {
+			return &r.routes[i]
+		}
+	}
+	return nil
 }
 
 // Fallbacks 回退链

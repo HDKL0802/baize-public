@@ -1,29 +1,32 @@
 package httpapi
 
 import (
-	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"baize/internal/memory"
+	"baize/internal/notebook"
 )
 
 // registerNotes 注册「记忆星图」（笔记 + 双向链接 + 图谱）接口。
 //
-// 笔记正本存在记忆库（memory.db）里：source='note' 的分块，关系存 note_links / note_tags。
-// 这样笔记天然继承记忆的语义检索与向量通道，「自动连边」直接用同一份向量。
+// 笔记的正本是磁盘上的 .md 文件（数据目录下的 vault/，Obsidian 兼容结构），
+// SQLite（notes.db）只是派生索引，删了可以随时用 POST /notes/scan 重建。
+// 这与旧实现最大的差别：用户能直接看到、编辑、带走自己的笔记。
 //
-// **多用户**：记忆库按登录身份路由（登录 = 该用户的分区，未登录 = 默认主体），
-// 所以每个人的笔记、星图、标签云天然隔离开，互不可见。
+// **多用户**：笔记库按登录身份路由（用户 / 用户组各自一份 vault），
+// 所以每个人的笔记、星图、标签云天然隔离。
+//
+// 响应字段保持旧前端契约（docKey / hasVector / explicitDegree / autoDegree /
+// 边的 kind=explicit|auto），这样老界面不用改也能用。
 func (s *Server) registerNotes(mux *http.ServeMux) {
 	if s.agent == nil {
 		return
 	}
 	a := s.agent
 
-	// 默认分区：跟记忆用同一个（配置里的 memory.namespace）
 	nsOf := func(q string) string {
 		if strings.TrimSpace(q) != "" {
 			return memory.NormalizeNamespace(q)
@@ -31,79 +34,114 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 		return memory.NormalizeNamespace(a.Config().Memory.Namespace)
 	}
 
-	// 笔记列表（可按标签 / 关键词过滤）+ 标签云 + 概览
+	// 笔记列表 + 标签云 + 概览
 	mux.HandleFunc("GET /api/agent/notes", s.api(func(w http.ResponseWriter, r *http.Request) {
-		mem, err := s.memOf(r)
+		nb, err := s.nbOf(r)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		urlq := r.URL.Query()
 		ns := nsOf(urlq.Get("namespace"))
-		notes, err := mem.ListNotes(ns, urlq.Get("tag"), urlq.Get("q"),
-			atoiDefault(urlq.Get("limit"), 50), atoiDefault(urlq.Get("offset"), 0))
+		notes, total, err := nb.List(notebook.ListOptions{
+			Tag: urlq.Get("tag"), Query: urlq.Get("q"),
+			Limit: atoiDefault(urlq.Get("limit"), 50), Offset: atoiDefault(urlq.Get("offset"), 0),
+		})
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		tags, err := mem.Tags(ns)
+		tags, err := nb.Tags()
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		stats, err := mem.NoteStats(ns)
+		stats, err := nb.Stats()
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
+		}
+		cards := make([]noteCard, 0, len(notes))
+		for _, n := range notes {
+			cards = append(cards, noteCardOf(n, ns))
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"namespace": ns, "notes": notes, "tags": tags, "stats": stats,
+			"namespace": ns, "notes": cards, "total": total, "tags": tags, "stats": stats,
 		})
 	}))
 
-	// 星图数据（点 + 边）。参数：
-	//   namespace 分区；limit 最多几个点；auto=0 关掉自动边；minWeight 自动边相似度下限
-	//   root 以某篇笔记为中心看局部图；hops 跳数（默认 1）
-	mux.HandleFunc("GET /api/agent/notes/graph", s.api(func(w http.ResponseWriter, r *http.Request) {
-		mem, err := s.memOf(r)
+	// 全文检索（倒排索引，中文按 bigram 分词）
+	mux.HandleFunc("GET /api/agent/notes/search", s.api(func(w http.ResponseWriter, r *http.Request) {
+		nb, err := s.nbOf(r)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		urlq := r.URL.Query()
-		ns := nsOf(urlq.Get("namespace"))
-		auto := urlq.Get("auto") != "0"
+		hits, err := nb.Search(urlq.Get("q"), atoiDefault(urlq.Get("limit"), 20))
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"query": urlq.Get("q"), "hits": hits})
+	}))
+
+	// 星图数据（点 + 边）。参数：
+	//   limit 最多几个点；auto=0 关掉相关边；minWeight 相关边权重下限
+	//   tags=1 把标签画成节点；missing=0 不画悬空链接；root 以某篇为中心；hops 跳数
+	mux.HandleFunc("GET /api/agent/notes/graph", s.api(func(w http.ResponseWriter, r *http.Request) {
+		nb, err := s.nbOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		urlq := r.URL.Query()
 		minW := 0.0
 		if raw := strings.TrimSpace(urlq.Get("minWeight")); raw != "" {
 			if f, err := strconv.ParseFloat(raw, 64); err == nil {
 				minW = f
 			}
 		}
-		g, err := mem.Graph(memory.GraphOptions{
-			Namespace:   ns,
-			Limit:       atoiDefault(urlq.Get("limit"), 300),
-			IncludeAuto: auto,
-			MinWeight:   minW,
-			RootKey:     urlq.Get("root"),
-			Hops:        atoiDefault(urlq.Get("hops"), 1),
+		g, err := nb.Graph(notebook.GraphOptions{
+			Limit:             atoiDefault(urlq.Get("limit"), 300),
+			IncludeTags:       urlq.Get("tags") == "1",
+			IncludeUnresolved: urlq.Get("missing") != "0",
+			IncludeRelated:    urlq.Get("auto") != "0",
+			MinWeight:         minW,
+			Root:              urlq.Get("root"),
+			Hops:              atoiDefault(urlq.Get("hops"), 1),
+			Tag:               urlq.Get("tag"),
 		})
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, g)
+		edges := make([]graphEdge, 0, len(g.Edges))
+		for _, e := range g.Edges {
+			kind := "explicit"
+			if e.Kind == notebook.EdgeRelated {
+				kind = "auto"
+			}
+			edges = append(edges, graphEdge{From: e.From, To: e.To, Kind: kind, Detail: e.Kind, Weight: e.Weight})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"nodes": g.Nodes, "edges": edges, "note": g.Note,
+			"noteCount": g.NoteCount, "shown": g.Shown, "orphans": g.Orphans,
+			"explicitEdges": g.ExplicitEdges, "autoEdges": g.AutoEdges,
+			"tagEdges": g.TagEdges, "missingEdges": g.MissingEdges,
+		})
 	}))
 
-	// 单篇笔记：正文 + 出链 + 反向链接（界面右侧两栏就靠它）
-	mux.HandleFunc("GET /api/agent/notes/{key}", s.api(func(w http.ResponseWriter, r *http.Request) {
-		mem, err := s.memOf(r)
+	// 单篇笔记：正文 + 出链 + 反向链接
+	mux.HandleFunc("GET /api/agent/notes/{key...}", s.api(func(w http.ResponseWriter, r *http.Request) {
+		nb, err := s.nbOf(r)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		ns := nsOf(r.URL.Query().Get("namespace"))
 		key := strings.TrimSpace(r.PathValue("key"))
-		note, ok, err := mem.GetNote(ns, key)
+		note, ok, err := nb.Read(key)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
@@ -112,22 +150,22 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 			writeErr(w, http.StatusNotFound, "没有这篇笔记："+key)
 			return
 		}
-		out, err := mem.Outlinks(ns, key)
+		outs, err := nb.Outlinks(key)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		bl, err := mem.Backlinks(ns, key)
+		bl, err := nb.Backlinks(key)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"namespace": ns, "note": note, "outlinks": out, "backlinks": bl,
+			"namespace": ns, "note": noteDetailOf(note, ns), "outlinks": outs, "backlinks": bl,
 		})
 	}))
 
-	// 新建 / 保存一篇笔记（按路径覆盖）
+	// 新建 / 保存一篇笔记（按路径覆盖；不传路径就用标题当文件名）
 	mux.HandleFunc("POST /api/agent/notes", s.api(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Namespace string   `json:"namespace"`
@@ -140,29 +178,30 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		mem, err := s.memOf(r)
+		nb, err := s.nbOf(r)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
-		defer cancel()
-		note, err := mem.WriteNote(ctx, memory.WriteNoteOptions{
-			Namespace: nsOf(req.Namespace), Path: req.Path, Title: req.Title,
-			Content: req.Content, Tags: req.Tags,
+		note, err := nb.Write(notebook.WriteOptions{
+			Path: req.Path, Title: req.Title, Content: req.Content, Tags: req.Tags,
 		})
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "note": note})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "note": noteDetailOf(note, nsOf(req.Namespace))})
 	}))
 
 	// 批量导入（Obsidian 库就是一堆 .md）。files:[{path,title,content}]
 	mux.HandleFunc("POST /api/agent/notes/import", s.api(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Namespace string            `json:"namespace"`
-			Files     []memory.NoteFile `json:"files"`
+			Namespace string `json:"namespace"`
+			Files     []struct {
+				Path    string `json:"path"`
+				Title   string `json:"title"`
+				Content string `json:"content"`
+			} `json:"files"`
 		}
 		if err := decodeBody(r, &req); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
@@ -172,27 +211,27 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 			writeErr(w, http.StatusBadRequest, "files 不能为空")
 			return
 		}
-		mem, err := s.memOf(r)
+		nb, err := s.nbOf(r)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
-		ns := nsOf(req.Namespace)
-		res, err := mem.ImportNotes(ctx, ns, req.Files)
+		files := make([]notebook.ImportFile, 0, len(req.Files))
+		for _, f := range req.Files {
+			files = append(files, notebook.ImportFile{Path: f.Path, Content: f.Content})
+		}
+		res, err := nb.Import(files)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		// 导入完统一解析一次链接（跨文件的 [[双链]] 这时才都能接上）
-		if n, err := mem.ResolveLinks(ns); err == nil {
-			res.Links = n
-		}
-		writeJSON(w, http.StatusOK, res)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"namespace": nsOf(req.Namespace), "imported": res.Notes, "skipped": res.Skipped,
+			"tags": res.Tags, "errors": res.Errors,
+		})
 	}))
 
-	// 自动连边：按向量语义相似度把相关笔记连起来（这就是「自动双向链接」）
+	// 自动连边：按「共享出链/入链/标签」的共引关系补相关边（不依赖 embedding 通道）
 	mux.HandleFunc("POST /api/agent/notes/autolink", s.api(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Namespace string  `json:"namespace"`
@@ -200,60 +239,199 @@ func (s *Server) registerNotes(mux *http.ServeMux) {
 			MinSim    float64 `json:"minSim"`
 		}
 		_ = decodeBody(r, &req)
-		mem, err := s.memOf(r)
+		nb, err := s.nbOf(r)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-		defer cancel()
-		res, err := mem.AutoLink(ctx, memory.AutoLinkOptions{
-			Namespace: nsOf(req.Namespace), TopK: req.TopK, MinSim: req.MinSim,
+		res, err := nb.AutoRelated(notebook.RelatedOptions{TopK: req.TopK, MinSim: req.MinSim})
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"namespace": nsOf(req.Namespace), "ok": true, "links": res.Edges, "auto": res.Edges,
+			"pairs": res.Pairs, "notes": res.Notes, "method": res.Method, "note": res.Note,
 		})
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, res)
 	}))
 
-	// 重新解析悬空链接（导入顺序错乱、或手工补过笔记之后用一次）
+	// 重新解析悬空链接
 	mux.HandleFunc("POST /api/agent/notes/resolve", s.api(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Namespace string `json:"namespace"`
 		}
 		_ = decodeBody(r, &req)
-		mem, err := s.memOf(r)
+		nb, err := s.nbOf(r)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		ns := nsOf(req.Namespace)
-		n, err := mem.ResolveLinks(ns)
+		n, err := nb.ResolveLinks()
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "resolved": n, "namespace": ns})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "resolved": n, "namespace": nsOf(req.Namespace)})
 	}))
 
-	// 删除一篇笔记（连同它的链接）
-	mux.HandleFunc("POST /api/agent/notes/{key}/forget", s.api(func(w http.ResponseWriter, r *http.Request) {
-		mem, err := s.memOf(r)
+	// 扫描磁盘增量（在 Obsidian / 编辑器里改过文件之后重建索引）
+	mux.HandleFunc("POST /api/agent/notes/scan", s.api(func(w http.ResponseWriter, r *http.Request) {
+		nb, err := s.nbOf(r)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		ns := nsOf(r.URL.Query().Get("namespace"))
-		n, err := mem.ForgetNote(ns, strings.TrimSpace(r.PathValue("key")))
+		res, err := nb.Scan()
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if n == 0 {
-			writeErr(w, http.StatusNotFound, "没有这篇笔记，什么都没删")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "forgot": n})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "scan": res})
 	}))
+
+	// 重命名 / 移动（body: {key, path}）
+	mux.HandleFunc("POST /api/agent/notes/rename", s.api(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Namespace string `json:"namespace"`
+			Key       string `json:"key"`
+			Path      string `json:"path"`
+		}
+		if err := decodeBody(r, &req); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		nb, err := s.nbOf(r)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		note, err := nb.Rename(req.Key, req.Path)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "note": noteDetailOf(note, nsOf(req.Namespace))})
+	}))
+
+	// 删除（body: {key}；key 可以是带目录的相对路径）
+	mux.HandleFunc("POST /api/agent/notes/forget", s.api(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Namespace string `json:"namespace"`
+			Key       string `json:"key"`
+		}
+		_ = decodeBody(r, &req)
+		s.forgetNote(w, r, req.Key)
+	}))
+
+	// 兼容旧界面：POST /notes/<key>/forget（key 里带目录时走下面的兜底路由）
+	// 这条兜底也承接 GET 之外任何「notes/ 之后带斜杠」的 POST，
+	// 只有后缀是 /forget 才处理，其余一律 404（具体路由更优先，不会抢）。
+	mux.HandleFunc("POST /api/agent/notes/{rest...}", s.api(func(w http.ResponseWriter, r *http.Request) {
+		rest := r.PathValue("rest")
+		if key, ok := strings.CutSuffix(rest, "/forget"); ok {
+			s.forgetNote(w, r, key)
+			return
+		}
+		writeErr(w, http.StatusNotFound, "不认识的笔记接口："+r.URL.Path)
+	}))
+}
+
+// forgetNote 删除一篇笔记（按 key）
+func (s *Server) forgetNote(w http.ResponseWriter, r *http.Request, key string) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		writeErr(w, http.StatusBadRequest, "缺少 key")
+		return
+	}
+	nb, err := s.nbOf(r)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ok, err := nb.Delete(key)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !ok {
+		writeErr(w, http.StatusNotFound, "没有这篇笔记，什么都没删")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "forgot": 1})
+}
+
+// nbOf 取这次请求该用的笔记库（按登录身份路由到用户/用户组分区）
+func (s *Server) nbOf(r *http.Request) (*notebook.Vault, error) {
+	if s.agent == nil {
+		return nil, errors.New("Agent 服务未启动")
+	}
+	p, _, _ := s.principalOf(r)
+	return s.agent.PartitionNotebook(p)
+}
+
+/* ---------- 响应结构（兼容旧前端的字段命名） ---------- */
+
+type noteCard struct {
+	Key       string   `json:"key"`
+	DocKey    string   `json:"docKey"`
+	Namespace string   `json:"namespace"`
+	Path      string   `json:"path"`
+	Title     string   `json:"title"`
+	Aliases   []string `json:"aliases"`
+	Tags      []string `json:"tags"`
+	Excerpt   string   `json:"excerpt"`
+	Links     []string `json:"links"`
+	Tokens    int      `json:"tokens"`
+	Size      int64    `json:"size"`
+	CreatedAt int64    `json:"createdAt"`
+	UpdatedAt int64    `json:"updatedAt"`
+	HasVector bool     `json:"hasVector"`
+}
+
+type noteDetail struct {
+	noteCard
+	Content     string         `json:"content"`
+	Frontmatter map[string]any `json:"frontmatter,omitempty"`
+}
+
+type graphEdge struct {
+	From   string  `json:"from"`
+	To     string  `json:"to"`
+	Kind   string  `json:"kind"`   // 兼容旧界面：explicit / auto
+	Detail string  `json:"detail"` // 细分类型：link / embed / tag / missing / related
+	Weight float64 `json:"weight"`
+}
+
+func noteCardOf(n notebook.NoteSummary, ns string) noteCard {
+	return noteCard{
+		Key: n.Key, DocKey: n.Key, Namespace: ns, Path: n.Path, Title: n.Title,
+		Aliases: n.Aliases, Tags: n.Tags, Excerpt: n.Excerpt, Links: []string{},
+		Tokens: n.Tokens, Size: n.Size, CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
+		HasVector: false, // 笔记模块不落向量
+	}
+}
+
+func noteDetailOf(n notebook.Note, ns string) noteDetail {
+	links := make([]string, 0, len(n.Links))
+	for _, l := range n.Links {
+		links = append(links, l.Target)
+	}
+	return noteDetail{
+		noteCard: noteCard{
+			Key: n.Key, DocKey: n.Key, Namespace: ns, Path: n.Path, Title: n.Title,
+			Aliases: n.Aliases, Tags: n.Tags, Excerpt: excerptOf(n.Content, 160), Links: links,
+			Tokens: n.Tokens, Size: n.Size, CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
+			HasVector: false,
+		},
+		Content: n.Content, Frontmatter: n.Frontmatter,
+	}
+}
+
+func excerptOf(s string, maxRunes int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes])
 }

@@ -1,4 +1,4 @@
-package agentsvc
+﻿package agentsvc
 
 import (
 	"context"
@@ -265,7 +265,7 @@ func TestPersonaHeartbeatSectionInjectedWhenEnabled(t *testing.T) {
 	if err := lib.Write("AGENTS.md", "工作方式：先列清单。\n\n<!-- heartbeat:start -->\n心跳专属规则\n<!-- heartbeat:end -->\n"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Run(context.Background(), "随便", "chat", "loose"); err != nil {
+	if _, err := s.Run(context.Background(), "随便", "chat", "loose", ""); err != nil {
 		t.Fatalf("运行失败：%v", err)
 	}
 	f.mu.Lock()

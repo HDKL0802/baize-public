@@ -134,7 +134,7 @@ func (sc *scheduler) fire(j config.CronJob) {
 	if j.AutoApprove {
 		mode = "loose"
 	}
-	res, err := sc.svc.Run(ctx, j.Goal, recipe, mode)
+	res, err := sc.svc.Run(ctx, j.Goal, recipe, mode, "")
 	sc.svc.recordJobResult(j.ID, res, err)
 }
 
@@ -331,7 +331,7 @@ func (sc *scheduler) fireHeartbeat(hb config.HeartbeatConfig) {
 	ctx, cancel := context.WithTimeout(context.Background(), heartbeatTimeout(hb))
 	defer cancel()
 
-	res, err := sc.svc.Run(ctx, query, "chat", "")
+	res, err := sc.svc.Run(ctx, query, "chat", "", "")
 	if err == nil {
 		sc.svc.dispatchHeartbeat(hb.Target, res)
 	}
@@ -424,7 +424,7 @@ func (s *Service) StartHeartbeat() (string, error) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), heartbeatTimeout(hb))
 		defer cancel()
-		res, runErr := s.runInner(ctx, id, query, "chat", false, false, 0)
+		res, runErr := s.runInner(ctx, id, query, "chat", false, false, 0, "")
 		if runErr == nil {
 			s.dispatchHeartbeat(hb.Target, res)
 		}

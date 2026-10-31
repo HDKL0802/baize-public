@@ -1,4 +1,4 @@
-package agentsvc
+﻿package agentsvc
 
 import (
 	"context"
@@ -135,7 +135,7 @@ func TestServiceRunEndToEnd(t *testing.T) {
 	)
 	s := newService(t, f, nil)
 
-	res, err := s.Run(context.Background(), "写一份 report.md", "chat", "loose")
+	res, err := s.Run(context.Background(), "写一份 report.md", "chat", "loose", "")
 	if err != nil {
 		t.Fatalf("运行失败：%v", err)
 	}
@@ -204,7 +204,7 @@ func TestApprovalGateBlocksAndRejects(t *testing.T) {
 	}
 	done := make(chan out, 1)
 	go func() {
-		res, err := s.Run(context.Background(), "执行一条命令", "chat", "")
+		res, err := s.Run(context.Background(), "执行一条命令", "chat", "", "")
 		done <- out{res: res, err: err}
 	}()
 
@@ -255,7 +255,7 @@ func TestApprovalGateBlocksAndRejects(t *testing.T) {
 	)
 	s2 := newService(t, f2, func(c *config.Config) { c.ApprovalTimeoutSec = 10 })
 	go func() {
-		_, _ = s2.Run(context.Background(), "删掉 x.txt", "chat", "")
+		_, _ = s2.Run(context.Background(), "删掉 x.txt", "chat", "", "")
 	}()
 	deadline = time.Now().Add(5 * time.Second)
 	var ap2 Approval
@@ -287,7 +287,7 @@ func TestApprovalTimeoutRejects(t *testing.T) {
 		func(map[string]any) map[string]any { return sayBody("没批准，跳过") },
 	)
 	s := newService(t, f, func(c *config.Config) { c.ApprovalTimeoutSec = 1 })
-	res, err := s.Run(context.Background(), "删掉 y.txt", "chat", "")
+	res, err := s.Run(context.Background(), "删掉 y.txt", "chat", "", "")
 	if err != nil {
 		t.Fatalf("超时被拒后运行应平稳结束：%v", err)
 	}
@@ -304,7 +304,7 @@ func TestApprovalTimeoutRejects(t *testing.T) {
 func TestProviderConfigurationErrors(t *testing.T) {
 	// 1) 完全没有通道
 	s := newService(t, nil, nil)
-	if _, err := s.Run(context.Background(), "随便", "chat", "loose"); err == nil ||
+	if _, err := s.Run(context.Background(), "随便", "chat", "loose", ""); err == nil ||
 		!strings.Contains(err.Error(), "没有可用的模型通道") {
 		t.Fatalf("没有通道时应明确报错，实际：%v", err)
 	}
@@ -323,7 +323,7 @@ func TestProviderConfigurationErrors(t *testing.T) {
 	if !strings.Contains(st.Providers[0].Err, "本地") {
 		t.Fatalf("应说明只接本地模型：%+v", st.Providers[0])
 	}
-	if _, err := s2.Run(context.Background(), "随便", "chat", "loose"); err == nil {
+	if _, err := s2.Run(context.Background(), "随便", "chat", "loose", ""); err == nil {
 		t.Fatal("不可用通道时应报错")
 	}
 
@@ -406,7 +406,7 @@ func TestSkillsInjectedIntoPrompt(t *testing.T) {
 	if err := s.SaveConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Run(context.Background(), "随便", "chat", "loose"); err != nil {
+	if _, err := s.Run(context.Background(), "随便", "chat", "loose", ""); err != nil {
 		t.Fatalf("运行失败：%v", err)
 	}
 	f.mu.Lock()
@@ -448,7 +448,7 @@ func TestSkillManageCreatesSkillForAgent(t *testing.T) {
 		func(map[string]any) map[string]any { return sayBody("技能已沉淀好") },
 	)
 	s := newService(t, f, nil)
-	res, err := s.Run(context.Background(), "把写周报的做法记成技能", "chat", "")
+	res, err := s.Run(context.Background(), "把写周报的做法记成技能", "chat", "", "")
 	if err != nil {
 		t.Fatalf("运行失败：%v", err)
 	}
@@ -491,7 +491,7 @@ func TestBrowserToolRegistered(t *testing.T) {
 	f := newFakeLLM(t, func(map[string]any) map[string]any { return sayBody("好") })
 	s := newService(t, f, nil)
 
-	if _, err := s.Run(context.Background(), "随便说点什么", "chat", ""); err != nil {
+	if _, err := s.Run(context.Background(), "随便说点什么", "chat", "", ""); err != nil {
 		t.Fatalf("运行失败：%v", err)
 	}
 	f.mu.Lock()
@@ -511,7 +511,7 @@ func TestBrowserToolRegistered(t *testing.T) {
 	if err := s.SaveConfig(cfg); err != nil {
 		t.Fatalf("保存配置失败：%v", err)
 	}
-	if _, err := s.Run(context.Background(), "再随便说点什么", "chat", ""); err != nil {
+	if _, err := s.Run(context.Background(), "再随便说点什么", "chat", "", ""); err != nil {
 		t.Fatalf("运行失败：%v", err)
 	}
 	f.mu.Lock()
@@ -557,7 +557,7 @@ func TestAutoRecallInjectsMemoryAndTools(t *testing.T) {
 		memory.IngestOptions{Title: "部署方式", Kind: "decision"}); err != nil {
 		t.Fatalf("写记忆失败：%v", err)
 	}
-	if _, err := s.Run(context.Background(), "白泽后端部署在哪里", "chat", ""); err != nil {
+	if _, err := s.Run(context.Background(), "白泽后端部署在哪里", "chat", "", ""); err != nil {
 		t.Fatalf("运行失败：%v", err)
 	}
 	f.mu.Lock()
@@ -585,7 +585,7 @@ func TestAutoRecallCanBeTurnedOff(t *testing.T) {
 		memory.IngestOptions{Title: "部署方式"}); err != nil {
 		t.Fatalf("写记忆失败：%v", err)
 	}
-	if _, err := s.Run(context.Background(), "白泽后端部署在哪里", "chat", ""); err != nil {
+	if _, err := s.Run(context.Background(), "白泽后端部署在哪里", "chat", "", ""); err != nil {
 		t.Fatalf("运行失败：%v", err)
 	}
 	f.mu.Lock()
@@ -635,7 +635,7 @@ func TestStartReturnsRunIDAndSerializes(t *testing.T) {
 	})
 	s := newService(t, f, nil)
 
-	id, err := s.Start("随便做点什么", "chat", "")
+	id, err := s.Start("随便做点什么", "chat", "", "")
 	if err != nil {
 		t.Fatalf("派发失败：%v", err)
 	}
@@ -645,7 +645,7 @@ func TestStartReturnsRunIDAndSerializes(t *testing.T) {
 	if got := s.CurrentRunID(); got != id {
 		t.Fatalf("状态里应能看到当前运行 id（期望 %s，实际 %s）", id, got)
 	}
-	if _, err := s.Start("再来一个", "chat", ""); err == nil {
+	if _, err := s.Start("再来一个", "chat", "", ""); err == nil {
 		t.Fatal("顶层串行：已有任务在跑时应明确拒绝，而不是排队干等")
 	}
 
@@ -696,7 +696,7 @@ func TestPersonaInjectedAndHotReload(t *testing.T) {
 	if err := lib.Write("AGENTS.md", "工作方式：先列清单。\n\n<!-- heartbeat:start -->\n心跳专属规则\n<!-- heartbeat:end -->\n"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Run(context.Background(), "随便", "chat", "loose"); err != nil {
+	if _, err := s.Run(context.Background(), "随便", "chat", "loose", ""); err != nil {
 		t.Fatalf("运行失败：%v", err)
 	}
 	f.mu.Lock()
@@ -717,7 +717,7 @@ func TestPersonaInjectedAndHotReload(t *testing.T) {
 	if err := s.SaveConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Run(context.Background(), "随便", "chat", "loose"); err != nil {
+	if _, err := s.Run(context.Background(), "随便", "chat", "loose", ""); err != nil {
 		t.Fatalf("运行失败：%v", err)
 	}
 	f.mu.Lock()

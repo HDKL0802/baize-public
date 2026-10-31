@@ -22,6 +22,7 @@ type Provider struct {
 	Model      string   `json:"model"`
 	Kinds      []string `json:"kinds,omitempty"`    // 该通道负责的任务类型；空=通吃
 	Fallback   bool     `json:"fallback,omitempty"` // 是否作为回退通道
+	Default    bool     `json:"default,omitempty"`  // 是否是"默认首选"——当没有显式指定模型时优先用它；多个 default 时取第一个
 	Cost       string   `json:"cost,omitempty"`     // 成本标注（人话，如「免费（本地）」「按量计费」）
 	Privacy    string   `json:"privacy,omitempty"`  // 隐私标注（如「本地，不出机器」「公网云端」）；留空按 local 自动填
 	TimeoutSec int      `json:"timeoutSec,omitempty"`
@@ -211,7 +212,10 @@ type PluginSource struct {
 // Config 后端 Agent 配置
 type Config struct {
 	AllowRemote bool       `json:"allowRemote"` // 是否允许非本机模型地址 / 远端 MCP 服务
-	Providers   []Provider `json:"providers"`
+	// ActiveProvider 用户在界面上选的默认模型通道名（空=按 Router 自动路由）。
+	// 界面切换模型时写这里；Agent 运行时如果没有显式指定 provider，优先用它。
+	ActiveProvider string     `json:"activeProvider,omitempty"`
+	Providers      []Provider `json:"providers"`
 	// ProviderRecharges 按通道名记的「充值」流水（金额 + 时间 + 备注），用来跟 token 用量拼一个
 	// 按通道的成本视图。**只记账，不做汇率 / 单价换算** —— 换算口径多且会变，交给界面/使用者自己算。
 	ProviderRecharges map[string][]ProviderRecharge `json:"providerRecharges,omitempty"`

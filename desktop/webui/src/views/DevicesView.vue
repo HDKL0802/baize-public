@@ -1,8 +1,8 @@
 <!-- 设备页：列出 NAS 上注册的所有设备（替换旧 renderDevices）。
      数据源 /api/devices；本机设备信息 /api/local/device。 -->
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { NCard, NTag, NSpace, NGrid, NGi } from 'naive-ui';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { NButton } from 'naive-ui';
 import { API, localDeviceInfo, fmtTime } from '../api.js';
 
 function toast(msg, kind) {
@@ -16,6 +16,7 @@ function toast(msg, kind) {
 const devices = ref([]);
 const self = ref({});
 const loading = ref(true);
+const hasSelf = computed(() => Object.keys(self.value).length > 0);
 let timer = null;
 
 async function load() {
@@ -39,48 +40,105 @@ function deviceOnline(d) { return d.online === true || d.status === 'online'; }
 function platformLabel(p) {
   return { desktop: '桌面', android: '手机', phone: '手机', server: '后端', device: '设备' }[p] || p || '—';
 }
+function capsOf(d) {
+  const caps = Array.isArray(d.caps) ? d.caps : [];
+  return caps.slice(0, 6);
+}
+function lastSeenOf(d) { return d.lastSeen || d.lastSeenAt; }
 </script>
 
 <template>
-  <div class="dev">
-    <n-grid :x-gap="12" :y-gap="12" :cols="{ 1: 1, 740: 2, 1200: 3 }">
-      <!-- 本机设备卡（置顶，标「本机」） -->
-      <n-gi v-if="Object.keys(self).length">
-        <n-card size="small" title="本机设备">
-          <n-space vertical size="4">
-            <n-tag type="success" size="small">本机</n-tag>
-            <div class="dev-line"><b>设备 ID</b><span class="dev-mono">{{ self.deviceId || '—' }}</span></div>
-            <div class="dev-line"><b>平台</b><span>{{ platformLabel(self.platform) }}</span></div>
-            <div class="dev-line"><b>在线</b><n-tag :type="self.online ? 'success' : 'default'" size="small">{{ self.online ? '在线' : '离线' }}</n-tag></div>
-          </n-space>
-        </n-card>
-      </n-gi>
+  <div class="bz-page dev-page">
+    <header class="bz-head">
+      <div class="bz-head-main">
+        <h1 class="bz-title">设备</h1>
+        <p class="bz-sub">NAS 上注册过的客户端，在线状态每 12 秒刷新一次。</p>
+      </div>
+      <div class="bz-head-actions">
+        <NButton size="small" @click="load">刷新</NButton>
+      </div>
+    </header>
 
-      <n-gi v-for="d in devices" :key="d.deviceId || d.id">
-        <n-card size="small">
-          <n-space vertical size="4">
-            <n-space align="center" justify="space-between" style="width:100%">
-              <b class="dev-name">{{ d.name || d.deviceId || d.id }}</b>
-              <n-tag :type="deviceOnline(d) ? 'success' : 'default'" size="small">{{ deviceOnline(d) ? '在线' : '离线' }}</n-tag>
-            </n-space>
-            <div class="dev-line"><b>平台</b><span>{{ platformLabel(d.platform) }}</span></div>
-            <div class="dev-line"><b>ID</b><span class="dev-mono">{{ d.deviceId || d.id }}</span></div>
-            <div v-if="d.lastSeenAt" class="dev-line"><b>最近在线</b><span>{{ fmtTime(d.lastSeenAt) }}</span></div>
-          </n-space>
-        </n-card>
-      </n-gi>
+    <!-- 本机设备置顶 -->
+    <section v-if="hasSelf" class="dev-row self">
+      <div class="dev-main">
+        <div class="dev-name-line">
+          <i class="bz-dot" :class="{ on: self.online }"></i>
+          <span class="dev-name">本机设备</span>
+          <span class="dev-kind">本机</span>
+        </div>
+        <div class="dev-id">{{ self.deviceId || '—' }}</div>
+      </div>
+      <div class="dev-caps">
+        <span class="dev-cap">{{ platformLabel(self.platform) }}</span>
+      </div>
+      <div class="dev-side">
+        <span class="dev-status" :class="self.online ? 'on' : 'off'">{{ self.online ? '在线' : '离线' }}</span>
+      </div>
+    </section>
 
-      <n-gi v-if="!loading && !devices.length && !Object.keys(self).length">
-        <div class="dev-empty">还没有注册的设备</div>
-      </n-gi>
-    </n-grid>
+    <div class="dev-list">
+      <div v-for="d in devices" :key="d.deviceId || d.id" class="dev-row">
+        <div class="dev-main">
+          <div class="dev-name-line">
+            <i class="bz-dot" :class="{ on: deviceOnline(d) }"></i>
+            <span class="dev-name">{{ d.name || d.deviceId || d.id }}</span>
+            <span class="dev-kind">{{ platformLabel(d.os || d.platform) }}</span>
+          </div>
+          <div class="dev-id">{{ d.deviceId || d.id }}</div>
+        </div>
+        <div class="dev-caps">
+          <span v-for="c in capsOf(d)" :key="c" class="dev-cap">{{ c }}</span>
+        </div>
+        <div class="dev-side">
+          <span class="dev-status" :class="deviceOnline(d) ? 'on' : 'off'">{{ deviceOnline(d) ? '在线' : '离线' }}</span>
+          <span v-if="lastSeenOf(d)" class="dev-seen">{{ fmtTime(lastSeenOf(d)) }}</span>
+        </div>
+      </div>
+    </div>
+
+    <section v-if="!loading && !devices.length && !hasSelf" class="bz-card">
+      <div class="bz-empty">
+        <svg class="bz-empty-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.5 5.5h17v10h-17z" />
+          <path d="M8.5 19.5h7" />
+          <path d="M12 15.5v4" />
+        </svg>
+        <div class="bz-empty-title">还没有注册的设备</div>
+        <div class="bz-empty-desc">在手机或另一台电脑上登录白泽，设备会自动出现在这里。</div>
+      </div>
+    </section>
   </div>
 </template>
 
 <style>
-.dev-line { display: flex; gap: 8px; font-size: 13px; }
-.dev-line b { color: var(--fg3); min-width: 56px; font-weight: 600; }
-.dev-mono { font-family: var(--mono); font-size: 12px; word-break: break-all; }
-.dev-name { font-size: 14px; }
-.dev-empty { color: var(--fg3); font-size: 13px; text-align: center; padding: 20px; }
+.dev-page { display: flex; flex-direction: column; }
+.dev-row {
+  display: flex; align-items: center; gap: 16px;
+  min-height: 64px; padding: 12px 16px; margin-bottom: 8px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+  transition: background 120ms cubic-bezier(.2,0,0,1);
+}
+.dev-row:hover { background: var(--surface-2); }
+.dev-row.self { border-color: var(--line-strong); }
+.dev-main { min-width: 0; flex: 1; }
+.dev-name-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.dev-name { font-size: 14px; font-weight: 600; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dev-kind {
+  flex: none; padding: 1px 6px; border-radius: 4px;
+  background: var(--surface-3); color: var(--fg-3); font-size: 11px; letter-spacing: .04em;
+}
+.dev-id { margin-top: 4px; font-family: var(--mono); font-size: 11px; color: var(--fg-3); word-break: break-all; }
+.dev-caps { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; max-width: 46%; }
+.dev-cap {
+  padding: 2px 7px; border-radius: 4px;
+  background: var(--surface-2); color: var(--fg-2); font-size: 11px; line-height: 1.5;
+}
+.dev-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; min-width: 78px; }
+.dev-status { font-size: 12px; }
+.dev-status.on { color: var(--ok); }
+.dev-status.off { color: var(--fg-3); }
+.dev-seen { font-family: var(--mono); font-size: 11px; color: var(--fg-3); font-variant-numeric: tabular-nums; }
+.dev-list { margin-top: 6px; }
 </style>

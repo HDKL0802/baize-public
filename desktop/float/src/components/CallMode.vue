@@ -1,6 +1,6 @@
 <!-- 两人通话（call）：登录 → 选组/开 → WebRTC → AI 文档判定 -->
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount, inject } from 'vue';
+import { ref, reactive, onMounted, onBeforeUnmount, inject, computed } from 'vue';
 import { api, local, session, SESSION_KEY } from '../api.js';
 
 const bus = inject('bus');
@@ -35,6 +35,30 @@ const avMuteHidden = ref(true);
 const avMuteOn = ref(true);        // true = 声音开着（按钮文本「静音」）
 const avCamHidden = ref(true);
 const avCamOn = ref(true);
+
+/* ---------- 视觉状态：状态徽标 / 通话时长（纯展示，不参与信令） ---------- */
+const badge = computed(() => {
+  if (call.status === 'ended') return { cls: 'err', text: '已挂断' };
+  if (call.conflict) return { cls: 'warn', text: '待确认' };
+  if (call.status === 'live') return { cls: 'ok', text: '通话中' };
+  return { cls: 'warn', text: '未接通' };
+});
+const dur = ref('00:00');
+let durTick = 0, durStart = 0;
+function fmtDur(ms) {
+  const s = Math.floor(ms / 1000), p = n => String(n).padStart(2, '0');
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h ? p(h) + ':' + p(m) + ':' + p(s % 60) : p(m) + ':' + p(s % 60);
+}
+function startDur() {
+  if (durTick) return;
+  durStart = Date.now();
+  durTick = setInterval(() => { dur.value = fmtDur(Date.now() - durStart); }, 1000);
+}
+function stopDur() {
+  if (durTick) { clearInterval(durTick); durTick = 0; }
+  dur.value = '00:00';
+}
 
 /* ---------- WebRTC ---------- */
 let rtc = null;       // { pc, stream, peer }
@@ -106,6 +130,7 @@ async function refreshPick() { await renderPick(); }
 /* ---------- 通话中视图 ---------- */
 async function openInView() {
   view.value = 'in';
+  startDur();
   msgs.value = [];
   msgAfter = 0; sigAfter = 0;
   await tickDetail(true);
@@ -195,12 +220,25 @@ async function startAVMedia() {
   const pc = new RTCPeerConnection();
   stream.getTracks().forEach(t => pc.addTrack(t, stream));
   const cvLocal = document.getElementById('cv-local');
-  if (cvLocal) cvLocal.srcObject = stream;
+  if (cvLocal) {
+    cvLocal.srcObject = stream;
+    cvLocal.play().catch(() => {}); // 显式 play，防 autoplay 不触发
+  }
   avHidden.value = false; avStartHidden.value = true; avHangHidden.value = false;
   avMuteHidden.value = false; avCamHidden.value = !stream.getVideoTracks().length;
   rtc = { pc, stream, peer: call.peerId };
   iceQ = [];
-  pc.ontrack = ev => { const cvRemote = document.getElementById('cv-remote'); if (cvRemote) cvRemote.srcObject = ev.streams[0]; };
+  // 修复：ev.streams 可能为空，手动构建 MediaStream；显式 play
+  pc.ontrack = ev => {
+    let remoteStream;
+    if (ev.streams && ev.streams.length > 0) remoteStream = ev.streams[0];
+    else remoteStream = new MediaStream([ev.track]);
+    const cvRemote = document.getElementById('cv-remote');
+    if (cvRemote) {
+      cvRemote.srcObject = remoteStream;
+      cvRemote.play().catch(() => {});
+    }
+  };
   pc.onicecandidate = ev => { if (ev.candidate) postSignal(call.peerId, 'ice', JSON.stringify(ev.candidate)); };
   return true;
 }
@@ -254,6 +292,7 @@ async function endCall() {
   await api('/api/agent/groups/' + encodeURIComponent(call.group) + '/calls/' + encodeURIComponent(call.callId) + '/end', 'POST', {});
   call.callId = '';
   view.value = 'pick';
+  stopDur();
   if (callPoll) { clearInterval(callPoll); callPoll = 0; }
   await renderPick();
 }
@@ -261,6 +300,7 @@ function backToPick() {
   stopAV();
   call.callId = '';
   view.value = 'pick';
+  stopDur();
   if (callPoll) { clearInterval(callPoll); callPoll = 0; }
   renderPick();
 }
@@ -336,6 +376,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (ctxHandler) window.removeEventListener('float-event', ctxHandler);
   if (callPoll) clearInterval(callPoll);
+  stopDur();
   stopAV();
   window.removeEventListener('pagehide', onPageHide);
 });
@@ -357,7 +398,7 @@ onBeforeUnmount(() => {
   <!-- 选组 / 开通话 -->
   <div v-else-if="view === 'pick'" class="callpick">
     <div class="call-row">
-      <label>用户组：</label>
+      <label>用户组</label>
       <select v-model="groupSel" @change="loadGroup">
         <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
       </select>
@@ -365,7 +406,7 @@ onBeforeUnmount(() => {
     </div>
     <div class="clist">
       <template v-if="pickList.length && pickList[0].empty">
-        <div class="cempty">{{ pickList[0].empty }}</div>
+        <div class="hint cempty">{{ pickList[0].empty }}</div>
       </template>
       <template v-else>
         <div v-for="(p, i) in pickList" :key="i" class="crow"
@@ -384,29 +425,61 @@ onBeforeUnmount(() => {
   <!-- 通话中 -->
   <div v-else class="callin">
     <div class="calltop">
-      <b>{{ call.peerName || call.peerId || '—' }}</b>
-      <span class="sub">{{ callStateText }}</span>
+      <span class="nm">{{ call.peerName || call.peerId || '—' }}</span>
+      <span :class="['badge', badge.cls]"><i class="bdot"></i>{{ badge.text }}</span>
+      <span class="dur mono">{{ dur }}</span>
       <button class="btn" @click="backToPick">切换</button>
-      <button class="btn stop" @click="endCall">挂断</button>
+      <button class="btn danger" @click="endCall">挂断</button>
     </div>
+    <div class="callstat">{{ callStateText }}</div>
 
     <!-- WebRTC 视频区 -->
     <div v-show="!avHidden" class="callvid">
       <video id="cv-local" autoplay muted playsinline class="mine"></video>
       <video id="cv-remote" autoplay playsinline></video>
-      <div class="avbar">
-        <button v-show="!avStartHidden" class="btn" @click="startAV">音视频</button>
-        <button v-show="!avHangHidden" class="btn stop" @click="hangAV">挂断音视频</button>
-        <button v-show="!avMuteHidden" class="btn" @click="toggleMute">{{ avMuteOn ? '静音' : '取消静音' }}</button>
-        <button v-show="!avCamHidden" class="btn" @click="toggleCam">{{ avCamOn ? '关摄像' : '开摄像' }}</button>
-      </div>
+    </div>
+    <div v-show="!avHidden" class="avbar">
+      <button v-show="!avMuteHidden" :class="['abtn', { off: !avMuteOn }]"
+              :title="avMuteOn ? '静音' : '取消静音'" @click="toggleMute">
+        <svg v-if="avMuteOn" class="ic" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+          <path d="M12 18v3" />
+        </svg>
+        <svg v-else class="ic" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15 9.34V5a3 3 0 0 0-5.94-.6" />
+          <path d="M9 9v3a3 3 0 0 0 5.12 2.12" />
+          <path d="M19 10v1a7 7 0 0 1-11.4 5.5" />
+          <path d="M12 18v3" />
+          <path d="m2 2 20 20" />
+        </svg>
+      </button>
+      <button v-show="!avCamHidden" :class="['abtn', { off: !avCamOn }]"
+              :title="avCamOn ? '关摄像' : '开摄像'" @click="toggleCam">
+        <svg v-if="avCamOn" class="ic" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m16 13 5.2 3.5a.5.5 0 0 0 .8-.4V7.9a.5.5 0 0 0-.8-.4L16 10.5" />
+          <rect x="2" y="6" width="14" height="12" rx="2" />
+        </svg>
+        <svg v-else class="ic" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M10.66 6H14a2 2 0 0 1 2 2v2.5l5.2 3.5a.5.5 0 0 0 .8-.4V7.9a.5.5 0 0 0-.8-.4L16 10.5" />
+          <path d="M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2" />
+          <path d="m2 2 20 20" />
+        </svg>
+      </button>
+      <button v-show="!avHangHidden" class="abtn hang" title="挂断音视频" @click="hangAV">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M10.1 13.9a14 14 0 0 0 3.7 2.7 1 1 0 0 0 1.2-.3l.4-.5a2 2 0 0 1 1.6-.8h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.5.4a1 1 0 0 0-.3 1.2 14 14 0 0 0 2.7 3.7" />
+        </svg>
+      </button>
     </div>
     <div v-show="avHidden" class="callvid-empty">
-      <button v-show="!avStartHidden" class="btn primary" @click="startAV">开始音视频通话</button>
+      <button v-show="!avStartHidden" class="btn primary wide" @click="startAV">开始音视频通话</button>
+      <span v-show="avStartHidden" class="hint">音视频进行中</span>
     </div>
 
     <!-- 消息区 -->
     <div id="call-msgs" class="callmsgs">
+      <div v-if="!msgs.length" class="hint">还没有消息，先打个招呼，或在上面发起音视频。</div>
       <div v-for="m in msgs" :key="m.key" :class="['msg', m.cls]">
         <span v-if="m.isAI" class="who">白泽AI</span>
         {{ m.text }}
@@ -415,7 +488,12 @@ onBeforeUnmount(() => {
     <div class="callbar">
       <input v-model="cmInput" placeholder="发个消息…（Enter 发，Shift+Enter 换行）"
              @keydown.enter.exact.prevent="sendMsg" />
-      <button class="btn primary" @click="sendMsg">发送</button>
+      <button class="sendbtn" :disabled="!cmInput.trim()" title="发送" @click="sendMsg">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M22 2 11 13" />
+          <path d="M22 2 15 22l-4-9-9-4Z" />
+        </svg>
+      </button>
     </div>
 
     <!-- AI 文档冲突判定 -->
@@ -427,67 +505,145 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.callpick, .callin { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 10px 12px; gap: 8px; }
+.callpick, .callin { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 12px; gap: 8px; }
 .calllogin { flex: 1; min-height: 0; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-.calllogin h4 { margin: 0; font-size: 13px; }
+.calllogin h4 { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--text); }
 .calllogin input {
-  width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong);
-  border-radius: 6px; padding: 7px 10px; font: inherit; font-size: 13px; outline: none;
+  width: 100%; height: 36px; background: var(--bg); color: var(--text);
+  border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 10px;
+  font: inherit; font-size: 13px; outline: none;
+  transition: border-color 120ms cubic-bezier(.2,0,0,1);
 }
+.calllogin input::placeholder { color: var(--text-3); }
 .calllogin input:focus { border-color: var(--accent); }
 .call-row { display: flex; align-items: center; gap: 8px; }
-.login-note { font-size: 11.5px; color: var(--text-3); }
-.btn {
-  border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text);
-  border-radius: 5px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer;
+.call-row label { font-size: 12px; color: var(--text-3); flex: 0 0 auto; }
+.call-row select {
+  flex: 1; min-width: 0; height: 32px; padding: 0 8px;
+  background: var(--bg); color: var(--text); border: 1px solid var(--line-strong);
+  border-radius: 4px; font: inherit; font-size: 12.5px; outline: none;
 }
-.btn:hover { background: var(--surface-3, var(--surface-2)); }
+.call-row select:focus { border-color: var(--accent); }
+.login-note { font-size: 11.5px; color: var(--text-3); min-width: 0; }
+
+/* 基础按钮：4 圆角 + hairline */
+.btn {
+  flex: 0 0 auto; height: 32px; padding: 0 10px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  border: 1px solid var(--line-strong); border-radius: 4px;
+  background: var(--surface-2); color: var(--text-2);
+  font: inherit; font-size: 11.5px; cursor: pointer; white-space: nowrap;
+  transition: background 120ms cubic-bezier(.2,0,0,1), color 120ms cubic-bezier(.2,0,0,1),
+              border-color 120ms cubic-bezier(.2,0,0,1);
+}
+.btn:hover { background: var(--surface-3); color: var(--text); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.btn.stop { background: var(--err); border-color: var(--err); color: var(--accent-ink); font-weight: 600; }
+.btn.primary:hover { background: var(--accent-2); }
+.btn.danger { color: var(--err); }
+.btn.danger:hover { background: var(--surface-3); color: var(--err); }
+.btn.wide { height: 40px; padding: 0 18px; font-size: 12.5px; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 
-.calltop { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.calltop b { font-size: 13.5px; }
-.sub { color: var(--text-3); font-size: 11.5px; }
-
-.clist {
-  flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 5px;
+/* 顶部：名字 + 状态徽标 + 时长 + 切换/挂断 */
+.calltop { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.calltop .nm {
+  flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.cempty { color: var(--text-3); font-size: 12px; padding: 12px; }
+.badge {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
+  height: 20px; padding: 0 7px; border: 1px solid var(--line-strong); border-radius: 4px;
+  font-size: 11px; color: var(--text-2); white-space: nowrap;
+}
+.badge .bdot { width: 6px; height: 6px; border-radius: 999px; background: var(--text-3); }
+.badge.ok { color: var(--ok); }
+.badge.ok .bdot { background: var(--ok); }
+.badge.warn { color: var(--warn); }
+.badge.warn .bdot { background: var(--warn); }
+.badge.err { color: var(--err); }
+.badge.err .bdot { background: var(--err); }
+.dur { flex: 0 0 auto; font-size: 11.5px; color: var(--text-2); }
+.callstat {
+  flex: 0 0 auto; font-size: 11.5px; color: var(--text-3); margin-top: -4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* 列表 */
+.clist { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.cempty { padding: 4px 2px; }
 .crow {
-  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 120ms cubic-bezier(.2,0,0,1);
 }
 .crow:hover { border-color: var(--accent); }
-.crow .nm { flex: 1; font-size: 13px; color: var(--text); }
-.crow .st { font-size: 11px; color: var(--text-3); }
+.crow .nm { flex: 1; min-width: 0; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crow .st { flex: 0 0 auto; font-size: 11px; color: var(--text-3); }
 .crow .st.live { color: var(--ok); font-weight: 600; }
 
-.callvid { flex: 0 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+/* 视频区 */
+.callvid { flex: 0 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .callvid video {
-  width: 100%; aspect-ratio: 4/3; object-fit: cover;
-  background: #000; border-radius: 6px; border: 1px solid var(--border);
+  width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block;
+  background: #000; border-radius: 4px; border: 1px solid var(--line);
 }
-.callvid video.mine { position: relative; }
-.avbar { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
-.callvid-empty { flex: 0 0 auto; display: flex; justify-content: center; padding: 4px 0 2px; }
+.callvid-empty { flex: 0 0 auto; display: flex; justify-content: center; align-items: center; padding: 2px 0; }
+/* 音视频控制：40×40 方形，挂断 44 圆形 err 底 */
+.avbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.abtn {
+  width: 40px; height: 40px; display: grid; place-items: center;
+  padding: 0; border: 1px solid var(--line-strong); border-radius: 4px;
+  background: var(--surface-2); color: var(--text); cursor: pointer;
+  transition: background 120ms cubic-bezier(.2,0,0,1), color 120ms cubic-bezier(.2,0,0,1),
+              border-color 120ms cubic-bezier(.2,0,0,1), opacity 120ms cubic-bezier(.2,0,0,1);
+}
+.abtn:hover { background: var(--surface-3); }
+.abtn.off { border-color: var(--err); color: var(--err); }
+.abtn:disabled { opacity: .45; cursor: not-allowed; }
+.abtn .ic { width: 20px; height: 20px; }
+.abtn.hang {
+  width: 44px; height: 44px; border-radius: 999px;
+  background: var(--err); border-color: var(--err); color: var(--accent-ink);
+}
+.abtn.hang:hover { background: var(--err); opacity: .88; }
 
-.callmsgs { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px 1px; }
-.msg { max-width: 80%; border-radius: 8px; padding: 6px 10px; font-size: 13px; line-height: 1.65; word-break: break-word; }
-.msg.me { align-self: flex-end; background: var(--accent-soft); border: 1px solid var(--border-strong); }
-.msg.ai { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
+/* 消息 */
+.callmsgs {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  display: flex; flex-direction: column; gap: 8px; padding: 2px 0;
+}
+.msg {
+  max-width: 84%; border-radius: 6px; padding: 8px 10px;
+  font-size: 13px; line-height: 1.55; word-break: break-word; user-select: text;
+}
+.msg.me { align-self: flex-end; background: var(--accent-soft); border-left: 2px solid var(--accent); color: var(--text); }
+.msg.ai { align-self: flex-start; background: var(--surface-2); color: var(--text); }
 .msg.ai .who { display: block; color: var(--accent); font-size: 11px; margin-bottom: 2px; }
 
-.callbar { display: flex; gap: 6px; }
+/* 发送条 */
+.callbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
 .callbar input {
-  flex: 1; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong);
-  border-radius: 6px; padding: 7px 10px; font: inherit; font-size: 13px; outline: none;
+  flex: 1; min-width: 0; height: 36px; background: var(--bg); color: var(--text);
+  border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 10px;
+  font: inherit; font-size: 13px; outline: none;
+  transition: border-color 120ms cubic-bezier(.2,0,0,1);
 }
+.callbar input::placeholder { color: var(--text-3); }
 .callbar input:focus { border-color: var(--accent); }
-
-.ai-box {
-  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
-  background: var(--surface); border: 1px dashed var(--accent); border-radius: 6px;
+.sendbtn {
+  flex: 0 0 auto; width: 36px; height: 36px; display: grid; place-items: center;
+  padding: 0; border: 0; border-radius: 4px;
+  background: var(--accent); color: var(--accent-ink); cursor: pointer;
+  transition: background 120ms cubic-bezier(.2,0,0,1);
 }
-.ai-state { flex: 1; font-size: 12px; color: var(--text-2); }
+.sendbtn:hover { background: var(--accent-2); }
+.sendbtn:disabled { background: var(--surface-3); color: var(--text-3); cursor: not-allowed; }
+
+/* AI 判定 */
+.ai-box {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  background: var(--surface-2); border: 1px solid var(--accent); border-radius: 4px;
+}
+.ai-state { flex: 1; font-size: 12px; color: var(--text-2); line-height: 1.5; }
 </style>

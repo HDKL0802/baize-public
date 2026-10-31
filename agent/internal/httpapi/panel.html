@@ -9,9 +9,9 @@
 <!--
   白泽智能体 控制台（产品自带 UI）
   ─────────────────────────────────
-  设计语言与桌面端 desktop/ui/shell.css 完全对齐（冷色暗色 + 1px 描边 + 2px 直角 + 天青点缀）：
-    · 近黑冷灰底 #0b0e13 / 面 #12161d + 1px 细边框 #232a35 + 2px 直角
-    · 主色天青 #38bdf8；状态色 绿 #34d399 / 琥珀 #fbbf24 / 红 #f87171
+  设计语言与官网同源（墨玉：近黑墨底 + 暖白文字 + 玉青点缀 + 朱砂告警，1px 描边 + 2px 直角）：
+    · 近黑墨底 #070807 / 面 #0E100E + 1px 细边框 #1F231F + 2px 直角
+    · 主色玉青 #3BE0C4；状态色 玉绿 #52C07A / 赭黄 #D9A45B / 朱砂 #E5765B
     · 字体 Segoe UI / 微软雅黑，等宽 Consolas；图标一律线性 SVG（不用 emoji）
     · 骨架：左 sidebar（分组导航 + 当前项青色高亮） + 顶栏（动作/状态） + 主内容区
   令牌由后端在响应时替换（handlePanel 会把 __BAIZE_TOKEN__ 换成真令牌），
@@ -20,34 +20,34 @@
 <style>
   :root {
     color-scheme: dark;
-    /* 令牌值直接取自 desktop/ui/shell.css，保证控制台与桌面端是同一套观感 */
+    /* 令牌值取自官网的墨玉色板，保证控制台与站点是同一套观感 */
     --app-radius: 2px;
-    --app-bg: #0b0e13;
-    --app-surface: #12161d;
-    --app-surface-subtle: #171c25;
-    --app-shell-bg: #12161d;
-    --app-fill: rgba(148, 163, 180, .10);
-    --app-fill-subtle: rgba(148, 163, 180, .06);
-    --app-fill-strong: rgba(148, 163, 180, .16);
-    --app-border: #232a35;
-    --app-border-strong: #313b4a;
-    --app-border-subtle: #1b222c;
-    --app-text: #dbe4ee;
-    --app-text-2: #94a3b4;
-    --app-text-3: #64748b;
-    --app-text-4: #4a5568;
-    --app-accent: #38bdf8;
-    --app-accent-hover: #7dd3fc;
-    --app-accent-text: #7dd3fc;
-    --app-accent-ink: #06121b;
-    --app-accent-soft: rgba(56, 189, 248, .12);
-    --app-accent-faint: rgba(56, 189, 248, .05);
-    --app-accent-border: rgba(56, 189, 248, .42);
-    --app-nav-selected-bg: rgba(56, 189, 248, .12);
-    --app-success: #34d399; --app-success-text: #34d399; --app-success-bg: rgba(52, 211, 153, .10); --app-success-border: rgba(52, 211, 153, .34);
-    --app-warning: #fbbf24; --app-warning-text: #fbbf24; --app-warning-bg: rgba(251, 191, 36, .10); --app-warning-border: rgba(251, 191, 36, .34);
-    --app-error: #f87171; --app-error-text: #f87171; --app-error-bg: rgba(248, 113, 113, .10); --app-error-border: rgba(248, 113, 113, .34);
-    --app-info-text: #7dd3fc; --app-info-bg: rgba(56, 189, 248, .08); --app-info-border: rgba(56, 189, 248, .22);
+    --app-bg: #070807;
+    --app-surface: #0E100E;
+    --app-surface-subtle: #131614;
+    --app-shell-bg: #0E100E;
+    --app-fill: rgba(233, 227, 213, .09);
+    --app-fill-subtle: rgba(233, 227, 213, .05);
+    --app-fill-strong: rgba(233, 227, 213, .14);
+    --app-border: #1F231F;
+    --app-border-strong: #2E332C;
+    --app-border-subtle: #171B17;
+    --app-text: #E6E1D6;
+    --app-text-2: #A6A296;
+    --app-text-3: #6F6C62;
+    --app-text-4: #55534B;
+    --app-accent: #3BE0C4;
+    --app-accent-hover: #7CEBD8;
+    --app-accent-text: #7CEBD8;
+    --app-accent-ink: #05221D;
+    --app-accent-soft: rgba(59, 224, 196, .10);
+    --app-accent-faint: rgba(59, 224, 196, .04);
+    --app-accent-border: rgba(59, 224, 196, .40);
+    --app-nav-selected-bg: rgba(59, 224, 196, .12);
+    --app-success: #52C07A; --app-success-text: #52C07A; --app-success-bg: rgba(82, 192, 122, .10); --app-success-border: rgba(82, 192, 122, .34);
+    --app-warning: #D9A45B; --app-warning-text: #D9A45B; --app-warning-bg: rgba(217, 164, 91, .10); --app-warning-border: rgba(217, 164, 91, .34);
+    --app-error: #E5765B; --app-error-text: #E5765B; --app-error-bg: rgba(200, 85, 61, .12); --app-error-border: rgba(200, 85, 61, .36);
+    --app-info-text: #7CEBD8; --app-info-bg: rgba(59, 224, 196, .08); --app-info-border: rgba(59, 224, 196, .22);
     --app-shadow-sm: none;
     --app-shadow-md: 0 12px 30px rgba(0, 0, 0, .5);
     --app-font: "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, "PingFang SC", sans-serif;
@@ -63,7 +63,7 @@
   a { color: var(--app-info-text); text-decoration: none; }
   code, .mono { font-family: var(--app-mono); font-size: 12px; }
   ::-webkit-scrollbar { width: 9px; height: 9px; }
-  ::-webkit-scrollbar-thumb { background: #1d2430; border: 1px solid var(--app-border); }
+  ::-webkit-scrollbar-thumb { background: #181C18; border: 1px solid var(--app-border); }
   ::-webkit-scrollbar-track { background: transparent; }
 
   /* ---------- 骨架 ---------- */
@@ -515,14 +515,23 @@ function renderNav() {
 /* ---------------- 各页渲染 ---------------- */
 function pageAgent() {
   const st = S.agent || {};
+  const provs = (st.providers || []).filter(p => p.usable);
+  const active = st.activeProvider || "";
   // 派活（整行铺开、输入框加大）
   let html = '<div class="card"><header><h2>派活</h2>' +
     '<span class="ep mono">POST /api/agent/run</span></header><div class="pad">' +
     '<div class="composer big"><textarea id="goal" placeholder="说清楚要干什么就行，例如：\n把手机上今天的待办按优先级排一下\n看看电脑上现在开着什么窗口\n把 NAS 上这个目录里的文件整理一份清单"></textarea>' +
-    '<div class="row"><button class="btn primary" id="btn-run-wait">派发（等结果）</button>' +
+    '<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">' +
+    '<button class="btn primary" id="btn-run-wait">派发（等结果）</button>' +
     '<button class="btn" id="btn-run">只派发，不等</button>' +
     '<span class="pill" id="run-hint">' + (st.running ? '<i class="dot ok"></i>正在跑 ' + esc(shortId(st.currentRunId)) : "空闲") + '</span>' +
-    '</div><p class="desc" style="padding:0;margin:2px 0 0">危险动作（删除文件、跑命令、跨端执行）不会直接执行，会挂到下面「待审批」里等你放行；批准前什么都不会发生。</p>' +
+    '<span style="margin-left:auto;font-size:12px;color:var(--app-muted)">模型：</span>' +
+    '<select id="run-provider" style="padding:4px 8px;border-radius:6px;background:var(--app-surface);color:var(--app-text);border:1px solid var(--app-border);font-size:12px">' +
+    '<option value="">自动路由' + (active ? '（当前首选 ' + esc(active) + '）' : '（按任务类型分配合适的模型）') + '</option>' +
+    provs.map(p => '<option value="' + esc(p.name) + '"' + (esc(p.name) === active ? ' selected' : '') + '>' + esc(p.name) + ' · ' + esc(p.model) + (p.default ? ' ★' : '') + '</option>').join('') +
+    '</select>' +
+    '<button class="btn sm ghost" id="btn-set-active" title="把这个通道设为默认首选">设为默认</button>' +
+    '</div><p class="desc" style="padding:0;margin:2px 0 0">危险动作（删除文件、跑命令、跨端执行）不会直接执行，会挂到下面「待审批」里等你放行；批准前什么都不会发生。下拉留空=按 Router 自动路由；选一个=本次派活强制用它。</p>' +
     '</div></div></div>';
 
   html += '<div class="card"><header><h2>待审批</h2><span class="ep mono">/api/agent/approvals</span></header>';
@@ -1662,6 +1671,16 @@ function bind() {
 
   on("btn-run", () => runGoal(false));
   on("btn-run-wait", () => runGoal(true));
+  on("btn-set-active", async () => {
+    const sel = $("run-provider");
+    if (!sel) return;
+    const name = sel.value || "";
+    try {
+      await api("/api/agent/providers", { method: "POST", body: { action: "active", name } });
+      toast(name ? "已将「" + name + "」设为默认首选模型" : "已恢复自动路由（按任务类型分配）");
+      await load(true);
+    } catch (e) { toast("设置失败：" + e.message, true); }
+  });
   on("btn-chat-send", () => chatSend());
   on("btn-chat-clear", () => confirmBox("清空对话", "只清掉这个浏览器里的对话记录，后端的数据一条都不动。", "清空", async () => { S.chat = []; saveChat(); render(); }));
   on("btn-burger", () => toggleSide());
@@ -2197,8 +2216,12 @@ async function runText(text, wait) {
   saveChat();
   S.chatBusy = true;
   if (S.page === "agent") render();
+  // 从下拉取本次要用的模型（可选，空=自动路由）
+  const provider = ($("run-provider") || {}).value || "";
+  const body = { goal: text, wait: !!wait };
+  if (provider) body.provider = provider;
   try {
-    const r = await api("/api/agent/run", { method: "POST", body: { goal: text, wait: !!wait } });
+    const r = await api("/api/agent/run", { method: "POST", body });
     if (r.command) {
       // 魔法命令：后端直接回执，不派活、不占运行记录
       const note = {
@@ -2211,13 +2234,14 @@ async function runText(text, wait) {
     } else if (!wait) {
       S.chat.push({
         role: "agent", trace: [], ts: Date.now(),
-        text: "已经派下去了（" + (r.runId || "") + "）。跑完会出现在「运行记录」里；中途有危险动作会挂到「待审批」等你放行。",
+        text: "已经派下去了（" + (r.runId || "") + (r.provider ? ' · 用模型 ' + r.provider : '') + "）。跑完会出现在「运行记录」里；中途有危险动作会挂到「待审批」等你放行。",
       });
     } else {
       const res = r.result || {};
+      const usedProvider = (res.meta && res.meta.provider) || r.provider || "";
       S.chat.push({
         role: "agent", text: res.text || "（没有结论）", trace: res.trace || [], ts: Date.now(),
-        meta: (res.steps || 0) + " 步 · " + (res.toolCalls || 0) + " 次工具 · " + (((res.usage || {}).totalTokens) || 0) + " token",
+        meta: (res.steps || 0) + " 步 · " + (res.toolCalls || 0) + " 次工具 · " + (((res.usage || {}).totalTokens) || 0) + " token" + (usedProvider ? " · 模型 " + usedProvider : ""),
       });
     }
   } catch (e) {

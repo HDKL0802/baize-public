@@ -398,7 +398,10 @@ window.Chat = (function () {
         const last = [...messages].reverse().find(m => m.role === 'user');
         const goal = textOf(last).trim();
         if (!goal) throw new Error('这句没有内容可以派给白泽');
-        const r = d.agentRun(goal, false);
+        // id 可能是 '__baize__'（自动路由）或 'baize:豆包'（指定后端某个通道）
+        let providerName = null;
+        if (id && id.indexOf('baize:') === 0) providerName = id.slice(6);
+        const r = d.agentRun(goal, false, providerName);
         if (r.error) throw new Error(r.error);
         // 魔法命令（以 / 开头）：后端直接回执，不派给模型。带 action 的（/new、/clear）
         // 要顺手清掉本机聊天上下文 —— 后端没有常驻会话，历史一直在这台手机上。
@@ -417,6 +420,26 @@ window.Chat = (function () {
     },
   };
 
+  /* ---- 后端 providers 缓存：同步 XHR 不能每次渲染都发，60 秒 TTL ---- */
+  let _remoteProvs = null, _remoteProvsAt = 0;
+  const PROV_TTL = 60_000;
+
+  function getRemoteProviders() {
+    const now = Date.now();
+    if (_remoteProvs && (now - _remoteProvsAt) < PROV_TTL) return _remoteProvs;
+    try {
+      const d = window.BzDevice;
+      if (d && d.agentProviders && Store.kbOnline()) {
+        const r = d.agentProviders();
+        _remoteProvs = { provs: (r && r.providers) || [], active: (r && r.activeProvider) || '' };
+        _remoteProvsAt = now;
+      }
+    } catch (e) { /* 拉失败保留上次缓存 */ }
+    return _remoteProvs;
+  }
+  /** 手动清缓存（"设为默认"按钮点了之后 settings.js 会调这个） */
+  window.__bzInvalidateProvs = function () { _remoteProvs = null; _remoteProvsAt = 0; };
+
   /** 可选的智能体列表（输入栏左边那个按钮里显示的就是它） */
   function Agents() {
     const out = [];
@@ -426,6 +449,20 @@ window.Chat = (function () {
       model: Store.kbOnline() ? '后端在跑' : (Store.kbInfo() && Store.kbInfo().enabled ? '后端连不上' : '没连后端'),
       ready: adapters.baize.ready(),
     });
+    // 后端模型通道：连得上后端就把每个 usable provider 列出来，作为独立可选项
+    // id 用 'baize:<name>'，send 时能解出来传给 /api/agent/run 的 provider 字段
+    if (Store.kbOnline()) {
+      const cached = getRemoteProviders();
+      if (cached) {
+        cached.provs.filter(p => p && p.usable).forEach(p => {
+          out.push({
+            id: 'baize:' + p.name, kind: 'baize',
+            name: (p.default ? '★ ' : '') + '后端·' + p.name + (p.name === cached.active ? '（默认）' : ''),
+            model: p.model || '', ready: true, providerName: p.name,
+          });
+        });
+      }
+    }
     AI.list().forEach(m => {
       out.push({
         id: m.id, kind: 'llm', name: m.name || '未命名',

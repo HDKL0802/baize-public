@@ -29,7 +29,7 @@
     document.documentElement.setAttribute('data-theme', t);
     // 顺手把浏览器地址栏/状态栏的颜色也对上（就是 index.html 里那个 meta）
     var m = document.querySelector('meta[name="theme-color"]');
-    if (m) m.setAttribute('content', t === 'light' ? '#f7f6f2' : '#0b0e13');
+    if (m) m.setAttribute('content', t === 'light' ? '#F2ECE0' : '#070807');
   }
   apply(); // 尽早定调：这一步在 <head> 里、body 之前
 

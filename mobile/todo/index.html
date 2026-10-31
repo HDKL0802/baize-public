@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#0b0e13">
+<meta name="theme-color" content="#070807">
 <title>白泽 · Baize</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -293,6 +293,12 @@
         <p class="desc">填好 BaseURL / API Key / 模型 ID 后，「AI 智能排期」与 AI 助手对话才会启用；没填就只用本地规则。</p>
       </div>
 
+    </div>
+    <!-- 后端模型通道：手机连后端时能看到 NAS 上配好的通道 -->
+    <div class="settings-group" id="remoteProvidersGroup" hidden>
+      <h3 class="group-title">后端模型通道</h3>
+      <p class="group-desc">这些是后端（NAS）上配好的模型通道，Key 都存在后端。点任意通道在 AI 助手里就能直接用上；标记 ★ 的是你在控制台设的默认首选。</p>
+      <div class="ai-model-list" id="remoteProviderList"></div>
     </div>
     <div class="settings-group">
       <h3 class="group-title">Markdown 格式数据中心（兼容 Obsidian）</h3>

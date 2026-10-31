@@ -1,4 +1,4 @@
-package agentsvc
+﻿package agentsvc
 
 import (
 	"context"
@@ -138,7 +138,7 @@ func TestMCPToolCallEndToEnd(t *testing.T) {
 	})
 
 	// 1) 默认（不在 safeTools、没信任）：应被审批闸门拦下
-	res, _ := s.Run(context.Background(), "用 MCP 工具回显 hi", "chat", "")
+	res, _ := s.Run(context.Background(), "用 MCP 工具回显 hi", "chat", "", "")
 	if len(res.Errors) == 0 || !strings.Contains(strings.Join(res.Errors, " "), "审批") {
 		t.Fatalf("默认应该走审批并被拦下：%+v", res.Errors)
 	}
@@ -149,7 +149,7 @@ func TestMCPToolCallEndToEnd(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("改配置失败：%v", err)
 	}
-	res, err := s.Run(context.Background(), "用 MCP 工具回显 hi", "chat", "")
+	res, err := s.Run(context.Background(), "用 MCP 工具回显 hi", "chat", "", "")
 	if err != nil {
 		t.Fatalf("运行失败：%v", err)
 	}

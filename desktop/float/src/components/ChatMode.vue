@@ -78,8 +78,8 @@ onMounted(async () => {
 <template>
   <div class="f-chat">
     <div class="f-ctabs">
-      <button :class="{ on: tab === 'chat' }" @click="tab = 'chat'">对话</button>
-      <button :class="{ on: tab === 'prog' }" @click="tab = 'prog'">进展</button>
+      <button :class="['f-tab', { on: tab === 'chat' }]" @click="tab = 'chat'">对话</button>
+      <button :class="['f-tab', { on: tab === 'prog' }]" @click="tab = 'prog'">进展</button>
     </div>
 
     <div v-show="tab === 'chat'" class="f-chat-body">
@@ -87,22 +87,26 @@ onMounted(async () => {
         <div v-for="(m, i) in msgs" :key="i" :class="['f-msg', m.cls]">{{ m.text }}</div>
       </div>
       <div class="f-composer">
-        <div class="f-send" style="margin:0 0 8px">
-          <button class="fbtn primary" :disabled="busy" @click="send">发送</button>
-        </div>
-        <textarea v-model="goal" placeholder="说一句要做什么…（Enter 发送，Shift+Enter 换行）"
+        <textarea v-model="goal" rows="1" placeholder="说一句要做什么…（Enter 发送，Shift+Enter 换行）"
           @keydown.enter.exact.prevent="send"></textarea>
+        <button class="f-sendbtn" :disabled="busy || !goal.trim()" title="发送" @click="send">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M22 2 11 13" />
+            <path d="M22 2 15 22l-4-9-9-4Z" />
+          </svg>
+        </button>
       </div>
     </div>
 
     <div v-show="tab === 'prog'" class="f-prog">
-      <div class="f-msg ai">
+      <div class="f-msg ai f-prog-stat">
         <span :class="['f-dot', dotCls]"></span>{{ statText }}
       </div>
-      <div class="f-prog-list">
+      <div v-if="!progList.length" class="hint f-prog-empty">还没有运行记录，在「对话」页发一句话就会出现在这里。</div>
+      <div v-else class="f-prog-list">
         <div v-for="p in progList" :key="p.id || p.runId" class="f-prog-line">
           <span class="g">{{ p.goal || '（无目标）' }}</span>
-          <span :class="['s', p.status === 'done' ? 'ok' : p.status === 'failed' ? 'err' : '']">
+          <span :class="['s', 'mono', p.status === 'done' ? 'ok' : p.status === 'failed' ? 'err' : '']">
             {{ p.status || '?' }} · {{ p.steps ?? '?' }} 步 · {{ p.totalTokens ?? '?' }} token
           </span>
         </div>
@@ -114,47 +118,81 @@ onMounted(async () => {
 
 <style scoped>
 .f-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.f-ctabs { display: flex; gap: 4px; padding: 8px 12px 0; }
-.f-ctabs button {
-  border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
-  border-radius: 5px; padding: 4px 12px; font: inherit; font-size: 12px; cursor: pointer;
+
+/* 页签：两段式，底 track + 选中 accent-soft */
+.f-ctabs {
+  flex: 0 0 auto; display: flex; gap: 2px; margin: 12px 12px 0;
+  padding: 2px; background: var(--surface-2); border-radius: 4px; width: fit-content;
 }
-.f-ctabs button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.f-tab {
+  height: 26px; padding: 0 14px; border: 0; border-radius: 3px; background: transparent;
+  color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer;
+  transition: background 120ms cubic-bezier(.2,0,0,1), color 120ms cubic-bezier(.2,0,0,1);
+}
+.f-tab:hover { color: var(--text); }
+.f-tab.on { background: var(--surface); color: var(--accent); font-weight: 600; }
+
 .f-chat-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.f-msgs { flex: 1; min-height: 0; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 9px; }
+.f-msgs {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  padding: 12px; display: flex; flex-direction: column; gap: 8px;
+}
+/* 气泡：助手 surface-2，用户 accent-soft + 左侧 2px accent 条 */
 .f-msg {
-  max-width: 88%; border-radius: 8px; padding: 8px 11px; font-size: 13px; line-height: 1.65;
-  word-break: break-word; user-select: text;
+  max-width: 84%; border-radius: 6px; padding: 8px 10px;
+  font-size: 13px; line-height: 1.55; word-break: break-word; user-select: text;
 }
-.f-msg.me { align-self: flex-end; background: var(--accent-soft); border: 1px solid var(--border-strong); }
-.f-msg.ai { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
-.f-composer { padding: 10px 12px 12px; border-top: 1px solid var(--border); background: var(--surface); }
+.f-msg.me {
+  align-self: flex-end; background: var(--accent-soft);
+  border-left: 2px solid var(--accent); color: var(--text);
+}
+.f-msg.ai { align-self: flex-start; background: var(--surface-2); color: var(--text); }
+
+/* 输入区：36px 输入 + 36×36 图标发送 */
+.f-composer {
+  flex: 0 0 auto; display: flex; align-items: flex-end; gap: 8px;
+  padding: 8px 12px 12px; background: var(--surface);
+  border-top: 1px solid var(--line);
+}
 .f-composer textarea {
-  width: 100%; resize: none; height: 58px; background: var(--bg); color: var(--text);
-  border: 1px solid var(--border-strong); border-radius: 6px; padding: 9px 10px; font: inherit;
-  font-size: 13px; outline: none; line-height: 1.55;
+  flex: 1; min-width: 0; height: 36px; resize: none; overflow-y: auto;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--line-strong); border-radius: 4px;
+  padding: 8px 10px; font: inherit; font-size: 13px; line-height: 1.4; outline: none;
+  transition: border-color 120ms cubic-bezier(.2,0,0,1);
 }
+.f-composer textarea::placeholder { color: var(--text-3); }
 .f-composer textarea:focus { border-color: var(--accent); }
-.f-send { display: flex; justify-content: flex-end; margin-top: 8px; }
-.fbtn {
-  border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text);
-  border-radius: 6px; padding: 5px 12px; font: inherit; font-size: 12.5px; cursor: pointer;
-  white-space: nowrap;
+.f-sendbtn {
+  flex: 0 0 auto; width: 36px; height: 36px; display: grid; place-items: center;
+  padding: 0; border: 0; border-radius: 4px;
+  background: var(--accent); color: var(--accent-ink); cursor: pointer;
+  transition: background 120ms cubic-bezier(.2,0,0,1), opacity 120ms cubic-bezier(.2,0,0,1);
 }
-.fbtn:hover { background: var(--surface-3, var(--surface-2)); }
-.fbtn:disabled { opacity: .45; cursor: not-allowed; }
-.fbtn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.f-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); margin-right: 5px; vertical-align: 1px; }
-.f-dot.busy { background: var(--warn); animation: fpulse 1s infinite; }
-.f-dot.ok { background: var(--ok); }
-.f-dot.err { background: var(--err); }
-@keyframes fpulse { 0%,100% { opacity: 1 } 50% { opacity: .3 } }
-.f-prog { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
+.f-sendbtn:hover { background: var(--accent-2); }
+.f-sendbtn:disabled { background: var(--surface-3); color: var(--text-3); cursor: not-allowed; }
+.f-sendbtn .ic { width: 16px; height: 16px; }
+
+/* 进展页 */
+.f-prog { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; }
+.f-prog-stat { display: flex; align-items: center; max-width: 100%; }
+.f-prog-empty { margin-top: 10px; }
 .f-prog-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-.f-prog-line { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 12.5px; line-height: 1.5; }
-.f-prog-line .g { color: var(--text); display: block; word-break: break-word; }
-.f-prog-line .s { color: var(--text-3); font-size: 11px; }
+.f-prog-line {
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: 8px 10px; font-size: 12.5px; line-height: 1.5;
+}
+.f-prog-line .g { display: block; color: var(--text); word-break: break-word; }
+.f-prog-line .s { display: block; margin-top: 2px; color: var(--text-3); font-size: 11px; }
 .f-prog-line .s.ok { color: var(--ok); }
 .f-prog-line .s.err { color: var(--err); }
 .f-sub { color: var(--text-3); font-size: 11.5px; line-height: 1.5; margin-top: 10px; }
+
+.f-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 999px;
+  background: var(--text-3); margin-right: 6px; flex: 0 0 auto;
+}
+.f-dot.busy { background: var(--warn); }
+.f-dot.ok { background: var(--ok); }
+.f-dot.err { background: var(--err); }
 </style>

@@ -145,13 +145,21 @@ window.BzDevice = (function () {
   /** 内核那套本机接口的通用入口（kb.js 就是拿它打 /api/kb/files、/api/agent/memory 等） */
   function call(path, method, body) { return xhr(path, method, body); }
 
-  function agentRun(goal, wait) { return xhr('/api/agent/run', 'POST', JSON.stringify({ goal: goal, wait: !!wait })); }
+  function agentRun(goal, wait, provider) {
+    var body = { goal: goal, wait: !!wait };
+    if (provider) body.provider = provider;
+    return xhr('/api/agent/run', 'POST', JSON.stringify(body));
+  }
   function agentState() { return xhr('/api/agent/state', 'GET'); }
+  function agentProviders() { return xhr('/api/agent/providers', 'GET'); }
   function agentRunDetail(id) { return xhr('/api/agent/runs/' + encodeURIComponent(id), 'GET'); }
   function agentCommands() { return xhr('/api/agent/commands', 'GET'); }
   function agentApprovals() { return xhr('/api/agent/approvals', 'GET'); }
   function agentApprove(id) { return xhr('/api/agent/approvals/' + encodeURIComponent(id) + '/approve', 'POST', JSON.stringify({ by: '网页' })); }
   function agentReject(id, reason) { return xhr('/api/agent/approvals/' + encodeURIComponent(id) + '/reject', 'POST', JSON.stringify({ by: '网页', reason: reason || '' })); }
+  function agentSetActiveProvider(name) {
+    return xhr('/api/agent/providers', 'POST', JSON.stringify({ action: 'active', name: name }));
+  }
 
   /* ---- 待办镜像：那是「本机内核」时代的路子；网页版正本就在后端，什么都不用做 ---- */
   function pushTodos() { /* 网页版：正本已在后端，不镜像 */ }
@@ -164,8 +172,10 @@ window.BzDevice = (function () {
     processStatus: processStatus, linkStatus: linkStatus, configure: configure, call: call,
     refreshRemote: refreshRemote, remoteInfo: remoteInfo, remoteLastError: remoteLastError,
     remoteConfigured: remoteConfigured, remoteReady: remoteReady, remoteOp: remoteOp, remoteState: remoteState,
-    agentRun: agentRun, agentState: agentState, agentRunDetail: agentRunDetail, agentCommands: agentCommands,
+    agentRun: agentRun, agentState: agentState, agentProviders: agentProviders,
+    agentRunDetail: agentRunDetail, agentCommands: agentCommands,
     agentApprovals: agentApprovals, agentApprove: agentApprove, agentReject: agentReject,
+    agentSetActiveProvider: agentSetActiveProvider,
     pushTodos: pushTodos, mirrorWhenReady: mirrorWhenReady, lastSyncInfo: lastSyncInfo,
   };
 })();

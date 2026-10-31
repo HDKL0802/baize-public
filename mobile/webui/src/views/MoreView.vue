@@ -1,18 +1,26 @@
 <template>
   <div class="more-view">
     <header class="m-page-head">
-      <div>
+      <div class="m-head-text">
         <h1 class="m-page-title">其他功能</h1>
         <p class="m-page-sub">AI 排期 · 运行记录 · 审批 · 更多</p>
       </div>
+      <button class="m-icon-btn" title="刷新审批" @click="onRefreshApprovals">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v4h-4"/></svg>
+      </button>
     </header>
 
     <!-- 待审批入口 -->
     <div v-if="pendingCount > 0" class="m-card pending-card">
-      <div class="m-card-title">模型审批（{{ pendingCount }} 条待处理）</div>
+      <div class="pending-head">
+        <span class="pending-dot"></span>
+        <span class="pending-title">模型审批</span>
+        <span class="pending-count">{{ pendingCount }}</span>
+      </div>
+      <div class="pending-text">有 {{ pendingCount }} 条模型调用等待你批准</div>
       <div class="pending-actions">
-        <button class="m-btn" @click="onRefreshApprovals">刷新</button>
-        <button class="m-btn ghost" @click="router.push('/more?tab=approve')">处理审批</button>
+        <button class="m-btn sm" @click="router.push('/more?tab=approve')">处理审批</button>
+        <button class="m-btn ghost" @click="onRefreshApprovals">刷新</button>
       </div>
     </div>
 
@@ -26,7 +34,6 @@
       >
         <div class="feature-icon" v-html="f.icon"></div>
         <div class="feature-label">{{ f.label }}</div>
-        <div class="feature-sub">{{ f.sub }}</div>
       </button>
     </div>
   </div>
@@ -101,21 +108,21 @@ async function onRefreshApprovals() {
 onMounted(onRefreshApprovals);
 
 function iconOf(kind) {
-  const base = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+  const base = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">';
   const ends = '</svg>';
   switch (kind) {
     case 'plan':
-      return base + '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>' + ends;
+      return base + '<rect x="3.5" y="4" width="17" height="16.5" rx="2"/><path d="M3.5 9h17M8 2v4M16 2v4"/><path d="M8 13h3M8 16.5h6"/>' + ends;
     case 'runs':
-      return base + '<path d="M22 12a10 10 0 1 1-10-10"/><path d="M12 6v6l4 2"/>' + ends;
+      return base + '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>' + ends;
     case 'approve':
-      return base + '<path d="M20 6L9 17l-5-5"/>' + ends;
+      return base + '<circle cx="12" cy="12" r="8.5"/><path d="M8 12l2.7 2.7L16 9.5"/>' + ends;
     case 'voice':
-      return base + '<path d="M12 3v18M7 8v8M17 8v8M3 11v2M21 11v2"/>' + ends;
+      return base + '<path d="M12 4v16M7.5 8.5v7M16.5 8.5v7M3.5 11v2M20.5 11v2"/>' + ends;
     case 'export':
-      return base + '<path d="M12 3v12M7 8l5-5 5 5M4 21h16"/>' + ends;
+      return base + '<path d="M12 4v11M7.5 8.5L12 4l4.5 4.5M4 19.5h16"/>' + ends;
     default:
-      return base + '<circle cx="12" cy="12" r="9"/>' + ends;
+      return base + '<circle cx="12" cy="12" r="8.5"/>' + ends;
   }
 }
 </script>
@@ -123,7 +130,28 @@ function iconOf(kind) {
 <style scoped>
 .more-view { display: flex; flex-direction: column; }
 
-.pending-card { border-color: var(--warn); }
+.pending-card { border-color: var(--line); }
+.pending-head { display: flex; align-items: center; gap: 8px; }
+.pending-dot {
+  width: 6px; height: 6px;
+  border-radius: 999px;
+  background: var(--warn);
+}
+.pending-title { font-size: 12px; font-weight: 600; color: var(--fg-2); }
+.pending-count {
+  margin-left: auto;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+.pending-text { margin: 8px 0 12px; font-size: 13px; color: var(--fg-2); }
 .pending-actions { display: flex; gap: 8px; }
 
 .feature-grid {
@@ -132,14 +160,23 @@ function iconOf(kind) {
   gap: 10px;
 }
 .feature-card {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
-  padding: 14px 12px;
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--card-radius);
-  color: var(--fg); text-align: left; cursor: pointer;
+  height: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms var(--ease-in), background 120ms var(--ease-in);
 }
-.feature-card:active { border-color: var(--accent); }
-.feature-icon { color: var(--accent); display: flex; }
-.feature-label { font-size: 14px; font-weight: 600; }
-.feature-sub { font-size: 11px; color: var(--fg-3); line-height: 1.4; }
+.feature-card:active { border-color: var(--accent); background: var(--accent-soft); }
+.feature-icon { display: flex; color: var(--accent); }
+.feature-icon svg { width: 20px; height: 20px; display: block; }
+.feature-label { font-size: 13px; font-weight: 600; line-height: 1.3; }
 </style>

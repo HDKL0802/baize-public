@@ -1,4 +1,4 @@
-package agentsvc
+﻿package agentsvc
 
 import (
 	"context"
@@ -57,7 +57,7 @@ func TestCrossDeviceDispatchThroughAgent(t *testing.T) {
 		t.Fatalf("保存配置失败：%v", err)
 	}
 
-	res, err := s.Run(context.Background(), "看看那台电脑上 D:\\tmp 里有什么", "chat", "loose")
+	res, err := s.Run(context.Background(), "看看那台电脑上 D:\\tmp 里有什么", "chat", "loose", "")
 	if err != nil {
 		t.Fatalf("运行失败：%v", err)
 	}

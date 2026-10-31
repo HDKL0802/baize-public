@@ -180,6 +180,47 @@ window.Settings = (function () {
   }
   function removeWidget() { if (floatEl) { floatEl.remove(); floatEl = null; } }
 
+  /* ---------- 后端模型通道（只读展示，手机连后端时可见） ---------- */
+
+  function renderRemoteProviders() {
+    const group = $('remoteProvidersGroup');
+    const box = $('remoteProviderList');
+    if (!group || !box) return;
+
+    // 必须有原生桥 + 内核能通
+    const nb = window.BzNative;
+    if (!nb || typeof nb.bzCoreCall !== 'function') { group.hidden = true; return; }
+    // 先看内核有没有开（enabled + running）
+    let st;
+    try { st = JSON.parse(nb.bzCoreStatus() || '{}'); } catch (e) { group.hidden = true; return; }
+    if (!st.enabled || !st.running || !st.server) { group.hidden = true; return; }
+
+    let raw;
+    try { raw = nb.bzCoreCall('/api/agent/providers', 'GET', null); } catch (e) { group.hidden = true; return; }
+    if (!raw) { group.hidden = true; return; }
+    let data;
+    try { data = JSON.parse(raw); } catch (e) { group.hidden = true; return; }
+    if (data.error || data.ok === false) { group.hidden = true; return; }
+
+    const provs = Array.isArray(data.providers) ? data.providers : [];
+    if (!provs.length) { group.hidden = true; return; }
+
+    group.hidden = false;
+    const active = data.activeProvider || '';
+    box.innerHTML = '';
+    provs.forEach(p => {
+      const el = document.createElement('div');
+      el.style.cssText = 'padding:10px 12px;border-radius:8px;background:var(--card-bg,#f5f5f7);border:1px solid var(--card-border,#e5e5ea);display:flex;align-items:center;gap:10px';
+      el.innerHTML = `
+        <span style="font-size:18px">${p.name === active ? '★' : (p.usable ? '✓' : '○')}</span>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:14px">${p.name || '未命名'}${p.name === active ? ' · 默认' : ''}${p.default ? ' ★' : ''}</div>
+          <div style="font-size:12px;color:var(--muted,#888);margin-top:2px">${p.model || ''}${p.usable ? ' · 就绪' : (p.error ? ' · ' + p.error : ' · 不可用')}</div>
+        </div>`;
+      box.appendChild(el);
+    });
+  }
+
   function init() {
     loadForm();
 
@@ -226,7 +267,13 @@ window.Settings = (function () {
     $('btnClearAll').addEventListener('click', clearAll);
 
     applyWidget();
+    renderRemoteProviders();
+
+    // 切到设置页时刷新后端通道列表（内核可能这时候才连上）
+    window.addEventListener('bz:page', (e) => {
+      if (e && e.detail && e.detail.id === 'view-settings') setTimeout(renderRemoteProviders, 300);
+    });
   }
 
-  return { init, loadForm, applyWidget, renderWidgetPicker };
+  return { init, loadForm, applyWidget, renderWidgetPicker, renderRemoteProviders };
 })();

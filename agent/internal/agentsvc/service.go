@@ -29,6 +29,7 @@ import (
 	"baize/internal/logx"
 	"baize/internal/mcp"
 	"baize/internal/memory"
+	"baize/internal/notebook"
 	"baize/internal/observe"
 	"baize/internal/persona"
 	"baize/internal/plugins"
@@ -56,6 +57,8 @@ type ProviderInfo struct {
 	Model     string   `json:"model"`
 	Kinds     []string `json:"kinds,omitempty"`
 	Fallback  bool     `json:"fallback"`
+	Default   bool     `json:"default"`          // 该通道是否被标记为"默认首选"
+	IsActive  bool     `json:"isActive,omitempty"` // 是否是用户当前在界面上选的（ActiveProvider 字段匹配）
 	Cost      string   `json:"cost,omitempty"`
 	Privacy   string   `json:"privacy,omitempty"`
 	HasAPIKey bool     `json:"hasApiKey"`
@@ -104,6 +107,7 @@ type State struct {
 	BackupDir      string              `json:"backupDir"`
 	AllowShell     bool                `json:"allowShell"`
 	AllowRemote    bool                `json:"allowRemote"`
+	ActiveProvider string              `json:"activeProvider,omitempty"` // 用户在界面上选的默认模型通道名
 	Running        bool                `json:"running"`
 	CurrentRunID   string              `json:"currentRunId,omitempty"` // 正在跑的那次运行 id
 	Providers      []ProviderInfo      `json:"providers"`
@@ -149,7 +153,8 @@ type Service struct {
 	skillMgr  *skills.Manager
 
 	mem      *memory.Store
-	embedder llm.Embedder // 可选：记忆的向量化通道
+	nb       *notebook.Vault // 笔记库（文件为正本，独立于记忆库）
+	embedder llm.Embedder    // 可选：记忆的向量化通道
 	embedErr string       // 配了但用不了时的原因（要显示出来，不能静默失效）
 	accounts *accounts.Registry
 	// partMu/parts 多用户数据分区（用户/用户组各自的记忆库+知识库），按需打开并缓存
@@ -216,9 +221,16 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 笔记库（文件为正本 + SQLite 派生索引），与记忆库彼此独立
+	nb, err := notebook.Open(dataDir)
+	if err != nil {
+		mem.Close()
+		return nil, err
+	}
 	runs, err := agentrt.OpenStore(dataDir)
 	if err != nil {
 		mem.Close()
+		nb.Close()
 		return nil, err
 	}
 	workdir := cfg.Workdir
@@ -228,12 +240,14 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 	ws, err := tools.NewWorkspace(workdir, false)
 	if err != nil {
 		mem.Close()
+		nb.Close()
 		runs.Close()
 		return nil, err
 	}
 	ck, err := agentrt.NewCheckpointManager(dataDir, ws.Root(), 30)
 	if err != nil {
 		mem.Close()
+		nb.Close()
 		runs.Close()
 		return nil, err
 	}
@@ -258,6 +272,7 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 	kbs, err := kb.Open(dataDir, lg)
 	if err != nil {
 		mem.Close()
+		nb.Close()
 		runs.Close()
 		return nil, err
 	}
@@ -266,6 +281,7 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 	accts, err := accounts.Open(dataDir, lg)
 	if err != nil {
 		mem.Close()
+		nb.Close()
 		runs.Close()
 		return nil, err
 	}
@@ -282,7 +298,7 @@ func New(dataDir string, lg *slog.Logger, opts ...Option) (*Service, error) {
 
 	s := &Service{
 		dataDir: dataDir, lg: lg, cfg: cfg,
-		mem: mem, runs: runs, ck: ck, ws: ws, skills: lib, skillMgr: skills.NewManager(lib), kbs: kbs,
+		mem: mem, nb: nb, runs: runs, ck: ck, ws: ws, skills: lib, skillMgr: skills.NewManager(lib), kbs: kbs,
 		accounts: accts,
 		persona:  personaLib,
 		mcp:      mcp.NewManager(lg, cfg.AllowRemote),
@@ -335,6 +351,7 @@ func (s *Service) Close() {
 		s.accounts.Close()
 	}
 	s.mem.Close()
+	s.nb.Close()
 	s.runs.Close()
 }
 
@@ -556,7 +573,7 @@ func (s *Service) Reload() error {
 func (s *Service) rebuildChannels() {
 	cfg := s.Config()
 	mgr := channels.NewManager(func(ctx context.Context, session, text string) (string, error) {
-		res, err := s.Run(ctx, text, "chat", "")
+		res, err := s.Run(ctx, text, "chat", "", "")
 		if err != nil {
 			return "", err
 		}
@@ -663,8 +680,10 @@ func (s *Service) rebuildProviders() {
 	for _, p := range s.cfg.Providers {
 		info := ProviderInfo{
 			Name: p.Name, Protocol: p.Protocol, BaseURL: p.BaseURL, Model: p.Model,
-			Kinds: p.Kinds, Fallback: p.Fallback, HasAPIKey: p.APIKey != "",
-			Cost: p.Cost, Privacy: p.Privacy,
+			Kinds: p.Kinds, Fallback: p.Fallback, Default: p.Default,
+			IsActive: strings.EqualFold(strings.TrimSpace(p.Name), strings.TrimSpace(s.cfg.ActiveProvider)),
+			HasAPIKey: p.APIKey != "",
+			Cost:      p.Cost, Privacy: p.Privacy,
 		}
 		if info.Name == "" {
 			info.Name = p.Protocol + ":" + p.Model
@@ -700,13 +719,53 @@ func (s *Service) rebuildProviders() {
 			if p.Fallback {
 				router.AddFallback(prov)
 			} else {
-				router.Add(p.Kinds, prov)
+				router.AddNamed(p.Name, p.Kinds, prov, p.Default)
 			}
 		}
 		infos = append(infos, info)
 	}
 	s.router = router
 	s.providers = infos
+}
+
+// SetActiveProvider 设置当前默认模型通道名。name 为空表示"恢复自动路由"。
+// 找不到对应通道时返回错误，配置不变。
+func (s *Service) SetActiveProvider(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		// 清空 = 恢复自动路由
+		s.mu.Lock()
+		s.cfg.ActiveProvider = ""
+		err := config.Save(s.dataDir, s.cfg)
+		s.mu.Unlock()
+		if err != nil {
+			return fmt.Errorf("保存配置失败：%w", err)
+		}
+		s.rebuildProviders()
+		return nil
+	}
+	// 找得到才允许设，别让配置里躺着一个不存在的通道名
+	s.mu.RLock()
+	found := false
+	for _, p := range s.cfg.Providers {
+		if strings.EqualFold(strings.TrimSpace(p.Name), name) {
+			found = true
+			break
+		}
+	}
+	s.mu.RUnlock()
+	if !found {
+		return fmt.Errorf("找不到名为 %q 的模型通道（请先在「模型通道」里配好）", name)
+	}
+	s.mu.Lock()
+	s.cfg.ActiveProvider = name
+	err := config.Save(s.dataDir, s.cfg)
+	s.mu.Unlock()
+	if err != nil {
+		return fmt.Errorf("保存配置失败：%w", err)
+	}
+	s.rebuildProviders()
+	return nil
 }
 
 // rebuildEmbedder 按配置建（或拆掉）向量化通道，并把它接到记忆库上。
@@ -899,15 +958,17 @@ func normalizeStrictness(mode string) (autoApprove bool, allTools bool) {
 	}
 }
 
-// Run 跑一次任务（同步，顶层串行）。strictness 为空 = 中档（默认口径）
-func (s *Service) Run(ctx context.Context, goal, recipe string, strictness string) (agentrt.RunResult, error) {
+// Run 跑一次任务（同步，顶层串行）。strictness 为空 = 中档（默认口径）。
+// provider 可空：指定这次用哪个模型通道（按通道名）；空=按 Router 自动路由（优先 ActiveProvider）。
+func (s *Service) Run(ctx context.Context, goal, recipe, strictness string, provider string) (agentrt.RunResult, error) {
 	auto, all := normalizeStrictness(strictness)
-	return s.runInner(ctx, agentrt.NewRunID(), goal, recipe, auto, all, 0)
+	return s.runInner(ctx, agentrt.NewRunID(), goal, recipe, auto, all, 0, provider)
 }
 
 // Start 异步跑一次任务：立刻返回运行 id，随后用 State().Running / CurrentRunID 跟踪，
 // 结果落在运行记录里（跑完才会出现，运行中的任务靠 running 标记看）。
-func (s *Service) Start(goal, recipe, strictness string) (string, error) {
+// provider 可空：同 Run。
+func (s *Service) Start(goal, recipe, strictness string, provider string) (string, error) {
 	if strings.TrimSpace(goal) == "" {
 		return "", errors.New("任务目标不能为空")
 	}
@@ -928,7 +989,7 @@ func (s *Service) Start(goal, recipe, strictness string) (string, error) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
-		if _, err := s.runInner(ctx, id, goal, recipe, auto, all, 0); err != nil {
+		if _, err := s.runInner(ctx, id, goal, recipe, auto, all, 0, provider); err != nil {
 			s.lg.Warn("Agent 运行结束（有错误）", "runId", id, "err", err, "goal", goal)
 		}
 	}()
@@ -942,7 +1003,7 @@ func (s *Service) CurrentRunID() string {
 	return s.curRunID
 }
 
-func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, autoApprove, allTools bool, depth int) (agentrt.RunResult, error) {
+func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, autoApprove, allTools bool, depth int, providerOverride string) (agentrt.RunResult, error) {
 	if depth == 0 {
 		s.runMu.Lock()
 		defer s.runMu.Unlock()
@@ -973,7 +1034,25 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 	browser := s.browser
 	s.mu.RUnlock()
 
-	provider, err := router.Pick(recipe)
+	// 选模型通道：providerOverride（本次显式指定） → cfg.ActiveProvider（界面默认） → router.Pick(recipe)（自动路由）
+	var provider llm.Provider
+	var err error
+	switch {
+	case strings.TrimSpace(providerOverride) != "":
+		provider, err = router.PickByName(providerOverride)
+		if err != nil {
+			return agentrt.RunResult{}, fmt.Errorf("指定的模型通道 %s：%w", providerOverride, err)
+		}
+	case strings.TrimSpace(cfg.ActiveProvider) != "":
+		provider, err = router.PickByName(cfg.ActiveProvider)
+		if err != nil {
+			// ActiveProvider 配了但找不到——可能通道被删了，别让运行全挂，退回自动路由
+			s.lg.Warn("ActiveProvider 配的通道找不到，退回自动路由", "activeProvider", cfg.ActiveProvider, "err", err)
+			provider, err = router.Pick(recipe)
+		}
+	default:
+		provider, err = router.Pick(recipe)
+	}
 	if err != nil {
 		return agentrt.RunResult{}, fmt.Errorf("没有可用的模型通道（%s）。请编辑 %s 配置一个本地模型（Ollama / vLLM / llama.cpp 均走 OpenAI 兼容协议）",
 			s.providerIssues(), filepath.Join(s.dataDir, "config.json"))
@@ -997,7 +1076,7 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 	}
 	tools.RegisterMemory(reg, s.mem, cfg.Memory.Namespace)
 	// 笔记（记忆星图）：成篇的 Markdown 笔记 + [[双向链接]] 关系网
-	tools.RegisterNotes(reg, s.mem, cfg.Memory.Namespace)
+	tools.RegisterNotes(reg, s.nb)
 	// 知识库（待办 + 密码本的正本在后端）：增/查随便用，删与看密码明文走审批
 	kb.RegisterTools(reg, s.kbs)
 	// 跨端调度：把 device_list / device_run 交给设备中枢执行，结果落记忆
@@ -1015,7 +1094,7 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 	agentrt.RegisterRuntimeTools(reg, &agentrt.DelegateTool{
 		Depth: depth, MaxDepth: 2, MaxSubGoal: 600,
 		RunSub: func(subCtx context.Context, subGoal, subRecipe string) (string, error) {
-			res, err := s.runInner(subCtx, agentrt.NewRunID(), subGoal, subRecipe, autoApprove, allTools, depth+1)
+			res, err := s.runInner(subCtx, agentrt.NewRunID(), subGoal, subRecipe, autoApprove, allTools, depth+1, "")
 			if err != nil {
 				return "", err
 			}

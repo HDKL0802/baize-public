@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>白泽浮窗</title>
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#141414; --surface:#1f1f1f; --surface-2:#262626;
+    --border:rgba(255,255,255,.12); --border-strong:rgba(255,255,255,.18);
+    --text:rgba(255,255,255,.86); --text-2:rgba(255,255,255,.62); --text-3:rgba(255,255,255,.42);
+    --accent:#38bdf8; --accent-soft:rgba(56,189,248,.14); --accent-ink:#06121b;
+    --ok:#4ade80; --warn:#fbbf24; --err:#f87171;
+  }
+  html[data-theme=light]{
+    color-scheme:light;
+    --bg:#f7f6f2; --surface:#ffffff; --surface-2:#f2f1ec;
+    --border:#e6e3de; --border-strong:#d3cfc8;
+    --text:rgba(20,20,19,.88); --text-2:rgba(20,20,19,.58); --text-3:rgba(20,20,19,.46);
+    --accent:#0284c7; --accent-soft:rgba(2,132,199,.10); --accent-ink:#ffffff;
+    --ok:#16a34a; --warn:#d97706; --err:#dc2626;
+  }
+  *{box-sizing:border-box}
+  /* ⚠️ 必须兜底：下面 .fhead / .body 都是作者样式的 display:flex，会盖掉 UA 的 [hidden]{display:none}，
+     没有这条的话四种模式的区块会**同时显示**（历史遗留坑，实测 chat/text 一直并存）。 */
+  [hidden]{display:none!important}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:13px/1.55 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    overflow:hidden; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{display:flex;flex-direction:column;height:100vh}
+
+  /* 顶部标题栏：全条可拖（按钮除外）；高度要和浮窗右上角按钮区对齐 */
+  .fhead{
+    height:40px;flex:0 0 40px;display:flex;align-items:center;gap:8px;
+    padding:0 6px 0 14px;background:var(--surface);border-bottom:1px solid var(--border);
+    user-select:none;cursor:default;
+  }
+  body.dragging{cursor:move}
+  .ftitle{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:var(--text-2);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fbtns{flex:0 0 auto;display:flex;align-items:center;gap:2px}
+  .ibtn{
+    width:30px;height:30px;display:grid;place-items:center;border:0;border-radius:5px;
+    background:transparent;color:var(--text-2);cursor:pointer;font-size:12px;line-height:1;
+    transition:background .12s,color .12s;
+  }
+  .ibtn:hover{background:var(--surface-2);color:var(--text)}
+  .ibtn.txt{width:auto;padding:0 8px;font-weight:600;font-size:11.5px}
+  .ibtn svg{width:15px;height:15px;display:block;transition:transform .16s ease}
+  /* 未钉住 = 图钉斜着；钉住 = 图钉竖直 */
+  #pin svg{transform:rotate(42deg)}
+  #pin.on svg{transform:rotate(0deg)}
+
+  .body{flex:1;min-height:0;display:flex;flex-direction:column}
+
+  /* 提取文字 / 翻译：正文占满整屏，不再挂一排「正在处理/重试/复制」 */
+  .pane{padding:12px;flex:1;min-height:0;display:flex}
+  .result{
+    flex:1;white-space:pre-wrap;word-break:break-word;background:var(--surface);
+    border:1px solid var(--border);border-radius:6px;padding:12px 13px;
+    font-size:13.5px;line-height:1.8;overflow:auto;user-select:text;
+  }
+  .result:empty::before{content:attr(data-ph);color:var(--text-3)}
+
+  /* 对话 */
+  .msgs{flex:1;min-height:0;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:9px}
+  .msg{max-width:88%;border-radius:8px;padding:8px 11px;font-size:13px;line-height:1.65;word-break:break-word;user-select:text}
+  .msg.me{align-self:flex-end;background:var(--accent-soft);border:1px solid var(--border-strong)}
+  .msg.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--border)}
+  .msg.ai .meta{display:block;margin-top:5px;color:var(--text-3);font-size:11px}
+  .composer{flex:0 0 auto;padding:10px 12px 12px;border-top:1px solid var(--border);background:var(--surface)}
+  .composer textarea{
+    width:100%;resize:none;height:58px;background:var(--bg);color:var(--text);
+    border:1px solid var(--border-strong);border-radius:6px;padding:9px 10px;font:inherit;
+    font-size:13px;outline:none;line-height:1.55;
+  }
+  .composer textarea:focus{border-color:var(--accent)}
+  .send{display:flex;justify-content:flex-end;margin-top:8px}
+  button.btn{
+    border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text);
+    border-radius:6px;padding:5px 12px;font:inherit;font-size:12.5px;cursor:pointer;
+    white-space:nowrap;transition:background .12s,opacity .12s;
+  }
+  button.btn:hover{background:var(--surface-3,var(--surface-2))}
+  button.btn:disabled{opacity:.45;cursor:not-allowed}
+  button.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--text-3);margin-right:5px;vertical-align:1px}
+  .dot.busy{background:var(--warn);animation:pulse 1s infinite}
+  .dot.ok{background:var(--ok)}
+  .dot.err{background:var(--err)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  /* 对话浮窗里的「对话 / 进展」页签（把运行状态从聊天里拆出去） */
+  .ctabs{flex:0 0 auto;display:flex;gap:4px;padding:8px 12px 0}
+  .ctabs button{
+    border:1px solid var(--border);background:var(--surface);color:var(--text-2);
+    border-radius:5px;padding:4px 12px;font:inherit;font-size:12px;cursor:pointer;
+  }
+  .ctabs button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+  .progline{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;
+    font-size:12.5px;line-height:1.5}
+  .progline .g{color:var(--text);display:block;word-break:break-word}
+  .progline .s{color:var(--text-3);font-size:11px}
+
+  /* ---------- 语音转写（dictate） ---------- */
+  .recbar{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:12px 12px 8px}
+  .recstat{color:var(--text-2);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .recstat.err{color:var(--err)}
+  button.btn.stop{background:var(--err);border-color:var(--err);color:var(--accent-ink);font-weight:600}
+  .dlist{
+    flex:1;min-height:0;overflow:auto;margin:0 12px;padding:10px 12px;background:var(--surface);
+    border:1px solid var(--border);border-radius:6px;font-size:13px;line-height:1.75;user-select:text;
+  }
+  .dlist:empty::before{content:'按上面的按钮开始录音，每 5 秒转一段，自动攒成一整篇。';color:var(--text-3)}
+  .dline{word-break:break-word}
+  .dts{color:var(--text-3);font-variant-numeric:tabular-nums}
+  .dtx{color:var(--text)}
+  .dbar{flex:0 0 auto;display:flex;gap:8px;padding:10px 12px 6px}
+  .dtip{flex:0 0 auto;padding:0 12px 10px;color:var(--text-3);font-size:11px;line-height:1.5}
+
+  /* ---------- 实时字幕（subtitle）：贴屏幕底部的置顶横条 ---------- */
+  /* 迷你操作条：默认半透明（不挡字幕），鼠标移上去才明显 */
+  .subbar{
+    flex:0 0 auto;display:flex;align-items:center;gap:4px;padding:2px 6px;
+    background:var(--surface);border-bottom:1px solid var(--border);
+    opacity:.32;transition:opacity .15s;user-select:none;
+  }
+  .subbar:hover{opacity:1}
+  .sbtn{
+    border:1px solid var(--border-strong);background:transparent;color:var(--text-2);
+    border-radius:4px;padding:1px 7px;font:inherit;font-size:11px;line-height:1.6;cursor:pointer;white-space:nowrap;
+  }
+  .sbtn:hover{background:var(--surface-2);color:var(--text)}
+  .sbtn.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+  .sfz{display:inline-flex;gap:2px}
+  .sstat{flex:1;min-width:0;margin-left:6px;color:var(--text-3);font-size:10.5px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+  .sstat.err{color:var(--err)}
+  /* 主体：贴底排版，越新越靠下越亮 */
+  .sublist{
+    flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;
+    gap:10px;padding:10px 18px 16px;overflow:hidden;text-align:center;--sub-size:22px;
+  }
+  .sublist.f-s{--sub-size:16px}
+  .sublist.f-m{--sub-size:22px}
+  .sublist.f-l{--sub-size:30px}
+  .sub-item{transition:opacity .2s}
+  .sub-item .src{color:var(--text-2);font-size:var(--sub-size);line-height:1.4;word-break:break-word}
+  .sub-item .dst{color:var(--accent);font-size:calc(var(--sub-size) * .92);font-weight:600;
+    line-height:1.45;margin-top:2px;word-break:break-word}
+  .sub-item .dst.bad{color:var(--warn);font-weight:400}
+  .sublist.hide-src .sub-item .src{display:none}
+
+  /* ---------- 两人通话（call） ---------- */
+  .callpick,.callin{flex:1;min-height:0;display:flex;flex-direction:column;padding:10px 12px;gap:8px}
+  .cprow{display:flex;gap:8px;align-items:center}
+  .cprow select{flex:1;min-width:0;background:var(--surface);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:7px 9px;font:inherit;font-size:12.5px;outline:none}
+  .clist{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:6px}
+  .crow{
+    display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);
+    border-radius:6px;padding:7px 10px;cursor:pointer;transition:border-color .12s;
+  }
+  .crow:hover{border-color:var(--border-strong)}
+  .crow .nm{flex:1;min-width:0;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .crow .st{color:var(--text-3);font-size:11px;white-space:nowrap}
+  .crow .st.live{color:var(--ok)}
+  .cempty{color:var(--text-3);font-size:12px;padding:6px 2px}
+  .cnote{color:var(--text-3);font-size:11.5px;line-height:1.5}
+  .calltop{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+  .calltop b{font-size:13.5px}
+  .sub{color:var(--text-3);font-size:11.5px;line-height:1.5}
+  .callvid{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .callvid video{
+    width:100%;aspect-ratio:4/3;background:#000;border:1px solid var(--border);border-radius:6px;object-fit:cover;
+  }
+  .callvid video.mine{position:relative}
+  .callmsgs{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:2px 1px}
+  .callmsgs .msg.ai .who{display:block;color:var(--accent);font-size:11px;margin-bottom:2px}
+  .callbar{flex:0 0 auto;display:flex;gap:6px;flex-wrap:wrap}
+  button.btn.ghost{background:transparent}
+  .aibox{flex:0 0 auto;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 10px}
+  .aibox .sub{flex:1;min-width:0}
+  .calllogin{flex:0 0 auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .calllogin h4{margin:0;font-size:13px}
+  .calllogin input{
+    width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border-strong);
+    border-radius:6px;padding:8px 10px;font:inherit;font-size:12.5px;outline:none;
+  }
+  .calllogin input:focus{border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="fhead" id="head">
+    <div class="ftitle" id="title">白泽</div>
+    <div class="fbtns">
+      <button class="ibtn txt" id="lang" hidden>中</button>
+      <button class="ibtn" id="pin" title="钉住（锁死位置并置顶）">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/>
+        </svg>
+      </button>
+      <button class="ibtn" id="close" title="关闭">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- 对话（临时对话 / 问问白泽）：「对话」只聊天，「进展」看运行状态，不混在一块 -->
+  <div class="body" id="vChat" hidden>
+    <div class="ctabs">
+      <button id="ctChat" class="on">对话</button>
+      <button id="ctProg">进展</button>
+    </div>
+    <div id="cvChat" style="flex:1;min-height:0;display:flex;flex-direction:column">
+      <div class="msgs" id="msgs">
+        <div class="msg ai">你好，我是白泽。说一句话就行。</div>
+      </div>
+      <div class="composer">
+        <div class="send" style="margin:0 0 8px">
+          <button class="btn primary" id="send">发送</button>
+        </div>
+        <textarea id="goal" placeholder="说一句要做什么…（Enter 发送，Shift+Enter 换行）"></textarea>
+      </div>
+    </div>
+    <div id="cvProg" hidden style="flex:1;min-height:0;overflow:auto;padding:12px">
+      <div class="msg ai" id="progNow"><span class="dot" id="chatDot"></span><span id="chatStat">就绪</span></div>
+      <div id="progList" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"></div>
+      <div class="sub" style="margin-top:10px;color:var(--text-3)">每 3 秒刷新一次；这里是「白泽在干什么」，聊天在「对话」页。</div>
+    </div>
+  </div>
+
+  <!-- 提取文字 / 翻译 -->
+  <div class="body" id="vText" hidden>
+    <div class="pane"><div class="result" id="result" data-ph="正在处理…"></div></div>
+  </div>
+
+  <!-- 语音转写 -->
+  <div class="body" id="vDictate" hidden>
+    <div class="recbar">
+      <button class="btn primary" id="recBtn">开始录音</button>
+      <span class="recstat" id="recStat">就绪</span>
+    </div>
+    <div class="dlist" id="dList"></div>
+    <div class="dbar">
+      <button class="btn" id="dSave">保存为笔记</button>
+      <button class="btn" id="dCopy">复制全部</button>
+      <button class="btn" id="dClear">清空</button>
+    </div>
+    <div class="dtip">不做说话人分离：当前语音通道（dashscope paraformer-realtime / openai whisper）都不提供说话人分离，所以转写结果里不会有「说话人 A/B」。</div>
+  </div>
+
+  <!-- 实时字幕：贴屏幕底部的置顶横条（收掉顶部拖动条与钉住按钮） -->
+  <div class="body" id="vSub" hidden>
+    <div class="subbar">
+      <button class="sbtn" id="subToggle">开始</button>
+      <button class="sbtn" id="subLang">中</button>
+      <button class="sbtn on" id="subSrc">显示原文</button>
+      <span class="sfz" id="subFont">
+        <button class="sbtn" data-f="s">小</button>
+        <button class="sbtn on" data-f="m">中</button>
+        <button class="sbtn" data-f="l">大</button>
+      </span>
+      <span class="sstat" id="subStat">译文：中文 · 已暂停</span>
+      <button class="sbtn" id="subClose">关闭</button>
+    </div>
+    <div class="sublist f-m" id="subList"></div>
+  </div>
+
+  <!-- 两人通话：组内互发消息 + WebRTC 音视频（信令走后端中转） -->
+  <div class="body" id="vCall" hidden>
+    <!-- 选对象：我的组 → 成员/进行中的通话 -->
+    <div class="callpick" id="callPick">
+      <div class="cprow">
+        <select id="callGroup"></select>
+        <button class="btn" id="cpRefresh">刷新</button>
+      </div>
+      <div class="clist" id="callList"><div class="cempty">先选一个用户组</div></div>
+      <div class="cnote">像微信一样找组里的同事：点一下就开通话窗，能发文字，也能开音视频（双方都要连同一个白泽后端）。</div>
+    </div>
+    <!-- 通话中：视频 + 消息 + 操作 + 回复AI -->
+    <div class="callin" id="callIn" hidden>
+      <div class="calltop">
+        <b id="callPeer">—</b>
+        <span class="sub" id="callState"></span>
+        <span style="flex:1"></span>
+        <button class="btn" id="callBack" title="换个对象">切换</button>
+        <button class="btn stop" id="callEnd">挂断</button>
+      </div>
+      <div class="callvid" id="callVids" hidden>
+        <video id="cvLocal" autoplay muted playsinline></video>
+        <video id="cvRemote" autoplay playsinline></video>
+      </div>
+      <div class="callmsgs" id="callMsgs"></div>
+      <div class="callbar">
+        <button class="btn primary" id="cvStart">发起音视频</button>
+        <button class="btn ghost" id="cvMute" hidden>静音</button>
+        <button class="btn ghost" id="cvCam" hidden>关摄像</button>
+        <button class="btn ghost" id="cvHang" hidden>断开音视频</button>
+      </div>
+      <div class="aibox" id="aiBox" hidden>
+        <span class="sub" id="aiState"></span>
+        <button class="btn primary" id="aiBtn">回复AI</button>
+      </div>
+      <div class="composer" style="border-top:0;padding-top:0">
+        <div class="send" style="margin:0 0 8px">
+          <button class="btn primary" id="cmSend">发送</button>
+        </div>
+        <textarea id="cmInput" placeholder="发条消息…（Enter 发送）" style="height:44px"></textarea>
+      </div>
+    </div>
+    <!-- 没登录（快捷键直接开的窗口、或本窗第一次用） -->
+    <div class="calllogin" id="callLogin" hidden>
+      <h4>登录后才能开始通话</h4>
+      <input id="lgName" placeholder="用户名" autocomplete="username">
+      <input id="lgPass" type="password" placeholder="密码" autocomplete="off">
+      <div class="send" style="margin-top:2px"><button class="btn primary" id="lgGo">登录</button><span class="sub" id="lgNote" style="align-self:center"></span></div>
+      <div class="cnote">登录信息只存在这个通话窗口里（每次从快捷键打开会优先带主窗口的登录态过来）。</div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const SESSION_KEY = 'bz_session';
+const session = () => { try { return localStorage.getItem(SESSION_KEY) || ''; } catch (e) { return ''; } };
+
+async function api(path, method, body) {
+  const headers = {};
+  if (body) headers['Content-Type'] = 'application/json';
+  const s = session();
+  if (s) headers['X-Baize-Session'] = s;
+  try {
+    const r = await fetch('/api/be' + path, {
+      method: method || 'GET', headers, body: body ? JSON.stringify(body) : undefined,
+    });
+    const t = await r.text();
+    let d = {}; try { d = t ? JSON.parse(t) : {}; } catch (e) { d = { raw: t }; }
+    if (!r.ok) return { ok: false, error: (d && d.error) || ('HTTP ' + r.status) };
+    return { ok: true, data: d };
+  } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+}
+const local = async (p, body) => {
+  try {
+    const r = await fetch('/api/local' + p, body
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+      : {});
+    return await r.json();
+  } catch (e) { return { ok: false, error: String(e) }; }
+};
+
+let MODE = 'chat';
+let REV = 0;
+let pinned = false;
+let lang = 'zh';
+
+/* ---------- 主题：亮 / 暗 / 跟随系统（跟主程序同一份配置） ---------- */
+let curThemePref = '';
+function applyTheme(theme) {
+  curThemePref = theme || 'system';
+  const sysLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  const t = theme === 'light' || theme === 'dark' ? theme : (sysLight ? 'light' : 'dark');
+  document.documentElement.setAttribute('data-theme', t);
+}
+(async () => {
+  const c = await local('/config');
+  const th = (c && c.config && c.config.theme) || (c && c.theme) || 'system';
+  applyTheme(th);
+  if (window.matchMedia) {
+    try { window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => applyTheme(curThemePref)); } catch (e) { /* 老 Edge 忽略 */ }
+  }
+})();
+// 浮窗是独立进程，主窗口改了主题它不知道 → 4 秒对一次配置，变了立刻刷（不用关窗重开）
+setInterval(async () => {
+  try {
+    const c = await local('/config');
+    const th = (c && c.config && c.config.theme) || (c && c.theme) || 'system';
+    if (th !== curThemePref) applyTheme(th);
+  } catch (e) { /* 本机关了就不刷 */ }
+}, 4000);
+
+/* ---------- 顶部按钮 ---------- */
+function paintPin() {
+  $('pin').classList.toggle('on', pinned);
+  $('pin').title = pinned ? '取消钉住（可以拖动）' : '钉住（锁死位置并置顶）';
+}
+$('pin').onclick = async () => {
+  const r = await local('/float/pin', { on: !pinned });
+  pinned = !!(r && r.pinned); paintPin();
+};
+$('close').onclick = () => local('/float/close', {});
+$('lang').onclick = () => {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  $('lang').textContent = lang === 'zh' ? '中' : 'EN';
+  if (MODE === 'translate') runVision();
+};
+
+/* ---------- 拖动窗口 ----------
+   WebView2 的客户区是子窗口，鼠标命中测试由它接管，顶层根本收不到 WM_NCHITTEST，
+   所以只能用「JS 按住 → 把位移发给原生 SetWindowPos」这条路。 */
+(function wireDrag() {
+  const head = $('head');
+  let drag = null, raf = 0, accX = 0, accY = 0;
+
+  const flush = () => {
+    raf = 0;
+    if (!accX && !accY) return;
+    const dx = accX, dy = accY; accX = accY = 0;
+    local('/float/move', { dx, dy });
+  };
+  head.addEventListener('pointerdown', e => {
+    if (e.target.closest('button') || pinned) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    try { head.setPointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
+    document.body.classList.add('dragging');
+    e.preventDefault();
+  });
+  head.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    accX += e.clientX - drag.x;
+    accY += e.clientY - drag.y;
+    drag.x = e.clientX; drag.y = e.clientY;
+    if (!raf) raf = requestAnimationFrame(flush); // 合并到每帧一次，别一个像素发一个请求
+  });
+  const end = async e => {
+    if (!drag || (e && e.pointerId !== drag.id)) return;
+    drag = null;
+    document.body.classList.remove('dragging');
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
+    if (accX || accY) { local('/float/move', { dx: accX, dy: accY }); accX = accY = 0; }
+    await local('/float/snap', {}); // 松手吸到最近的屏幕边
+  };
+  head.addEventListener('pointerup', end);
+  head.addEventListener('pointercancel', end);
+  window.addEventListener('blur', () => end());
+})();
+
+/* ---------- 读图 + 走多模态 ---------- */
+async function imageBase64() {
+  const r = await fetch('/api/local/float/image', { cache: 'no-store' });
+  if (!r.ok) return '';
+  const buf = new Uint8Array(await r.arrayBuffer());
+  let s = ''; const CH = 0x8000;
+  for (let i = 0; i < buf.length; i += CH) s += String.fromCharCode.apply(null, buf.subarray(i, i + CH));
+  return btoa(s);
+}
+async function visionText(action) {
+  const b64 = await imageBase64();
+  if (!b64) return null;
+  const body = { action: action, imageBase64: b64 };
+  if (action === 'translate') body.lang = lang;
+  const r = await api('/api/agent/vision', 'POST', body);
+  if (!r.ok) return { error: r.error || '未知错误' };
+  const d = r.data || {};
+  const inner = d.data || d;
+  return { text: inner.text || '', model: inner.model || '', ms: inner.latencyMs || 0 };
+}
+
+/* ---------- 提取文字 / 翻译 ---------- */
+async function runVision() {
+  const res = $('result');
+  res.dataset.ph = MODE === 'translate' ? (lang === 'zh' ? '翻译成中文…（可能几秒）' : 'Translating…') : '识别中…（可能几秒）';
+  res.textContent = '';
+  const v = await visionText(MODE === 'translate' ? 'translate' : 'extract');
+  if (v == null) { res.dataset.ph = '没拿到截图'; return; }
+  if (v.error) { res.dataset.ph = '失败：' + v.error; return; }
+  res.dataset.ph = '（没有识别到内容）';
+  res.textContent = v.text;
+}
+
+/* ---------- 对话 ---------- */
+function addMsg(cls, text) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.textContent = text;
+  $('msgs').appendChild(d);
+  $('msgs').scrollTop = $('msgs').scrollHeight;
+  return d;
+}
+function setDot(cls, text) {
+  $('chatDot').className = 'dot' + (cls ? ' ' + cls : '');
+  $('chatStat').textContent = text;
+}
+
+/* 「对话 / 进展」页签：运行状态从聊天里拆出去，互不挤 */
+function switchChatView(chat) {
+  $('ctChat').classList.toggle('on', chat);
+  $('ctProg').classList.toggle('on', !chat);
+  $('cvChat').hidden = !chat;
+  $('cvProg').hidden = chat;
+  if (chat) $('goal').focus();
+}
+$('ctChat').onclick = () => switchChatView(true);
+$('ctProg').onclick = () => switchChatView(false);
+
+// 「进展」页里的运行条目
+function addProgLine(goalText, runId) {
+  const d = document.createElement('div');
+  d.className = 'progline';
+  d.dataset.run = runId || '';
+  d.innerHTML = '<span class="g"></span><span class="s">已派发，跑着…</span>';
+  d.querySelector('.g').textContent = goalText || '（无目标）';
+  $('progList').insertBefore(d, $('progList').firstChild);
+  while ($('progList').children.length > 8) $('progList').removeChild($('progList').lastChild);
+}
+async function refreshProg() {
+  const r = await api('/api/agent/runs?limit=8');
+  if (!r.ok) return;
+  const list = (r.data && (r.data.runs || r.data.items)) || (Array.isArray(r.data) ? r.data : []);
+  list.forEach(it => {
+    const node = $('progList').querySelector('[data-run="' + (it.id || it.runId || '') + '"]');
+    if (!node) return;
+    const s = node.querySelector('.s');
+    s.textContent = (it.status || '?') + ' · ' + (it.steps ?? '?') + ' 步 · ' + (it.totalTokens ?? '?') + ' token';
+    if (it.status === 'done') s.style.color = 'var(--ok)';
+    else if (it.status === 'failed') s.style.color = 'var(--err)';
+  });
+  const anyRunning = list.some(x => x.status === 'running');
+  const busy = !list.length || anyRunning;
+  setDot(anyRunning ? 'busy' : (list[0] && list[0].status === 'done' ? 'ok' : (list[0] && list[0].status === 'failed' ? 'err' : '')),
+    anyRunning ? '运行中…' : (list.length ? '当前空闲 · 最近 ' + list[0].status : '就绪'));
+  void busy;
+}
+
+async function send() {
+  const ta = $('goal'), goal = ta.value.trim();
+  if (!goal) return;
+  addMsg('me', goal);
+  ta.value = '';
+  setDot('busy', '已派发，跑着…');
+  const r = await api('/api/agent/run', 'POST', { goal, wait: false });
+  if (!r.ok) { addMsg('ai', '派发失败：' + (r.error || '未知')); setDot('err', '失败'); return; }
+  const d = r.data || {};
+  if (d.command) {
+    addMsg('ai', d.reply || '（命令已执行）');
+    setDot('ok', '魔法命令 /' + (d.name || ''));
+    return;
+  }
+  const id = d.runId || d.id || '';
+  addMsg('ai', '已派发' + (id ? ' · ' + id : '') + '，进展页可以盯状态。');
+  addProgLine(goal, id);
+  refreshProg();
+}
+$('send').onclick = send;
+$('goal').addEventListener('keydown', e => {
+  // Enter 发送（豆包那套习惯）；Shift+Enter 换行；Ctrl+Enter 保留
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+// askPrefill 「问问白泽」：把截图里的文字读出来填进输入框，用户接着问
+async function askPrefill() {
+  const ta = $('goal');
+  if (!ta) return;
+  ta.placeholder = '正在读出截图里的文字…';
+  const v = await visionText('extract');
+  ta.placeholder = '说一句要做什么…（Enter 发送，Shift+Enter 换行）';
+  if (v && v.text) {
+    ta.value = v.text;
+    addMsg('ai', '已把截图里的文字带进来了，接着问就行。');
+  }
+  ta.focus();
+}
+
+/* ================= 语音：转 WAV / 分段录音 =================
+   MediaRecorder 出来的是 webm/opus，而听写只认 16k 单声道 WAV，
+   所以先解码、再用 OfflineAudioContext 离线重采样到 16k。
+   三个函数抄自 todo-app/js/voice.js，保持一致。 */
+const TARGET_RATE = 16000;
+
+async function toWav16k(blob) {
+  const ab = await blob.arrayBuffer();
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) throw new Error('这个壳没有 AudioContext，解不了录音');
+  const tmp = new AC();
+  let decoded;
+  try { decoded = await tmp.decodeAudioData(ab.slice(0)); }
+  finally { try { tmp.close(); } catch (e) { /* 忽略 */ } }
+  const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!Offline) throw new Error('这个壳没有 OfflineAudioContext，降不了采样率');
+  const frames = Math.max(1, Math.ceil(decoded.duration * TARGET_RATE));
+  const off = new Offline(1, frames, TARGET_RATE);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start(0);
+  const rendered = await off.startRendering();
+  return encodeWav16(rendered.getChannelData(0), TARGET_RATE);
+}
+
+function encodeWav16(f32, rate) {
+  const n = f32.length;
+  const buf = new ArrayBuffer(44 + n * 2);
+  const dv = new DataView(buf);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); str(8, 'WAVE');
+  str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true);
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  str(36, 'data'); dv.setUint32(40, n * 2, true);
+  let off = 44;
+  for (let i = 0; i < n; i++) {
+    let s = f32[i];
+    if (s > 1) s = 1; else if (s < -1) s = -1;
+    dv.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    off += 2;
+  }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const s = String(fr.result || '');
+      const i = s.indexOf(',');
+      if (i < 0) { reject(new Error('读出来的不是 dataURL')); return; }
+      resolve(s.slice(i + 1));
+    };
+    fr.onerror = () => reject(new Error('FileReader 读取失败'));
+    fr.readAsDataURL(blob);
+  });
+}
+
+/* ---------- 分段录音：走完整周期，绝不用 timeslice ----------
+   为什么不用 timeslice：它切出来的 webm 碎片是一条流被拦腰截断的块，
+   单块缺容器头，单独解不开，decodeAudioData 会直接报错。
+   所以每一段都跑一个完整周期：new MediaRecorder → start → 到点 stop →
+   在 onstop 里拿到「自成一体」的完整 blob；onstop 里立刻再起一轮，避免换挡漏音。 */
+let micStream = null, recRunning = false, segTimer = 0, segStartAt = 0, curRec = null, curChunks = [], micMime = '';
+
+function pickMicMime() {
+  const cands = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+  for (const c of cands) { try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c; } catch (e) { /* 试下一个 */ } }
+  return '';
+}
+function releaseMic() {
+  if (micStream) { try { micStream.getTracks().forEach(t => t.stop()); } catch (e) { /* 忽略 */ } micStream = null; }
+}
+function recSegment(segMs, onBlob) {
+  if (!recRunning) return;
+  segStartAt = Date.now();
+  curChunks = [];
+  let rec;
+  try { rec = micMime ? new MediaRecorder(micStream, { mimeType: micMime }) : new MediaRecorder(micStream); }
+  catch (e) { recRunning = false; if (segTimer) { clearTimeout(segTimer); segTimer = 0; } releaseMic(); onBlob(null, 0, e); return; }
+  curRec = rec;
+  rec.addEventListener('dataavailable', e => { if (e.data && e.data.size) curChunks.push(e.data); });
+  rec.addEventListener('stop', async () => {
+    const startAt = segStartAt;
+    const blob = new Blob(curChunks, { type: (curChunks[0] && curChunks[0].type) || 'audio/webm' });
+    curChunks = [];
+    if (recRunning) recSegment(segMs, onBlob); // 立刻接下一轮，无缝
+    else releaseMic();                          // 不再录了，主动把麦克风放掉
+    if (blob.size) await onBlob(blob, startAt, null);
+  }, { once: true });
+  rec.start();
+  segTimer = setTimeout(() => { try { rec.stop(); } catch (e) { /* 已经停了 */ } }, segMs);
+}
+async function startRec(segMs, onBlob) {
+  if (recRunning) return { ok: true };
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return { ok: false, why: '这个壳不支持网页录音（没有 getUserMedia）' };
+  if (!window.MediaRecorder) return { ok: false, why: '这个壳没有 MediaRecorder，录不了音' };
+  if (!(window.AudioContext || window.webkitAudioContext)) return { ok: false, why: '这个壳没有 AudioContext，解不了录音' };
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  } catch (e) {
+    const n = (e && e.name) || ''; let why;
+    if (n === 'NotAllowedError') why = '麦克风权限被拒了（系统设置 → 隐私 → 麦克风）';
+    else if (n === 'NotFoundError') why = '这台设备没有可用的麦克风';
+    else why = (e && e.message) || '打不开麦克风';
+    return { ok: false, why: why };
+  }
+  micMime = pickMicMime();
+  recRunning = true;
+  recSegment(segMs, onBlob);
+  return { ok: true };
+}
+function stopRec() {
+  if (!recRunning) return;
+  recRunning = false;
+  if (segTimer) { clearTimeout(segTimer); segTimer = 0; }
+  const rec = curRec;
+  // 让 onstop 收掉最后一段（并把麦克风放掉）；否则直接放麦
+  if (rec && rec.state !== 'inactive') { try { rec.stop(); } catch (e) { /* 已经停了 */ } }
+  else releaseMic();
+}
+
+function hhmmss(d) { const p = n => String(n).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+
+/* ---------- 语音转写（dictate） ---------- */
+const DICTATE_SEG_MS = 5000; // 5 秒一段：延迟和完整性的折中
+let dictateOn = false, dictateCount = 0, dictateT0 = 0, dictateTick = 0, dictateBusy = 0, dictateErr = '';
+
+function paintRecStat(text, cls) { const el = $('recStat'); el.textContent = text; el.className = 'recstat' + (cls ? ' ' + cls : ''); }
+function paintDictateStat() {
+  if (dictateErr) { paintRecStat(dictateErr, 'err'); return; }
+  if (dictateBusy > 0) { paintRecStat('正在转写…', ''); return; }
+  const sec = dictateOn ? Math.floor((Date.now() - dictateT0) / 1000) : 0;
+  const mmss = String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
+  paintRecStat(dictateOn ? ('录音中 ' + mmss + ' · 已转写 ' + dictateCount + ' 段') : ('已停止 · 已转写 ' + dictateCount + ' 段'), '');
+}
+function setRecBtn(on) { const b = $('recBtn'); b.textContent = on ? '停止录音' : '开始录音'; b.classList.toggle('primary', !on); b.classList.toggle('stop', on); }
+function addDictateLine(at, text) {
+  const row = document.createElement('div'); row.className = 'dline';
+  const ts = document.createElement('span'); ts.className = 'dts'; ts.textContent = '[' + hhmmss(at) + '] ';
+  const tx = document.createElement('span'); tx.className = 'dtx'; tx.textContent = text;
+  row.appendChild(ts); row.appendChild(tx);
+  const list = $('dList'); list.appendChild(row); list.scrollTop = list.scrollHeight;
+}
+function dictateText() { return Array.from($('dList').querySelectorAll('.dtx')).map(n => n.textContent).join('\n'); }
+async function onDictateSegment(blob, startAt, err) {
+  if (err) { dictateOn = false; setRecBtn(false); dictateErr = '录音器起不来：' + ((err && err.message) || err); paintDictateStat(); return; }
+  dictateBusy++;
+  try {
+    let b64;
+    try { b64 = await blobToBase64(await toWav16k(blob)); }
+    catch (e) { dictateErr = '录音转换失败：' + ((e && e.message) || e); return; }
+    const r = await api('/api/agent/voice/stt', 'POST', { audio: b64, filename: 'seg.wav' });
+    const d = (r && r.data) || {};
+    if (!r.ok || d.ok === false) { dictateErr = '转写失败：' + ((d && d.error) || (r && r.error) || '后端没回结果'); return; }
+    const text = String(d.text || '').trim();
+    if (text) { addDictateLine(new Date(startAt || Date.now()), text); dictateCount++; } // 空结果直接丢弃
+    dictateErr = '';
+  } finally { dictateBusy--; paintDictateStat(); }
+}
+async function toggleDictate() {
+  if (dictateOn) {
+    stopRec(); dictateOn = false;
+    if (dictateTick) { clearInterval(dictateTick); dictateTick = 0; }
+    setRecBtn(false); paintDictateStat(); return;
+  }
+  dictateErr = '';
+  const r = await startRec(DICTATE_SEG_MS, onDictateSegment);
+  if (!r.ok) { paintRecStat(r.why, 'err'); return; }
+  dictateOn = true; dictateT0 = Date.now(); setRecBtn(true); paintDictateStat();
+  dictateTick = setInterval(paintDictateStat, 1000);
+}
+async function saveDictate() {
+  const content = dictateText().trim();
+  if (!content) { paintRecStat('还没有转写内容，先录一段', 'err'); return; }
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  const title = '语音转写 ' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  paintRecStat('正在保存…', '');
+  const r = await api('/api/agent/notes', 'POST', { title: title, content: content, tags: ['语音转写'] });
+  const dd = (r && r.data) || {};
+  if (!r.ok || dd.ok === false) { paintRecStat('保存失败：' + ((dd && dd.error) || (r && r.error) || '未知'), 'err'); return; }
+  paintRecStat('已保存为笔记：' + title, '');
+}
+async function copyDictate() {
+  const content = dictateText();
+  if (!content.trim()) { paintRecStat('还没有可复制的内容', 'err'); return; }
+  try { await navigator.clipboard.writeText(content); paintRecStat('已复制到剪贴板', ''); }
+  catch (e) { paintRecStat('复制失败：' + ((e && e.message) || e), 'err'); }
+}
+function clearDictate() { $('dList').innerHTML = ''; dictateCount = 0; paintDictateStat(); }
+function initDictate() {
+  $('recBtn').onclick = toggleDictate;
+  $('dSave').onclick = saveDictate;
+  $('dCopy').onclick = copyDictate;
+  $('dClear').onclick = clearDictate;
+  paintRecStat('就绪 · 按「开始录音」', '');
+}
+
+/* ---------- 实时字幕（subtitle） ---------- */
+const SUB_SEG_MS = 3800; // 3.8 秒一段，延迟更低
+let subOn = false, subBusy = 0, subErr = '';
+let subCfg = { to: 'zh', showSource: true, font: 'm' }; // 读不到设置就用这套默认值
+
+function setSubStat(text, cls) { const el = $('subStat'); el.textContent = text; el.className = 'sstat' + (cls ? ' ' + cls : ''); }
+function paintSubStat() {
+  if (subErr) { setSubStat(subErr, 'err'); return; }
+  const lang = '译文：' + (subCfg.to === 'zh' ? '中文' : 'English');
+  setSubStat(lang + (subOn ? (subBusy > 0 ? ' · 转写中…' : ' · 监听中') : ' · 已暂停'), '');
+}
+function paintSubCfg() {
+  $('subLang').textContent = subCfg.to === 'zh' ? '中' : 'EN';
+  $('subSrc').classList.toggle('on', subCfg.showSource);
+  Array.from(document.querySelectorAll('#subFont .sbtn')).forEach(b => b.classList.toggle('on', b.dataset.f === subCfg.font));
+  const list = $('subList');
+  list.classList.remove('f-s', 'f-m', 'f-l');
+  list.classList.add('f-' + subCfg.font);
+  list.classList.toggle('hide-src', !subCfg.showSource);
+}
+function saveSubCfg() { local('/subtitle', { to: subCfg.to, showSource: subCfg.showSource, font: subCfg.font }); }
+function addSubLine(src, dst, dstErr) {
+  const list = $('subList');
+  const item = document.createElement('div'); item.className = 'sub-item';
+  const s = document.createElement('div'); s.className = 'src'; s.textContent = src;
+  const d = document.createElement('div'); d.className = 'dst';
+  if (dstErr) { d.classList.add('bad'); d.textContent = '翻译失败：' + dstErr; } // 翻译挂了也要留住原文
+  else d.textContent = dst;
+  item.appendChild(s); item.appendChild(d);
+  list.appendChild(item);
+  while (list.children.length > 3) list.removeChild(list.firstChild); // 只留最近 3 条
+  const n = list.children.length;
+  Array.from(list.children).forEach((el, i) => { el.style.opacity = i === n - 1 ? '1' : (i === n - 2 ? '.66' : '.4'); });
+}
+async function onSubSegment(blob, startAt, err) {
+  if (err) { subOn = false; setSubToggle(false); subErr = '录音器起不来：' + ((err && err.message) || err); paintSubStat(); return; }
+  subBusy++;
+  try {
+    let b64;
+    try { b64 = await blobToBase64(await toWav16k(blob)); }
+    catch (e) { subErr = '录音转换失败：' + ((e && e.message) || e); return; }
+    const r = await api('/api/agent/voice/stt', 'POST', { audio: b64, filename: 'seg.wav' });
+    const d = (r && r.data) || {};
+    if (!r.ok || d.ok === false) { subErr = '转写失败：' + ((d && d.error) || (r && r.error) || '后端没回结果'); return; }
+    const src = String(d.text || '').trim();
+    if (!src) { subErr = ''; return; } // 空结果丢弃
+    let dst = '', dstErr = '';
+    const tr = await api('/api/agent/voice/translate', 'POST', { text: src, to: subCfg.to });
+    const td = (tr && tr.data) || {};
+    if (tr.ok && td.ok !== false) dst = String(td.text || '').trim();
+    else dstErr = (td && td.error) || (tr && tr.error) || '未知原因';
+    addSubLine(src, dst, dstErr);
+    subErr = '';
+  } finally { subBusy--; paintSubStat(); }
+}
+function setSubToggle(on) { $('subToggle').textContent = on ? '暂停' : '开始'; }
+async function toggleSub() {
+  if (subOn) { stopRec(); subOn = false; setSubToggle(false); paintSubStat(); return; }
+  subErr = '';
+  const r = await startRec(SUB_SEG_MS, onSubSegment);
+  if (!r.ok) { subErr = r.why; paintSubStat(); return; }
+  subOn = true; setSubToggle(true); paintSubStat();
+}
+async function initSubtitle() {
+  // 读设置：读不到就用默认值，别卡住（原生没实现也能跑）
+  try {
+    const c = await local('/subtitle');
+    if (c && c.ok) {
+      if (c.to === 'zh' || c.to === 'en') subCfg.to = c.to;
+      if (typeof c.showSource === 'boolean') subCfg.showSource = c.showSource;
+      if (c.font === 's' || c.font === 'm' || c.font === 'l') subCfg.font = c.font;
+    }
+  } catch (e) { /* 用默认值 */ }
+  paintSubCfg();
+  $('subToggle').onclick = toggleSub;
+  $('subLang').onclick = () => { subCfg.to = subCfg.to === 'zh' ? 'en' : 'zh'; paintSubCfg(); paintSubStat(); saveSubCfg(); };
+  $('subSrc').onclick = () => { subCfg.showSource = !subCfg.showSource; paintSubCfg(); saveSubCfg(); };
+  Array.from(document.querySelectorAll('#subFont .sbtn')).forEach(b => { b.onclick = () => { subCfg.font = b.dataset.f; paintSubCfg(); saveSubCfg(); }; });
+  $('subClose').onclick = () => local('/float/close', {});
+  paintSubStat();
+}
+
+/* ---------- 两人通话（call） ----------
+   组内像微信那样互发消息；需要音视频时走 WebRTC（信令走后端中转、媒体 P2P 直连，
+   局域网内 host 候选即可，不引 STUN/TURN）。挂了某次文档协商的通话会显示
+   「回复AI」：双方各点一次，后端让模型通读上下文自动判定/合并。 */
+let CALL = { group: '', call: '', conflict: '', peerId: '', peerName: '' };
+let callPoll = 0, callMsgAfter = 0, callSigAfter = 0;
+let callMe = '';   // 我在这条通话里的 userId（详情接口回 me）
+let rtc = null;      // {pc, stream, peer}
+let iceQ = [];       // ICE 滴流队列：setRemoteDescription 之前到的候选先排队
+let ctxRev = 0;
+
+function ce(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function hhmm(ts) { if (!ts) return ''; const d = new Date(ts), p = n => String(n).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()); }
+
+function setCallView(v) {
+  $('callPick').hidden = v !== 'pick';
+  $('callIn').hidden = v !== 'in';
+  $('callLogin').hidden = v !== 'login';
+}
+
+async function initCall() {
+  const c0 = await local('/float/ctx');
+  ctxRev = (c0 && c0.rev) | 0;
+  await applyCallCtx(c0 && c0.ctx);
+  if (CALL.call) return; // 上下文已指明要开哪条通话（applyCallCtx 里已切到通话中视图），别又退回选对象页
+  if (!session()) { setCallView('login'); wireCallLogin(); return; }
+  setCallView('pick');
+  await renderCallPick();
+}
+
+// 主进程推来的上下文（组 / 要开的通话 / 会话令牌）
+async function applyCallCtx(ctx) {
+  if (!ctx || typeof ctx !== 'object') return;
+  if (ctx.session) { try { localStorage.setItem(SESSION_KEY, String(ctx.session)); } catch (e) { /* 忽略 */ } }
+  if (ctx.group) CALL.group = ctx.group;
+  if (ctx.call) CALL.call = ctx.call;
+  if (ctx.conflict) CALL.conflict = ctx.conflict;
+  if (session() && CALL.call) await openCallInView();
+  else if (session() && CALL.group) { setCallView('pick'); await renderCallPick(); }
+}
+
+function wireCallLogin() {
+  const go = async () => {
+    const name = $('lgName').value.trim(), pw = $('lgPass').value;
+    if (!name || !pw) { $('lgNote').textContent = '用户名和密码都要填'; return; }
+    $('lgNote').textContent = '登录中…';
+    const r = await api('/api/agent/auth/login', 'POST', { name: name, password: pw });
+    if (!r.ok) { $('lgNote').textContent = '登录失败：' + (r.error || '未知'); return; }
+    try { localStorage.setItem(SESSION_KEY, String((r.data && r.data.token) || '')); } catch (e) { /* 忽略 */ }
+    $('lgPass').value = '';
+    setCallView('pick');
+    await renderCallPick();
+  };
+  $('lgGo').onclick = go;
+  $('lgPass').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+}
+
+// 选对象：我的组 → 组内成员（排除我）+ 我进行中的通话
+async function renderCallPick() {
+  const sel = $('callGroup');
+  const r = await api('/api/agent/auth/whoami', 'GET');
+  const groups = (r.ok && r.data && r.data.groups) || [];
+  const meId = (r.ok && r.data && r.data.user && r.data.user.id) || '';
+  sel.innerHTML = groups.map(g => '<option value="' + ce(g.id) + '">' + ce(g.name) + '</option>').join('');
+  if (!groups.length) {
+    $('callList').innerHTML = '<div class="cempty">你还没加入任何用户组。先在「账号与共享 → 用户组」建一个、拉上对方。</div>';
+    return;
+  }
+  sel.onchange = () => loadCallGroup(sel.value, meId);
+  if (CALL.group && groups.some(g => g.id === CALL.group)) sel.value = CALL.group;
+  await loadCallGroup(sel.value, meId);
+}
+
+async function loadCallGroup(gid, meId) {
+  if (!gid) return;
+  CALL.group = gid;
+  const gr = await api('/api/agent/groups/' + encodeURIComponent(gid), 'GET');
+  const cl = await api('/api/agent/groups/' + encodeURIComponent(gid) + '/calls', 'GET');
+  const members = ((gr.ok && gr.data && gr.data.members) || []).filter(m => m.userId !== meId);
+  const live = ((cl.ok && cl.data && cl.data.calls) || []).filter(c => c.status === 'live');
+  const box = $('callList');
+  let html = '';
+  live.forEach(c => {
+    html += '<div class="crow" data-open="' + ce(c.id) + '">' +
+      '<span class="nm">正在通话 · ' + ce(c.peerName || c.peerId) + '</span>' +
+      '<span class="st live">进行中</span>' +
+      '<button class="btn" data-open="' + ce(c.id) + '">继续</button></div>';
+  });
+  members.forEach(m => {
+    html += '<div class="crow" data-peer="' + ce(m.userId) + '" data-name="' + ce(m.userName) + '">' +
+      '<span class="nm">' + ce(m.userName) + (m.role === 'owner' ? '（组长）' : '') + '</span>' +
+      '<span class="st"></span>' +
+      '<button class="btn">开通话</button></div>';
+  });
+  if (!html) html = '<div class="cempty">这个组里还没有别的成员，先去「用户组」把对方拉进来。</div>';
+  box.innerHTML = html;
+  box.querySelectorAll('.crow[data-peer]').forEach(row => {
+    row.onclick = async () => {
+      const peer = row.dataset.peer, pname = row.dataset.name;
+      const r = await api('/api/agent/groups/' + encodeURIComponent(gid) + '/calls', 'POST', { peer: peer });
+      if (!r.ok) { alert('开通话失败：' + (r.error || '未知')); return; }
+      CALL.call = (r.data && r.data.call && r.data.call.id) || '';
+      CALL.peerId = peer; CALL.peerName = pname; CALL.conflict = '';
+      await openCallInView();
+    };
+  });
+  box.querySelectorAll('.crow[data-open]').forEach(row => {
+    row.onclick = async () => {
+      CALL.call = row.dataset.open; CALL.conflict = '';
+      await openCallInView();
+    };
+  });
+}
+
+// 通话中视图：拉全量 + 2 秒轮询增量（留言 / 信令）
+async function openCallInView() {
+  setCallView('in');
+  $('callMsgs').innerHTML = '';
+  callMsgAfter = 0; callSigAfter = 0;
+  await tickCallDetail(true);
+  if (callPoll) clearInterval(callPoll);
+  callPoll = setInterval(() => tickCallDetail(false), 2000);
+}
+
+async function tickCallDetail(full) {
+  if (!CALL.call) return;
+  const gid = encodeURIComponent(CALL.group), cid = encodeURIComponent(CALL.call);
+  const r = await api('/api/agent/groups/' + gid + '/calls/' + cid +
+    '?afterMsg=' + (full ? 0 : callMsgAfter) + '&afterSignal=' + (full ? 0 : callSigAfter), 'GET');
+  if (!r.ok) {
+    $('callState').textContent = '读通话失败：' + r.error;
+    return;
+  }
+  const d = r.data || {};
+  const c = d.call || {};
+  // 对方是谁（相对我）
+  const me = d.me || '';
+  callMe = me;
+  CALL.peerId = me && c.aId === me ? c.bId : c.aId;
+  CALL.peerName = me && c.aId === me ? (c.bName || c.bId) : (c.aName || c.aId);
+  CALL.conflict = c.conflictSid || CALL.conflict;
+  $('callPeer').textContent = CALL.peerName || CALL.peerId || '—';
+  $('callState').textContent = c.status === 'ended' ? '已挂断（消息还在）' : '进行中 · ' + hhmm(c.updatedAt);
+
+  (d.messages || []).forEach(m => { callMsgAfter = Math.max(callMsgAfter, m.id | 0); addCallMsg(m); });
+  (d.signals || []).forEach(s => { callSigAfter = Math.max(callSigAfter, s.id | 0); handleCallSignal(s); });
+
+  // 挂了文档协商：显示「回复AI」区
+  const conflict = d.conflict, confirmers = d.aiConfirmers || [];
+  if (conflict) {
+    $('aiBox').hidden = false;
+    if (conflict.aiStatus === 'running') $('aiState').textContent = 'AI 正在通读你们的记录并判定…';
+    else if (conflict.aiStatus === 'done') { $('aiState').textContent = 'AI 已判定：' + (conflict.aiNote || '完成'); $('aiBtn').disabled = true; }
+    else if (conflict.aiStatus === 'failed') { $('aiState').textContent = 'AI 判定失败：' + (conflict.aiNote || '原因未知'); $('aiBtn').disabled = false; }
+    else {
+      const mine = confirmers.indexOf(me) >= 0;
+      $('aiState').textContent = '等两方都点「回复AI」，AI 才通读记录并自动判定/合并文档。' +
+        (mine ? '（我已确认，还差对方）' : '（未确认）');
+      $('aiBtn').disabled = false;
+    }
+  } else {
+    $('aiBox').hidden = true;
+  }
+}
+
+function addCallMsg(m) {
+  const list = $('callMsgs');
+  const isMe = !!callMe && m.fromId === callMe;
+  const cls = m.fromId === 'ai' ? 'ai' : (isMe ? 'me' : 'ai');
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  const who = m.fromName || m.fromId || '';
+  if (m.fromId === 'ai') {
+    d.innerHTML = '<span class="who">白泽AI</span>' + ce(m.text);
+  } else {
+    d.textContent = m.text;
+    if (!isMe && who) d.title = who;
+  }
+  d.dataset.ts = m.at || '';
+  list.appendChild(d);
+  list.scrollTop = list.scrollHeight;
+}
+
+function sendCallMsg() {
+  const ta = $('cmInput'), text = ta.value.trim();
+  if (!text || !CALL.call) return;
+  ta.value = '';
+  api('/api/agent/groups/' + encodeURIComponent(CALL.group) + '/calls/' + encodeURIComponent(CALL.call) +
+    '/messages', 'POST', { text: text }).then(r => {
+      if (!r.ok) { addCallMsg({ fromId: 'local', fromName: '我', text: '（没发出去：' + (r.error || '未知') + '）', at: Date.now() }); }
+    });
+}
+
+/* ---- WebRTC：发起 / 信令处理 / 挂断（与主窗口冲突页同款，信令端点换成 calls） ---- */
+function postCallSignal(to, kind, payload) {
+  return api('/api/agent/groups/' + encodeURIComponent(CALL.group) + '/calls/' + encodeURIComponent(CALL.call) +
+    '/signal', 'POST', { to: to, kind: kind, payload: payload });
+}
+
+async function startCallAV() {
+  if (rtc) return;
+  if (!navigator.mediaDevices || !window.RTCPeerConnection) {
+    $('callState').textContent = '这个壳不支持 WebRTC（没有 RTCPeerConnection）';
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+  } catch (e) {
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e2) {
+      $('callState').textContent = '拿不到麦克风/摄像头：' + ((e2 && e2.name) === 'NotAllowedError' ? '权限被拒了' : ((e2 && e2.message) || '未知')) ;
+      return;
+    }
+  }
+  const pc = new RTCPeerConnection(); // 同一内网：host 候选就够
+  stream.getTracks().forEach(t => pc.addTrack(t, stream));
+  $('cvLocal').srcObject = stream;
+  $('callVids').hidden = false;
+  pc.ontrack = ev => { $('cvRemote').srcObject = ev.streams[0]; };
+  pc.onicecandidate = ev => {
+    if (ev.candidate) postCallSignal(CALL.peerId, 'ice', JSON.stringify(ev.candidate));
+  };
+  rtc = { pc: pc, stream: stream, peer: CALL.peerId };
+  iceQ = [];
+  $('cvStart').hidden = true;
+  $('cvMute').hidden = false;
+  $('cvCam').hidden = !stream.getVideoTracks().length;
+  $('cvHang').hidden = false;
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await postCallSignal(CALL.peerId, 'offer', JSON.stringify(pc.localDescription));
+}
+
+function handleCallSignal(s) {
+  if (!rtc) {
+    // 被动方收到 offer：先起本地媒体再协商
+    if (s.kind === 'offer') startCallAVForPeer(s);
+    return;
+  }
+  let payload;
+  try { payload = JSON.parse(s.payload || '{}'); } catch (e) { return; }
+  if (s.kind === 'answer') {
+    rtc.pc.setRemoteDescription(new RTCSessionDescription(payload)).catch(() => {});
+  } else if (s.kind === 'ice') {
+    if (rtc.pc.remoteDescription) rtc.pc.addIceCandidate(new RTCIceCandidate(payload)).catch(() => {});
+    else iceQ.push(payload);
+  } else if (s.kind === 'bye') {
+    stopCallAV();
+    $('callState').textContent = '对方挂断了音视频';
+  }
+}
+
+async function startCallAVForPeer(sig) {
+  if (rtc) return;
+  await startCallAV();      // 起本地媒体 + pc（内部会发 offer；这里要改成被动收 offer）
+  // startCallAV 已经是发起方了——被动方不重复发 offer，直接回答
+  try {
+    await rtc.pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(sig.payload)));
+    const ans = await rtc.pc.createAnswer();
+    await rtc.pc.setLocalDescription(ans);
+    await postCallSignal(sig.from, 'answer', JSON.stringify(rtc.pc.localDescription));
+    iceQ.forEach(c => rtc.pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {}));
+    iceQ = [];
+  } catch (e) {
+    $('callState').textContent = '接通话失败：' + ((e && e.message) || e);
+  }
+}
+
+function stopCallAV() {
+  if (!rtc) return;
+  try { rtc.pc.close(); } catch (e) { /* 忽略 */ }
+  try { rtc.stream.getTracks().forEach(t => t.stop()); } catch (e) { /* 忽略 */ }
+  try { $('cvLocal').srcObject = null; $('cvRemote').srcObject = null; } catch (e) { /* 忽略 */ }
+  $('callVids').hidden = true;
+  rtc = null; iceQ = [];
+  $('cvStart').hidden = false;
+  $('cvMute').hidden = true;
+  $('cvCam').hidden = true;
+  $('cvHang').hidden = true;
+}
+
+function wireCall() {
+  $('callBack').onclick = () => { stopCallAV(); CALL.call = ''; setCallView('pick'); renderCallPick(); };
+  $('callEnd').onclick = async () => {
+    stopCallAV();
+    await postCallSignal(CALL.peerId, 'bye', '{}');
+    await api('/api/agent/groups/' + encodeURIComponent(CALL.group) + '/calls/' + encodeURIComponent(CALL.call) + '/end', 'POST', {});
+    setCallView('pick');
+    renderCallPick();
+  };
+  $('cvStart').onclick = startCallAV;
+  $('cvHang').onclick = async () => { stopCallAV(); await postCallSignal(CALL.peerId, 'bye', '{}'); };
+  $('cvMute').onclick = () => {
+    if (!rtc) return;
+    const on = !$('cvMute').dataset.on;
+    rtc.stream.getAudioTracks().forEach(t => { t.enabled = on; });
+    $('cvMute').dataset.on = on ? '1' : '';
+    $('cvMute').textContent = on ? '取消静音' : '静音';
+  };
+  $('cvCam').onclick = () => {
+    if (!rtc) return;
+    const on = !$('cvCam').dataset.on;
+    rtc.stream.getVideoTracks().forEach(t => { t.enabled = on; });
+    $('cvCam').dataset.on = on ? '1' : '';
+    $('cvCam').textContent = on ? '关摄像' : '开摄像';
+  };
+  $('cmSend').onclick = sendCallMsg;
+  $('cmInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCallMsg(); }
+  });
+  $('aiBtn').onclick = async () => {
+    if (!CALL.conflict) return;
+    $('aiBtn').disabled = true;
+    const r = await api('/api/agent/groups/' + encodeURIComponent(CALL.group) + '/conflicts/' + encodeURIComponent(CALL.conflict) + '/ai-confirm', 'POST', {});
+    if (!r.ok) { $('aiState').textContent = '确认失败：' + (r.error || '未知'); $('aiBtn').disabled = false; return; }
+    const d = r.data || {};
+    $('aiBtn').disabled = !!(d.allConfirmed && d.triggered);
+    $('aiState').textContent = d.allConfirmed
+      ? 'AI 开始通读了（判定结果会出现在协商记录和这里）'
+      : ('我已确认，还差 ' + ((d.missing || []).length) + ' 方');
+  };
+  $('cpRefresh').onclick = () => { renderCallPick(); };
+}
+
+// 关窗时给对方发 bye（尽力而为：keepalive fetch，发不出就算了）
+window.addEventListener('pagehide', () => {
+  if (rtc) {
+    try {
+      fetch('/api/be/api/agent/groups/' + encodeURIComponent(CALL.group) + '/calls/' + encodeURIComponent(CALL.call) + '/signal', {
+        method: 'POST', keepalive: true,
+        headers: { 'Content-Type': 'application/json', 'X-Baize-Session': session() },
+        body: JSON.stringify({ to: rtc.peer, kind: 'bye', payload: '{}' }),
+      });
+    } catch (e) { /* 忽略 */ }
+    stopCallAV();
+  }
+});
+/* ---------- 启动 ---------- */
+(async function boot() {
+  const st = await local('/float/state');
+  pinned = !!(st && st.pinned); paintPin();
+
+  const m = await local('/float/mode');
+  MODE = (m && m.mode) || 'chat';
+  // 同步窗口标题：主进程靠它做「同模式已有窗口就叫到前台」的去重
+  document.title = (m && m.title) || '白泽浮窗';
+  REV = (m && m.rev) | 0;
+
+  if (MODE === 'dictate') {
+    $('vDictate').hidden = false;
+    $('title').textContent = '白泽 · 语音转写';
+    initDictate();
+  } else if (MODE === 'subtitle') {
+    // 字幕是贴屏幕底部的置顶横条：收掉顶部拖动条与钉住按钮，只留迷你操作条
+    $('head').hidden = true;
+    $('vSub').hidden = false;
+    $('title').textContent = '白泽 · 实时字幕';
+    await initSubtitle();
+  } else if (MODE === 'extract' || MODE === 'translate') {
+    $('vText').hidden = false;
+    $('title').textContent = MODE === 'translate' ? '白泽 · 翻译' : '白泽 · 提取文字';
+    if (MODE === 'translate') { $('lang').hidden = false; $('lang').textContent = lang === 'zh' ? '中' : 'EN'; }
+    if (m && m.hasImage) await runVision();
+    else $('result').dataset.ph = '正在等截图…';
+  } else if (MODE === 'call') {
+    $('vCall').hidden = false;
+    $('title').textContent = '白泽 · 两人通话';
+    wireCall();
+    await initCall();
+  } else {
+    $('vChat').hidden = false;
+    $('title').textContent = '白泽 · 对话';
+    if (m && m.hasImage) await askPrefill(); else $('goal').focus();
+    refreshProg();
+    setInterval(refreshProg, 3000); // 「进展」页 3 秒刷一次（对话页也刷，切过去就是新的）
+  }
+
+  // 主进程推来新图 → rev 变 → 重跑（提取/翻译出结果；对话则把文字填进输入框）
+  setInterval(async () => {
+    const s = await local('/float/mode');
+    if (!s || !s.ok || s.rev === REV) return;
+    REV = s.rev | 0;
+    if (MODE === 'extract' || MODE === 'translate') await runVision();
+    else if (MODE === 'chat') await askPrefill();
+  }, 1500);
+
+  // 通话窗：主进程随时可能推来上下文（冲突页点「发起通话」→ 切到指定通话）
+  if (MODE === 'call') {
+    setInterval(async () => {
+      const c = await local('/float/ctx');
+      if (!c || !c.ok || (c.rev | 0) === ctxRev) return;
+      ctxRev = c.rev | 0;
+      await applyCallCtx(c.ctx);
+    }, 1500);
+  }
+})();
+</script>
+</body>
+</html>

@@ -115,8 +115,60 @@ window.Settings = (function () {
 
   function refresh() {
     renderStatus(); renderRows(); renderEditor(); renderEnv(); renderDevice();
+    renderRemoteProviders();
     if (window.Plan) Plan.refreshHeader();
     window.dispatchEvent(new Event('bz:aichanged'));
+  }
+
+  /* ---------------- 后端模型通道（只读展示 + 设为默认） ---------------- */
+
+  function renderRemoteProviders() {
+    const group = $('remoteProvidersGroup');
+    const box = $('remoteProviderList');
+    if (!group || !box) return;
+
+    // 连不上后端或入口不支持 BzDevice.call 就隐藏整块
+    if (!Store.kbOnline() || !window.BzDevice || !BzDevice.agentProviders) {
+      group.hidden = true;
+      return;
+    }
+
+    let r;
+    try { r = BzDevice.agentProviders(); } catch (e) { group.hidden = true; return; }
+    if (!r || !Array.isArray(r.providers) || !r.providers.length) { group.hidden = true; return; }
+
+    group.hidden = false;
+    const provs = r.providers;
+    const active = r.activeProvider || '';
+    box.innerHTML = '';
+    provs.forEach(p => {
+      const el = document.createElement('div');
+      el.className = 'ai-model' + (p.name === active ? ' on' : '') + (p.usable ? '' : ' disabled');
+      el.innerHTML = `
+        <span class="am-radio">${p.name === active ? '✓' : ''}</span>
+        <span class="am-main">
+          <span class="am-name">${esc(p.name)}${p.default ? ' ★' : ''}${p.name === active ? ' · 默认' : ''}</span>
+          <span class="am-sub">${esc(p.model || '未填模型')} · ${p.usable ? '就绪' : (p.error || '不可用')}</span>
+        </span>
+        ${p.usable ? '<span class="am-del" data-set="1">设为默认</span>' : ''}`;
+      const setBtn = el.querySelector('[data-set]');
+      if (setBtn) setBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        try {
+          const res = BzDevice.agentSetActiveProvider(p.name);
+          if (res && (res.error || res.ok === false)) {
+            UI_.toast('设为默认失败：' + (res.error || '原因未知'));
+          } else {
+            UI_.toast('已设「' + p.name + '」为后端默认模型');
+            if (window.__bzInvalidateProvs) window.__bzInvalidateProvs();
+            renderRemoteProviders();
+          }
+        } catch (err) {
+          UI_.toast('设为默认失败：' + err.message);
+        }
+      });
+      box.appendChild(el);
+    });
   }
 
   function addModel() {

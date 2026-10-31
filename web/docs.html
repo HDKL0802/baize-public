@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -8,9 +8,9 @@
 <meta name="theme-color" content="#070807" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#070807" media="(prefers-color-scheme: dark)">
 <link rel="canonical" href="https://baize.wydhd.fun/docs.html">
-<link rel="icon" href="assets/favicon.ico?v=2" sizes="any">
-<link rel="icon" type="image/png" href="assets/logo.png?v=2">
-<link rel="apple-touch-icon" href="assets/logo.png?v=2">
+<link rel="icon" href="assets/favicon.ico?v=3" sizes="any">
+<link rel="icon" type="image/png" href="assets/logo.png?v=3">
+<link rel="apple-touch-icon" href="assets/logo.png?v=3">
 <link rel="stylesheet" href="app.css?v=11">
 <link rel="stylesheet" href="docs.css?v=7">
 <!-- Open Graph / 社交分享 -->
@@ -33,7 +33,7 @@
 <nav class="nav">
   <div class="nav-inner">
     <a href="index.html" class="brand">
-      <img class="bm" src="assets/logo.png?v=2" alt="白泽">
+      <img class="bm" src="assets/logo.png?v=3" alt="白泽">
       <div class="bt">
         <b>白泽</b>
         <span>BAIZE · YOUR PERSONAL AI</span>
@@ -166,14 +166,15 @@
 
       <h3>1 · 部署 NAS 后端</h3>
       <p>
-        在仓库根目录建一个 <code>deploy.local.env</code>（模板见 <code>deploy.local.env.example</code>），
-        填 NAS 地址、用户名、密码和配对令牌。然后一条命令跑完剩下的：
+        在 NAS 上执行下面这一条（需要 Docker，fnOS 在应用中心装一下即可）。脚本会拉取最新后端、
+        在 NAS 本地构建镜像、起容器并做健康检查，失败自动回滚上一版：
       </p>
       <div class="code-wrap">
-<pre class="code-block"><button class="copy-btn" data-copy>复制</button><span class="cmt"># 构建 linux/amd64 → 上传 NAS → NAS 打镜像 → 起容器 → 健康检查</span>
-<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1
+<pre class="code-block"><button class="copy-btn" data-copy>复制</button><span class="cmt"># 拉最新后端 → 校验 sha256 → NAS 本地构建镜像 → 起容器 → 健康检查</span>
+<span class="prompt">curl</span> -fsSL https://baize.wydhd.fun/nas/install.sh | <span class="prompt">sudo</span> bash
 
-<span class="cmt"># 健康检查不通过会自动回滚到原来的 systemd 服务，不会把后端留在死状态</span></pre>
+<span class="cmt"># 装完就有 baize-nas 命令（重复执行 deploy 即升级）</span>
+baize-nas status | logs -f | restart | rollback | uninstall --yes</pre>
       </div>
       <p>
         后端默认监听 <code>http://&lt;NAS&gt;:8787</code>。首次启动会自动创建 admin 账号，
@@ -211,9 +212,9 @@ adb install -r mobile\android\bz-todo-v&lt;版本&gt;.apk</pre>
       <table>
         <thead><tr><th>需要</th><th>说明</th></tr></thead>
         <tbody>
-          <tr><td>NAS 能 SSH</td><td>部署脚本通过 <code>tools/sshrun</code> 连过去打镜像</td></tr>
           <tr><td>NAS 上有 Docker</td><td>镜像在 NAS 本地构建，电脑端不需要 Docker</td></tr>
-          <tr><td><code>deploy.local.env</code></td><td>已在 <code>.gitignore</code> 里，密码不会进仓库</td></tr>
+          <tr><td>NAS 能访问 GitHub</td><td>一键脚本从公开 Release 下载后端二进制（内网可用 <code>--binary</code> 走本地文件）</td></tr>
+          <tr><td>sudo 权限</td><td>写 <code>/vol1/@appdata/baize</code> 与操作 Docker 需要 root</td></tr>
           <tr><td>可选：基础镜像</td><td>默认用 daocloud 镜像；可用 <code>BAIZE_BASE_IMAGE</code> 覆盖</td></tr>
         </tbody>
       </table>
@@ -290,18 +291,22 @@ adb install -r mobile\android\bz-todo-v&lt;版本&gt;.apk</pre>
 
       <h3>运行形态</h3>
       <ul>
-        <li>Docker 单容器，镜像在 NAS 本地从上传的 linux/amd64 二进制构建</li>
+        <li>Docker 单容器，镜像在 NAS 本地从 GitHub Release 下载的 linux/amd64 二进制构建</li>
         <li>默认端口 <code>8787</code>，健康检查走 <code>/api/health</code></li>
         <li>数据目录默认 <code>/vol1/@appdata/baize</code>，SQLite 存正本</li>
-        <li>与旧的 systemd 服务互斥：先停止、容器健康后才 disable，失败自动回滚</li>
+        <li>每次部署把旧镜像标记为 <code>baize-backend:previous</code>，健康检查失败自动回滚</li>
       </ul>
 
-      <h3>常用参数</h3>
+      <h3>常用子命令</h3>
       <div class="code-wrap">
-<pre class="code-block"><span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -SkipBuild      <span class="cmt"># 跳过编译，直接上传现有二进制</span>
-<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -NoRestart     <span class="cmt"># 只上传/构建，不动运行中的容器</span>
-<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -Tag v0.9.37    <span class="cmt"># 给镜像打版本标签</span>
-<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1 -Push           <span class="cmt"># 推送到 ghcr.io（需先在 NAS 上 docker login）</span></pre>
+<pre class="code-block"><span class="prompt">baize-nas</span> deploy                 <span class="cmt"># 部署/升级到最新版（默认命令）</span>
+<span class="prompt">baize-nas</span> deploy --version 0.6.1 <span class="cmt"># 装指定版本</span>
+<span class="prompt">baize-nas</span> status                 <span class="cmt"># 容器状态 + 健康检查 + 数据占用</span>
+<span class="prompt">baize-nas</span> start | stop | restart <span class="cmt"># 启停 / 重启</span>
+<span class="prompt">baize-nas</span> logs -f -n 200         <span class="cmt"># 跟日志</span>
+<span class="prompt">baize-nas</span> rollback               <span class="cmt"># 回滚上一版</span>
+<span class="prompt">baize-nas</span> uninstall --yes        <span class="cmt"># 取消部署：停容器 + 删镜像 + 清空数据</span>
+<span class="prompt">baize-nas</span> uninstall --yes --keep-data  <span class="cmt"># 同上但保留数据目录</span></pre>
       </div>
 
       <div class="callout warn">
@@ -568,7 +573,7 @@ adb install -r mobile\android\bz-todo-v&lt;版本&gt;.apk</pre>
       <p>在 NAS 的数据目录里，文件名是 <code>admin-password.txt</code>。</p>
 
       <h3>部署失败了后端会挂吗？</h3>
-      <p>不会。部署脚本的健康检查不通过会自动回滚到原来的 systemd 服务。</p>
+      <p>不会。每次部署都会把旧镜像留成 <code>baize-backend:previous</code>，健康检查不通过自动回滚；也可以手动 <code>baize-nas rollback</code>。</p>
 
       <h3>手机端老是掉线？</h3>
       <p>多半是系统把前台服务杀了。去系统设置里允许「自启动」和「后台运行」，并把电池策略改成「不限制」。</p>
@@ -673,3 +678,4 @@ adb install -r mobile\android\bz-todo-v&lt;版本&gt;.apk</pre>
 </script>
 </body>
 </html>
+

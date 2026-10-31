@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -10,9 +10,9 @@
 <meta name="format-detection" content="telephone=no">
 <meta name="keywords" content="白泽,BAIZE,NAS AI,个人智能体,Go 开源,桌面端,Android,本地 AI,隐私 AI,跨端 AI">
 <link rel="canonical" href="https://baize.wydhd.fun/">
-<link rel="icon" href="assets/favicon.ico?v=2" sizes="any">
-<link rel="icon" type="image/png" href="assets/logo.png?v=2">
-<link rel="apple-touch-icon" href="assets/logo.png?v=2">
+<link rel="icon" href="assets/favicon.ico?v=3" sizes="any">
+<link rel="icon" type="image/png" href="assets/logo.png?v=3">
+<link rel="apple-touch-icon" href="assets/logo.png?v=3">
 <link rel="stylesheet" href="app.css?v=11">
 <!-- Open Graph / 社交分享 -->
 <meta property="og:type" content="website">
@@ -58,7 +58,7 @@
 <nav class="nav">
   <div class="nav-inner">
     <a href="#" class="brand">
-      <img class="bm" src="assets/logo.png?v=2" alt="白泽">
+      <img class="bm" src="assets/logo.png?v=3" alt="白泽">
       <div class="bt">
         <b>白泽</b>
         <span>BAIZE · YOUR PERSONAL AI</span>
@@ -298,11 +298,15 @@
     <div class="deploy-panes">
       <div class="deploy-pane on" data-pane="backend">
         <div class="code-wrap">
-<pre class="code-block"><button class="copy-btn" data-copy>复制</button><span class="cmt"># 1. 在仓库根建 deploy.local.env（模板见 deploy.local.env.example）</span>
-<span class="cmt">#    填 NAS 地址 / 用户名 / 密码 / 配对令牌</span>
+<pre class="code-block"><button class="copy-btn" data-copy>复制</button><span class="cmt"># 一条命令：拉最新后端 → NAS 本地构建镜像 → 起容器 → 健康检查</span>
+<span class="prompt">curl</span> -fsSL https://baize.wydhd.fun/nas/install.sh | <span class="prompt">sudo</span> bash
 
-<span class="cmt"># 2. 一条命令：构建 → 上传 → NAS 打镜像 → 起容器 → 健康检查</span>
-<span class="prompt">powershell</span> -ExecutionPolicy Bypass -File tools\deploy-nas.ps1
+<span class="cmt"># 装完自带 baize-nas 命令，随时可用</span>
+baize-nas status          <span class="cmt"># 状态 + 健康检查</span>
+baize-nas logs -f         <span class="cmt"># 跟日志</span>
+baize-nas restart         <span class="cmt"># 重启</span>
+baize-nas rollback        <span class="cmt"># 回滚上一版</span>
+baize-nas uninstall --yes <span class="cmt"># 取消部署（停容器 + 删镜像 + 清空数据）</span>
 
 <span class="cmt"># 后端启动后默认监听 http://&lt;NAS&gt;:8787</span>
 <span class="cmt"># 首次启动自动建 admin 账号，口令写 &lt;数据&gt;/admin-password.txt</span></pre>
@@ -661,7 +665,7 @@ adb install -r mobile\android\bz-todo-v0.9.0.apk
       <div class="footer-brand">
         <div class="footer-mark" aria-hidden="true">BAIZE</div>
         <div class="brand-line">
-          <img class="bm" src="assets/logo.png?v=2" alt="白泽">
+          <img class="bm" src="assets/logo.png?v=3" alt="白泽">
           <b>白泽 · BAIZE</b>
         </div>
         <p>全 Go 开源的跨端个人智能体。NAS 后端是唯一大脑，Windows 桌面端与 Android 手机端是它的手脚。数据正本全在后端，危险动作强制人工审批。</p>
@@ -722,3 +726,4 @@ adb install -r mobile\android\bz-todo-v0.9.0.apk
 <script src="app.js?v=7"></script>
 </body>
 </html>
+

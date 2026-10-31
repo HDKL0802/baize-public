@@ -1,17 +1,23 @@
 <#
   build-icon.ps1 - turn desktop\assets\icon-src.png into the Windows app icon.
 
-  Source: assets\icon-src.png  (the AI-generated artwork; it has a light outer margin
-          around the dark tile, which this script removes).
+  Source: assets\icon.svg  (vector master: ink-jade tile + White-Ze beast line art)
+          Rasterized once to assets\icon-src.png (1024, rendered via Edge headless).
 
   Steps:
     1. auto-detect the dark tile's bounding box (coarse scan for dark pixels)
     2. crop it to a square, draw it through a rounded-corner alpha mask
        (radius = 22.5% of the side, like a normal app icon)
     3. downscale to 16/24/32/48/64/128/256 and pack a PNG-compressed .ico
-    4. also emit ui\icon.png (256) for the in-app brand mark
+    4. copy the 256 PNG to every in-app brand mark / favicon slot
 
-  Output: assets\icon.ico, ui\icon.png   (+ rsrc.syso when -Syso is passed)
+  Output:
+    desktop\assets\icon.ico              (installer + exe + taskbar)
+    web\assets\favicon.ico               (website favicon)
+    web\assets\logo.png                  (website logo / og:image)
+    desktop\webui\public\icon.png        (desktop WebUI brand mark + floating ball)
+    agent\internal\httpapi\webui\icon.png (NAS WebUI + panel brand mark + favicon)
+    (+ desktop\rsrc.syso when -Syso is passed)
 
   No ImageMagick / Node / Python needed - plain System.Drawing.
   Keep this file ASCII-only (PowerShell 5.1 reads .ps1 as ANSI).
@@ -20,10 +26,16 @@ param([switch]$Syso)
 
 $ErrorActionPreference = "Stop"
 $Src      = $PSScriptRoot
+$Root     = Split-Path $Src -Parent
 $Raster   = Join-Path $Src "assets\icon-src.png"
 $Ico      = Join-Path $Src "assets\icon.ico"
-$UiPng    = Join-Path $Src "ui\icon.png"
 $SysoPath = Join-Path $Src "rsrc.syso"
+$PngOut   = @(
+  (Join-Path $Root "desktop\webui\public\icon.png"),
+  (Join-Path $Root "agent\internal\httpapi\webui\icon.png"),
+  (Join-Path $Root "web\assets\logo.png")
+)
+$FavIco   = Join-Path $Root "web\assets\favicon.ico"
 
 if (-not (Test-Path $Raster)) { throw "missing $Raster (the app icon source)" }
 
@@ -107,8 +119,12 @@ foreach ($s in $sizes) {
   $b2.Dispose()
   $pngs[$s] = $msPng.ToArray()
   if ($s -eq 256) {
-    # in-app brand mark
-    [IO.File]::WriteAllBytes($UiPng, $pngs[$s])
+    # in-app brand mark / favicon sources
+    foreach ($dst in $PngOut) {
+      $dir = Split-Path $dst -Parent
+      if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+      [IO.File]::WriteAllBytes($dst, $pngs[$s])
+    }
   }
 }
 $srcImg.Dispose()
@@ -138,7 +154,9 @@ $bw.Flush()
 [IO.File]::WriteAllBytes($Ico, $ms.ToArray())
 $bw.Dispose(); $ms.Dispose()
 Write-Host ("OK -> {0} ({1} sizes, {2} KB)" -f $Ico, $sizes.Count, [math]::Round((Get-Item $Ico).Length / 1KB, 1)) -ForegroundColor Green
-Write-Host ("OK -> {0} (256, for the in-app brand mark)" -f $UiPng) -ForegroundColor Green
+Copy-Item -LiteralPath $Ico -Destination $FavIco -Force
+foreach ($dst in $PngOut) { Write-Host ("OK -> {0} (256)" -f $dst) -ForegroundColor Green }
+Write-Host ("OK -> {0} (website favicon)" -f $FavIco) -ForegroundColor Green
 
 if ($Syso) {
   $Go = if (Test-Path "D:\xm\tools\go\bin\go.exe") { "D:\xm\tools\go\bin\go.exe" } else { "go" }

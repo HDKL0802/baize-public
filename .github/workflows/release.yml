@@ -77,7 +77,23 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-          cache-dependency-path: desktop/go.sum
+          cache-dependency-path: |
+            desktop/go.sum
+            agent/go.sum
+
+      - name: Build backend (linux/amd64)
+        shell: pwsh
+        run: |
+          # NAS 一键脚本直接下这个二进制，在 NAS 本地 docker build
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "linux"
+          $env:GOARCH = "amd64"
+          New-Item -ItemType Directory -Force -Path desktop/bin | Out-Null
+          go -C agent build -trimpath -ldflags "-s -w" -o ../desktop/bin/baize-backend-linux-amd64 ./cmd/backend
+          if (-not (Test-Path desktop/bin/baize-backend-linux-amd64)) { throw "backend not built" }
+          $sha = (Get-FileHash desktop/bin/baize-backend-linux-amd64 -Algorithm SHA256).Hash.ToLower()
+          "$sha  baize-backend-linux-amd64" | Set-Content -Path desktop/bin/baize-backend-linux-amd64.sha256 -Encoding ascii
+          Write-Host "backend sha256 = $sha"
 
       - name: Build desktop exe
         shell: pwsh
@@ -162,7 +178,9 @@ jobs:
           $assets = @(
             "desktop/bin/baize-desktop-$env:VERSION.zip",
             "desktop/bin/baize-desktop-setup-$env:VERSION.exe",
-            "desktop/bin/latest.json"
+            "desktop/bin/latest.json",
+            "desktop/bin/baize-backend-linux-amd64",
+            "desktop/bin/baize-backend-linux-amd64.sha256"
           )
           foreach ($a in $assets) { if (-not (Test-Path $a)) { throw "missing asset: $a" } }
           $exists = $false

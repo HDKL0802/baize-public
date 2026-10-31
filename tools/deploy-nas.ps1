@@ -22,6 +22,10 @@
   container passes the health check. If the container is unhealthy we roll back to systemd,
   so the NAS backend is never left dead.
 
+  NOTE (2026-10): NAS 侧的日常部署/运维已改为一条命令的 install.sh（web\nas\install.sh，
+  https://baize.wydhd.fun/nas/install.sh），装完自带 `baize-nas status|logs|restart|rollback|uninstall`。
+  本脚本保留给「本机交叉编译 → 上传二进制 → NAS 侧构建」这个维护者路径。
+
   Notes:
      - The PC has no Docker, so the image is built ON the NAS from the uploaded linux/amd64 binary.
 #>

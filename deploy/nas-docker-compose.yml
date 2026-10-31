@@ -1,6 +1,10 @@
 # 白泽后端 · NAS 部署（替代原来的「systemd 直跑二进制」）
 #
-# 放到 NAS 的 /vol1/@appdata/baize/compose/docker-compose.yml 后：
+# 推荐直接用一键脚本（会自动写这份 compose 到 NAS）：
+#   curl -fsSL https://baize.wydhd.fun/nas/install.sh | sudo bash
+#   之后：baize-nas status | logs -f | restart | rollback | uninstall
+#
+# 也可以手放：/vol1/@appdata/baize/compose/docker-compose.yml
 #   cd /vol1/@appdata/baize/compose
 #   echo "$BAIZE_NAS_PASS" | sudo -S docker compose up -d     # 密码取自 deploy.local.env，莫写进仓库
 #

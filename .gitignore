@@ -49,6 +49,7 @@ tools/local-embed/models/
 
 # ---------- IDE / 本地工具 / 系统 ----------
 .trae/
+.trae-html-share-packages/
 .vscode/
 .idea/
 .DS_Store

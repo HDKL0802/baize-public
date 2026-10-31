@@ -33,17 +33,31 @@
 | `web/` | 官网（GitHub Pages 静态站点） |
 | `cli/` | 电脑端小工具 `bz` |
 | `docs/` | 交接文档、开发文档、方案与待办清单 |
-| `tools/` | 部署与运维（`deploy-nas.ps1`、`sshrun`） |
-| `deploy/` | NAS 的 docker-compose |
+| `tools/` | 部署与运维（`deploy-nas.ps1` 本地交叉编译+上传、`sshrun`） |
+| `deploy/` | NAS 的 docker-compose / Dockerfile 参考 |
 
 ## 快速开始
 
-**后端（部署到 NAS）**
-```powershell
-# 1. 在仓库根建 deploy.local.env（模板见 deploy.local.env.example），填 NAS 地址/密码/令牌
-# 2. 一条命令：构建 → 上传 → NAS 打镜像 → 起容器 → 健康检查（不通过自动回滚）
-powershell -ExecutionPolicy Bypass -File tools\deploy-nas.ps1
+**后端（部署到 NAS，一条命令）**
+```bash
+curl -fsSL https://baize.wydhd.fun/nas/install.sh | sudo bash
 ```
+装完就有 `baize-nas` 命令（脚本自身落到 `/usr/local/bin`）：
+
+```bash
+baize-nas status          # 状态 + 健康检查
+baize-nas logs -f         # 跟日志
+baize-nas restart         # 重启
+baize-nas rollback        # 回滚上一版
+baize-nas uninstall --yes # 取消部署（停容器 + 删镜像 + 清空数据）
+```
+
+脚本会：拉 GitHub 最新 Release 的 `baize-backend-linux-amd64` → 校验 sha256 → 在 NAS 本地
+`docker build` → 起容器 → 健康检查不通过自动回滚上一版镜像。重复执行 `deploy` 即升级。
+
+> 需要自定义（内网开发、指定版本、不联网）：`... | sudo bash -s -- deploy --version 0.6.0`、
+> `--binary <本地 linux/amd64 二进制>`；变量 `BAIZE_HOME / BAIZE_DATA_DIR / BAIZE_PORT / BAIZE_BASE_IMAGE` 可覆盖。
+> 维护者本机「交叉编译 → 上传 → NAS 构建」的老路径仍保留在 `tools/deploy-nas.ps1`。
 
 **Windows 桌面端**
 ```powershell

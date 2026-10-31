@@ -1,1 +1,1 @@
-桌面端 0.6.0：四端界面统一为「墨玉」视觉（桌面主控台 / 浮窗 / 手机端 / NAS WebUI 同一套色板与圆角），桌面端自动更新改为 GitHub Releases 优先（后端 /dl 作为回退），更新包现在会一并替换 ui/ 与 float/dist/，安装包补齐浮窗界面。修复打包脚本仍指向已删除的 desktop/ui 导致「装了还是旧界面」的问题。
+桌面端 0.6.1：换掉「白」字方块 logo，全端统一为白泽独角瑞兽线描图标（桌面侧栏 / 官网 logo 与 favicon / 安装包与 exe / NAS 面板 / 移动端）；NAS 部署改成一条 curl 命令，装完自带 baize-nas（deploy/status/start/stop/restart/logs/rollback/uninstall），取消部署会停容器并清空数据，每次部署自动保留上一版镜像供回滚。

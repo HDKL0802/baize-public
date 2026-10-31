@@ -33,7 +33,7 @@ set -uo pipefail
 SCRIPT_URL="${BAIZE_INSTALL_URL:-https://baize.wydhd.fun/nas/install.sh}"
 # 发布仓：国内走 Gitee，国外走 GitHub；BAIZE_MIRROR 可强制指定 auto|gitee|github
 GITHUB_REPO="${BAIZE_GITHUB_REPO:-HDKL0802/baize-public}"
-GITEE_REPO="${BAIZE_GITEE_REPO:-szk0037/baize-public}"
+GITEE_REPO="${BAIZE_GITEE_REPO:-HDKL0037/baize-public}"
 REPO="$GITHUB_REPO"
 MIRROR="${BAIZE_MIRROR:-auto}"
 BASE_DIR="${BAIZE_HOME:-/vol1/@appdata/baize}"

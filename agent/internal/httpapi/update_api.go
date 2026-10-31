@@ -20,7 +20,7 @@ import (
 
 const (
 	// 发布仓（与官网 / 一键脚本同一组常量）
-	updateGiteeOwner = "szk0037"
+	updateGiteeOwner = "HDKL0037"
 	updateGiteeRepo  = "baize-public"
 	updateGitHubOwner = "HDKL0802"
 	updateGitHubRepo  = "baize-public"

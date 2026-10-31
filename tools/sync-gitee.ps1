@@ -2,7 +2,7 @@
   sync-gitee.ps1 - mirror the GitHub repos to Gitee and publish the same Release.
 
   What it does:
-    1. creates szk0037/baize and szk0037/baize-public if they do not exist yet
+    1. creates HDKL0037/baize and HDKL0037/baize-public if they do not exist yet
     2. pushes main + tags to both Gitee repos (same commits as GitHub)
     3. creates / updates the Gitee Release for desktop-v<Version> in baize-public
     4. uploads the desktop zip, setup exe, backend binary + sha256, APK
@@ -26,7 +26,7 @@
 #>
 param(
   [string]$Token = $env:GITEE_TOKEN,
-  [string]$Owner = "szk0037",
+  [string]$Owner = "HDKL0037",
   [string]$Repo = "baize",
   [string]$PublicRepo = "baize-public",
   [Parameter(Mandatory = $true)][string]$Version,

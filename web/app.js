@@ -10,7 +10,7 @@
   "use strict";
 
   // ===================== 配置 =====================
-  // 双源发布：国内走 Gitee（szk0037/baize-public），国外走 GitHub（HDKL0802/baize-public）。
+  // 双源发布：国内走 Gitee（HDKL0037/baize-public），国外走 GitHub（HDKL0802/baize-public）。
   // 默认自动判定（GitHub API 2.5 秒内不通就用 Gitee），也可以在下载菜单里手动切换。
   const MIRRORS = {
     github: {
@@ -22,9 +22,9 @@
     },
     gitee: {
       label: "Gitee",
-      api: "https://gitee.com/api/v5/repos/szk0037/baize-public",
-      releases: "https://gitee.com/szk0037/baize-public/releases",
-      raw: "https://gitee.com/szk0037/baize-public/raw/main",
+      api: "https://gitee.com/api/v5/repos/HDKL0037/baize-public",
+      releases: "https://gitee.com/HDKL0037/baize-public/releases",
+      raw: "https://gitee.com/HDKL0037/baize-public/raw/main",
       headers: {},
     },
   };

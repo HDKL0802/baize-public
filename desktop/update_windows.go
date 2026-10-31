@@ -42,7 +42,7 @@ type updateManifest struct {
 const githubManifestURL = "https://github.com/HDKL0802/baize-public/releases/latest/download/latest.json"
 
 // giteeLatestReleaseURL 国内镜像的「最新 Release」API（Gitee 允许匿名跨域读公开仓）。
-const giteeLatestReleaseURL = "https://gitee.com/api/v5/repos/szk0037/baize-public/releases/latest"
+const giteeLatestReleaseURL = "https://gitee.com/api/v5/repos/HDKL0037/baize-public/releases/latest"
 
 // giteeRelease 只取清单需要的字段。
 type giteeRelease struct {

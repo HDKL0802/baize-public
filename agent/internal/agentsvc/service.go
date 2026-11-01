@@ -85,6 +85,12 @@ type JobState struct {
 	config.CronJob
 	NextAt   int64  `json:"nextAt,omitempty"`
 	ParseErr string `json:"parseError,omitempty"`
+	// ExprText 表达式的人话版本（"每天 08:00" / "每 30 分钟"）。
+	// 控制台里光看 0 8 * * * 没人能一眼确认自己填对了，而"填错了"和"没跑"在用户眼里
+	// 长得一模一样，所以后端直接把描述算好给界面，别让前端各写一套翻译。
+	ExprText string `json:"exprText,omitempty"`
+	// Running 这条任务现在是不是正在跑（顶层串行，全局同时只有一条在跑）
+	Running bool `json:"running,omitempty"`
 }
 
 // HeartbeatState 心跳任务状态（配置 + 排期 + HEARTBEAT.md 的落地情况）
@@ -191,8 +197,21 @@ type Service struct {
 	running   bool
 	lastRun   *agentrt.RunResult
 	curRunID  string
+	// curGoal 正在跑的那次运行的目标文本（活动展示用）
+	curGoal string
+	// curCronID 正在跑的那条定时任务的 id（普通派活为空）。
+	// 定时任务界面靠它标出"这条正在跑"——不能按目标文本认：两条任务写一样的目标是常事，
+	// 那样会让没跑的那条也显示成"执行中"，用户根本分不清到底哪条在跑。
+	curCronID string
 	schedStop chan struct{}
 	sched     *scheduler
+}
+
+// runningGoal 正在跑的目标文本、定时任务 id 与运行标记（给定时任务状态用）
+func (s *Service) runningGoal() (goal, cronID string, running bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.curGoal, s.curCronID, s.running
 }
 
 // Option 服务可选配置
@@ -494,6 +513,51 @@ func (s *Service) CronRemove(id string) error {
 	return s.SaveConfig(cfg)
 }
 
+// 定时任务立即执行的错误分类（HTTP 层靠它决定回 404 还是 409）：
+// 前者是"你给错了 id"，后者是"这条任务现在不能跑"——前端提示语完全不一样。
+var (
+	ErrCronNotFound   = errors.New("没有这个定时任务")
+	ErrCronBadRequest = errors.New("定时任务参数不对")
+)
+
+// CronRun 立刻跑一次某条定时任务（不等排期）。
+//
+// 为什么要有它：定时任务写错了表达式，用户要等到"该跑的那一刻"才知道有没有配错；
+// 而真到那一刻发现没跑，往往已经错过了。所以界面必须能给一个「现在就试跑一次」，
+// 用同一套语义（目标 / 配方 / 是否免审批）当场验证这条任务到底能不能跑通。
+// 跑完的结果按与调度器完全相同的口径写回配置（lastRunAt / lastStatus / runs）。
+func (s *Service) CronRun(id string) (string, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "", fmt.Errorf("%w：需要 id", ErrCronBadRequest)
+	}
+	var job config.CronJob
+	found := false
+	for _, j := range s.Config().Cron {
+		if j.ID == id {
+			job, found = j, true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("%w：%s", ErrCronNotFound, id)
+	}
+	if strings.TrimSpace(job.Goal) == "" {
+		return "", fmt.Errorf("%w：这条定时任务没有目标（goal），跑不起来", ErrCronBadRequest)
+	}
+	recipe := strings.TrimSpace(job.Recipe)
+	if recipe == "" {
+		recipe = "chat"
+	}
+	mode := ""
+	if job.AutoApprove {
+		mode = "loose"
+	}
+	return s.start(job.Goal, recipe, mode, "", job.ID, func(res agentrt.RunResult, err error) {
+		s.recordJobResult(job.ID, res, err)
+	})
+}
+
 // cronJobInfoByID 取某个任务的最新状态（含下次触发时间）；找不到返回零值（不报错，
 // 因为"刚加完立刻读回来"的竞态下宁可少一个字段，也不要让调用方以为加失败了）。
 func (s *Service) cronJobInfoByID(id string) tools.CronJobInfo {
@@ -520,7 +584,8 @@ func (s *Service) cronHooks() tools.CronHooks {
 				out = append(out, tools.CronJobInfo{
 					ID: js.ID, Expr: js.Expr, Goal: js.Goal, Recipe: js.Recipe,
 					Enabled: js.Enabled, AutoApprove: js.AutoApprove, NextAt: js.NextAt,
-					ParseErr: js.ParseErr, LastRunAt: js.LastRunAt, LastStatus: js.LastStatus,
+					ParseErr: js.ParseErr, ExprText: js.ExprText, Running: js.Running,
+					LastRunAt: js.LastRunAt, LastStatus: js.LastStatus,
 					LastError: js.LastError, Runs: js.Runs,
 				})
 			}
@@ -975,6 +1040,12 @@ func (s *Service) Run(ctx context.Context, goal, recipe, strictness string, prov
 // 结果落在运行记录里（跑完才会出现，运行中的任务靠 running 标记看）。
 // provider 可空：同 Run。
 func (s *Service) Start(goal, recipe, strictness string, provider string) (string, error) {
+	return s.start(goal, recipe, strictness, provider, "", nil)
+}
+
+// start 异步启动一次运行。Start 与「定时任务立即执行」共用它，差别只在于跑完要不要
+// 把结果写回配置：普通派活不写，定时任务要写（lastRunAt / lastStatus / runs）。
+func (s *Service) start(goal, recipe, strictness, provider, cronID string, onDone func(agentrt.RunResult, error)) (string, error) {
 	if strings.TrimSpace(goal) == "" {
 		return "", errors.New("任务目标不能为空")
 	}
@@ -990,13 +1061,19 @@ func (s *Service) Start(goal, recipe, strictness string, provider string) (strin
 	s.mu.Lock()
 	s.running = true
 	s.curRunID = id
+	s.curGoal = strings.TrimSpace(goal)
+	s.curCronID = cronID
 	s.mu.Unlock()
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
-		if _, err := s.runInner(ctx, id, goal, recipe, auto, all, 0, provider); err != nil {
+		res, err := s.runInner(ctx, id, goal, recipe, auto, all, 0, provider)
+		if err != nil {
 			s.lg.Warn("Agent 运行结束（有错误）", "runId", id, "err", err, "goal", goal)
+		}
+		if onDone != nil {
+			onDone(res, err)
 		}
 	}()
 	return id, nil
@@ -1016,11 +1093,14 @@ func (s *Service) runInner(ctx context.Context, runID, goal, recipe string, auto
 		s.mu.Lock()
 		s.running = true
 		s.curRunID = runID
+		s.curGoal = strings.TrimSpace(goal)
 		s.mu.Unlock()
 		defer func() {
 			s.mu.Lock()
 			s.running = false
 			s.curRunID = ""
+			s.curGoal = ""
+			s.curCronID = ""
 			s.mu.Unlock()
 		}()
 	}

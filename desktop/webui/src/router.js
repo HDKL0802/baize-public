@@ -26,12 +26,14 @@ import DevicesView from './views/DevicesView.vue';
 import SettingsView from './views/SettingsView.vue';
 import TasksView from './views/TasksView.vue';
 import MemoryView from './views/MemoryView.vue';
+import CronView from './views/CronView.vue';
 import PlaceholderView from './views/PlaceholderView.vue';
 
 function lazyView(name) {
   // 已实装的用组件，未实装的回退占位（懒加载不报错）
   const map = {
-    chat: ChatView, devices: DevicesView, settings: SettingsView, tasks: TasksView, memory: MemoryView,
+    chat: ChatView, devices: DevicesView, settings: SettingsView, tasks: TasksView,
+    memory: MemoryView, cron: CronView,
   };
   return map[name] || PlaceholderView;
 }

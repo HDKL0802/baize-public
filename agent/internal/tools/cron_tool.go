@@ -28,6 +28,10 @@ type CronJobInfo struct {
 	AutoApprove bool   `json:"autoApprove,omitempty"`
 	NextAt      int64  `json:"nextAt,omitempty"`
 	ParseErr    string `json:"parseError,omitempty"`
+	// ExprText 表达式的人话版本（"每天 08:00"），给模型和界面看都更省事
+	ExprText string `json:"exprText,omitempty"`
+	// Running 这条任务现在是不是正在跑
+	Running   bool   `json:"running,omitempty"`
 	LastRunAt   int64  `json:"lastRunAt,omitempty"`
 	LastStatus  string `json:"lastStatus,omitempty"`
 	LastError   string `json:"lastError,omitempty"`

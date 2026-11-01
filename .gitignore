@@ -55,3 +55,6 @@ tools/local-embed/models/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ---------- 一次性迁移工作目录（含明文凭据，绝不入库） ----------
+2026-10-31/

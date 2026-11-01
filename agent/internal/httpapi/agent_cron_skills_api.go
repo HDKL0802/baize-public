@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
 
+	"baize/internal/agentsvc"
 	"baize/internal/cron"
 	"baize/internal/skills"
 )
@@ -27,6 +29,34 @@ func (s *Server) registerCronSkills(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/agent/cron", s.api(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"jobs": a.Jobs()})
+	}))
+
+	// 立即执行一条定时任务（不等排期）。
+	//
+	// 单独一个接口而不是塞进 POST /api/agent/cron 的 action：立即执行会真的派活、
+	// 真的占住顶层串行锁、真的花钱调模型 —— 与"改一条配置"完全不是一回事，
+	// 混在一个接口里以后想给它加审批/限流都无处下手。
+	// 返回 202 + runId：前端拿它去 /api/agent/runs/{id} 看进展，不在这里干等。
+	mux.HandleFunc("POST /api/agent/cron/run", s.api(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID string `json:"id"`
+		}
+		if err := decodeBody(r, &req); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		id, err := a.CronRun(req.ID)
+		if err != nil {
+			// 找不到这条任务 = 404；任务存在但现在不能跑（已有任务在跑 / 没有目标）= 409。
+			// 两者对前端是两种提示语，所以按哨兵错误分，不靠匹配错误文本。
+			code := http.StatusConflict
+			if errors.Is(err, agentsvc.ErrCronNotFound) || errors.Is(err, agentsvc.ErrCronBadRequest) {
+				code = http.StatusNotFound
+			}
+			writeErr(w, code, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"started": true, "runId": id, "jobs": a.Jobs()})
 	}))
 
 	// action=add|update|toggle|remove
@@ -73,6 +103,10 @@ func (s *Server) registerCronSkills(mux *http.ServeMux) {
 				writeErr(w, http.StatusBadRequest, "保存失败："+err.Error())
 				return
 			}
+			// 新任务的排期由调度器每 20 秒重读配置时才算出来（nextAt / exprText 都在那一步）。
+			// 若此刻立刻回列表，新任务会带着空的"下次触发时间 + 人话描述"回去，界面看着像没生效。
+			// 所以这里直接把新任务排上（与调度器同一把锁、同一个函数），回给界面的就是最终态。
+			a.ScheduleNow()
 			writeJSON(w, http.StatusOK, map[string]any{"jobs": a.Jobs(), "added": job.ID})
 			return
 		}
@@ -131,6 +165,9 @@ func (s *Server) registerCronSkills(mux *http.ServeMux) {
 			writeErr(w, http.StatusBadRequest, "保存失败："+err.Error())
 			return
 		}
+		// 改完立刻重排（同新增）：否则回给界面的列表里，这条任务的"下次触发时间"
+		// 还是按旧表达式算的，用户会以为改动没生效。
+		a.ScheduleNow()
 		writeJSON(w, http.StatusOK, map[string]any{"jobs": a.Jobs(), "ok": true})
 	}))
 

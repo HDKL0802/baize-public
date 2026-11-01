@@ -185,3 +185,51 @@ func (s *Schedule) Next(after time.Time) (time.Time, error) {
 
 // String 原始表达式
 func (s *Schedule) String() string { return s.raw }
+
+// Describe 把表达式翻译成一句人话，给界面显示用（"每天 08:00" / "每 30 分钟"）。
+//
+// 为什么要它：控制台里光看 `0 8 * * *` 没人一眼能确认自己填对了，
+// 而"填错了"和"没跑"在用户眼里长得一模一样 —— 界面必须把"下次什么时候跑"说清楚。
+// 解析不了时返回空串，由调用方决定显示什么（绝不猜一个看起来像对的描述）。
+func (s *Schedule) Describe() string {
+	if s == nil {
+		return ""
+	}
+	if s.every > 0 {
+		return "每 " + humanDuration(s.every)
+	}
+	if len(s.minute.units) == 1 && len(s.hour.units) == 1 &&
+		s.dom.any && s.month.any && s.dow.any {
+		return fmt.Sprintf("每天 %02d:%02d", onlyUnit(s.hour), onlyUnit(s.minute))
+	}
+	if s.minute.any && s.hour.any && s.dom.any && s.month.any && s.dow.any {
+		return "每分钟"
+	}
+	return ""
+}
+
+// onlyUnit 取单值字段里唯一那个数（调用方已确认恰好一个）
+func onlyUnit(f field) int {
+	for v := range f.units {
+		return v
+	}
+	return 0
+}
+
+// humanDuration 把间隔说成人话（24h 以内用小时/分钟，再往上用天）
+func humanDuration(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%d 秒", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%d 分钟", int(d.Minutes()))
+	case d < 24*time.Hour:
+		h := int(d.Hours())
+		if m := int(d.Minutes()) - h*60; m > 0 {
+			return fmt.Sprintf("%d 小时 %d 分钟", h, m)
+		}
+		return fmt.Sprintf("%d 小时", h)
+	default:
+		return fmt.Sprintf("%d 天", int(d.Hours()/24))
+	}
+}

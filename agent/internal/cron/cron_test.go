@@ -5,6 +5,27 @@ import (
 	"time"
 )
 
+// Describe 只在该说人话的时候说人话：拿不准就返回空串，绝不编一句可能说错的描述。
+func TestDescribe(t *testing.T) {
+	cases := []struct{ expr, want string }{
+		{"0 8 * * *", "每天 08:00"},
+		{"30 7 * * 1-5", ""}, // 带周限制：不硬编一句可能说错的描述
+		{"@every 30m", "每 30 分钟"},
+		{"@every 2h", "每 2 小时"},
+		{"@hourly", ""}, // 展开成 0 * * * *：分钟单值但小时是 any
+		{"* * * * *", "每分钟"},
+	}
+	for _, c := range cases {
+		s, err := Parse(c.expr)
+		if err != nil {
+			t.Fatalf("解析 %q 失败：%v", c.expr, err)
+		}
+		if got := s.Describe(); got != c.want {
+			t.Fatalf("%q 的描述期望 %q，实际 %q", c.expr, c.want, got)
+		}
+	}
+}
+
 func TestParseAndNext(t *testing.T) {
 	base := time.Date(2026, 9, 26, 10, 30, 0, 0, time.Local) // 周六
 

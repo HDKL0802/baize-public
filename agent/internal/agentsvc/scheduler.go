@@ -138,16 +138,47 @@ func (sc *scheduler) fire(j config.CronJob) {
 	sc.svc.recordJobResult(j.ID, res, err)
 }
 
+// ScheduleNow 立刻按当前配置重排一次（不等 20 秒的 tick）。
+//
+// 为什么需要：新增/改完一条任务后，界面马上就会把列表读回去显示。若不在这里排一次，
+// 新任务会带着空的 nextAt / exprText 回到界面上，用户看到的是"加了但没排上"。
+// 用与 tick 相同的锁和相同的 schedule()，语义完全一致，只是把时间提前了。
+func (sc *scheduler) ScheduleNow() {
+	now := time.Now()
+	cfg := sc.svc.Config()
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	for _, j := range cfg.Cron {
+		sc.schedule(j, now)
+	}
+}
+
+// ScheduleNow 立刻重排一次定时任务（见 scheduler.ScheduleNow）
+func (s *Service) ScheduleNow() {
+	if s == nil || s.sched == nil {
+		return
+	}
+	s.sched.ScheduleNow()
+}
+
 // jobStates 给控制台用的任务状态
 func (sc *scheduler) jobStates() []JobState {
 	cfg := sc.svc.Config()
 	out := make([]JobState, 0, len(cfg.Cron))
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
+	// 正在跑的那条任务（按任务 id 认，不按目标文本）：顶层串行，全局同时只有一条在跑
+	_, curCronID, curRunning := sc.svc.runningGoal()
 	for _, j := range cfg.Cron {
 		js := JobState{CronJob: j, ParseErr: sc.errs[j.ID]}
 		if next, ok := sc.next[j.ID]; ok {
 			js.NextAt = next.UnixMilli()
+		}
+		if sched, ok := sc.parsed[j.ID]; ok {
+			js.ExprText = sched.Describe()
+		}
+		if curRunning && curCronID != "" && curCronID == j.ID {
+			js.Running = true
 		}
 		out = append(out, js)
 	}

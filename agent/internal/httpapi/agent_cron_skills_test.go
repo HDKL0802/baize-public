@@ -10,13 +10,17 @@ import (
 
 type cronResp struct {
 	Jobs []struct {
-		ID      string `json:"id"`
-		Expr    string `json:"expr"`
-		Goal    string `json:"goal"`
-		Recipe  string `json:"recipe"`
-		Enabled bool   `json:"enabled"`
+		ID       string `json:"id"`
+		Expr     string `json:"expr"`
+		Goal     string `json:"goal"`
+		Recipe   string `json:"recipe"`
+		Enabled  bool   `json:"enabled"`
+		ExprText string `json:"exprText"`
+		Running  bool   `json:"running"`
 	} `json:"jobs"`
-	Added string `json:"added"`
+	Added   string `json:"added"`
+	Started bool   `json:"started"`
+	RunID   string `json:"runId"`
 }
 
 // skillView 技能清单里的一条（与接口返回同形）
@@ -81,6 +85,11 @@ func TestCronCRUD(t *testing.T) {
 	}
 	id := added.Added
 
+	// 表达式要有人话描述：光看 "0 8 * * *" 用户没法确认自己填对了
+	if got := added.Jobs[0].ExprText; got != "每天 08:00" {
+		t.Fatalf("exprText 期望「每天 08:00」，实际 %q", got)
+	}
+
 	// 停用
 	var off cronResp
 	if code := e.do("POST", "/api/agent/cron",
@@ -129,6 +138,35 @@ func TestCronCRUD(t *testing.T) {
 	if code := e.do("POST", "/api/agent/cron",
 		map[string]any{"action": "wat"}, true, &cronResp{}); code != 400 {
 		t.Fatalf("未知 action 期望 400，实际 %d", code)
+	}
+}
+
+// 立即执行：不存在的 id 要 404、没有目标要 409、真跑起来要 202 且带 runId。
+//
+// 为什么单列一条：这条路径会真的派活（占顶层串行锁、调模型）。测试环境里没有可用
+// 模型通道，所以"跑起来"那一步只会立刻失败 —— 但接口契约（202 + runId）与两种
+// 拒绝的语义必须钉死，否则界面上「立即执行」按钮会以各种奇怪的方式静默失败。
+func TestCronRunNow(t *testing.T) {
+	e, _ := newAgentEnv(t)
+
+	if code := e.do("POST", "/api/agent/cron/run", map[string]any{"id": "job-nope"}, true, &cronResp{}); code != 404 {
+		t.Fatalf("不存在的 id 期望 404，实际 %d", code)
+	}
+	if code := e.do("POST", "/api/agent/cron/run", map[string]any{}, true, &cronResp{}); code != 404 {
+		t.Fatalf("空 id 期望 404，实际 %d", code)
+	}
+
+	var added cronResp
+	if code := e.do("POST", "/api/agent/cron",
+		map[string]any{"action": "add", "expr": "0 8 * * *", "goal": "立即执行自检"}, true, &added); code != 200 {
+		t.Fatalf("新增定时任务期望 200，实际 %d", code)
+	}
+	var started cronResp
+	if code := e.do("POST", "/api/agent/cron/run", map[string]any{"id": added.Added}, true, &started); code != 202 {
+		t.Fatalf("立即执行期望 202，实际 %d", code)
+	}
+	if !started.Started || started.RunID == "" {
+		t.Fatalf("立即执行应回 started=true 且带 runId：%+v", started)
 	}
 }
 

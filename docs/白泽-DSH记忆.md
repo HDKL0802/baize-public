@@ -131,7 +131,8 @@ cd mobile\webui;  & $npm run build   # 7.11s
 
 ## 9. 待确认 / 待办
 
-- Gitee 私人令牌未存，需用户新发（`projects` + `releases` 权限）
+- Gitee 私人令牌未存，需用户新发（`projects` + `releases` 权限）—— **2026-11-07 复核仍确无**：无 `~/.git-credentials` / `~/.netrc`、cmdkey 无 gitee 条目、注册表 / 环境变量无 `GITEE_TOKEN`、`凭据清单-明文.md` §7 只写存放位置不写令牌值。`tools/sync-gitee.ps1` 拿不到 `-Token`/`$env:GITEE_TOKEN` 会直接 throw，故 0.8.0 的 Gitee 双源同步**明确阻塞、未执行**（详见 `docs/交接文档-2026-11-07-白泽0.8.0-打包与双源发布.md`）。
+- 0.8.0 发布状态（2026-11-07）：本地打包五资产完成、提交 `608a601`、推 GitHub 双仓 main + `desktop-v0.8.0`/`backend-v0.8.0` tags；release/docker 两 CI **completed/success**；`desktop-v0.8.0` Release **6 资产**（CI 5 + 本地补传 `bz-todo-v0.10.17.apk`）；GHCR `ghcr.io/hdkl0802/baize-backend:0.8.0`/`:sha-608a601`/`:latest` 实测存在（CI 日志 + Registry v2）；**Gitee 双源同步仍阻塞**（缺 `GITEE_TOKEN`）；**未做** 真机 UI 点击回归。
 - NAS `/vol1/@appdata/baize/data` 体积未盘点；NAS 当前跑 Docker 还是 systemd、版本是否 0.7.1 **【待核】**
 - `local-embed`（端口 8484）是否仍在用未定
 - `core.Version`(0.10.0) 与 App 版本(0.10.17) 漂移，用户未拍板

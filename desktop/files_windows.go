@@ -24,6 +24,13 @@ import (
 // fileReadMax 单个文件读进内存的上限（与知识库附件上限同量级：16MB）
 const fileReadMax = 16 << 20
 
+// 目录内递归搜索的边界：只搜名字、不读内容；root 必须先过 permGate。
+const (
+	fileSearchMaxResults = 300
+	fileSearchMaxVisited = 20000
+	fileSearchMaxDepth   = 8
+)
+
 // fileMimeByExt 极简的「按扩展名猜 MIME」——只用于知识库展示，不追求完备。
 func fileMimeByExt(name string) string {
 	switch strings.ToLower(filepath.Ext(name)) {
@@ -164,6 +171,91 @@ func registerFileRoutes(mux *http.ServeMux) {
 			"dataBase64": base64.StdEncoding.EncodeToString(data),
 		})
 	})
+
+	// 目录内递归搜索（只匹配文件名，不读文件内容）：给「电脑文件」页的搜索框用。
+	// 边界：root 必须先过 permGate；最多 8 层、最多看 2 万个条目、最多回 300 条结果。
+	// 不跟随符号链接 / 目录联接（WalkDir 的 DirEntry.IsDir 只认真实目录）。
+	mux.HandleFunc("/api/local/files/search", func(w http.ResponseWriter, r *http.Request) {
+		perm, scopes := currentPerm()
+		root := strings.TrimSpace(r.URL.Query().Get("path"))
+		kw := strings.TrimSpace(r.URL.Query().Get("q"))
+		if kw == "" {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "搜索关键词不能为空"})
+			return
+		}
+		if root == "" {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "先进入一个目录再搜索（「此电脑」不递归）"})
+			return
+		}
+		if err := permGate(proto.ActionFsList, []string{root}); err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok": false, "error": err.Error(), "perm": perm, "permTitle": PermTitle(perm), "scopes": scopes,
+			})
+			return
+		}
+		abs, err := filepath.Abs(root)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "路径不合法"})
+			return
+		}
+		lower := strings.ToLower(kw)
+		results := []map[string]any{}
+		visited := 0
+		truncated := false
+		walkErr := filepath.WalkDir(abs, func(p string, d os.DirEntry, err error) error {
+			if err != nil {
+				if d != nil && d.IsDir() && p != abs {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			visited++
+			if visited > fileSearchMaxVisited {
+				truncated = true
+				return filepath.SkipAll
+			}
+			rel, relErr := filepath.Rel(abs, p)
+			if relErr != nil {
+				rel = p
+			}
+			if d.IsDir() {
+				if p != abs && strings.Count(rel, string(os.PathSeparator)) >= fileSearchMaxDepth {
+					return filepath.SkipDir
+				}
+				if p != abs && strings.Contains(strings.ToLower(d.Name()), lower) {
+					results = append(results, fileSearchItem(p, rel, d, true))
+				}
+			} else if strings.Contains(strings.ToLower(d.Name()), lower) {
+				results = append(results, fileSearchItem(p, rel, d, false))
+			}
+			if len(results) >= fileSearchMaxResults {
+				truncated = true
+				return filepath.SkipAll
+			}
+			return nil
+		})
+		if walkErr != nil && len(results) == 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "搜索失败：" + walkErr.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true, "path": abs, "q": kw, "results": results,
+			"truncated": truncated, "visited": visited,
+			"perm": perm, "permTitle": PermTitle(perm), "scopes": scopes,
+		})
+	})
+}
+
+// fileSearchItem 把搜索命中的一条转成界面用的形状（不带文件内容）。
+func fileSearchItem(path, rel string, d os.DirEntry, isDir bool) map[string]any {
+	item := map[string]any{"name": d.Name(), "path": path, "rel": rel, "isDir": isDir}
+	if info, err := d.Info(); err == nil {
+		if !isDir {
+			item["size"] = info.Size()
+		}
+		item["modTime"] = info.ModTime().UnixMilli()
+	}
+	return item
 }
 
 // parentDir 上一层目录；本身已是盘根（D:\）就回空串（界面据此回「此电脑」）。

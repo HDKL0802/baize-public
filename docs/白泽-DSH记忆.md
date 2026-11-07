@@ -62,10 +62,10 @@
 
 | 端 | 版本单一来源 | 当前值 |
 |---|---|---|
-| 后端 | `agent/cmd/backend/main.go:40` | 源码 **0.7.2**（WSL 在跑的旧二进制报 0.9.37） |
+| 后端 | `agent/cmd/backend/main.go:40` | 源码 **0.8.0**（WSL 在跑的旧二进制报 0.9.37） |
 | agentsvc | `agent/internal/agentsvc/service.go` | **0.8.0** |
 | core | `core/service.go:16` | **0.10.0** |
-| 桌面端 | `desktop/device_windows.go` 的 `desktopAppVersion`（**单一来源**） | **0.7.2** |
+| 桌面端 | `desktop/device_windows.go` 的 `desktopAppVersion`（**单一来源**） | **0.8.0** |
 | 手机端 | `mobile/android/AndroidManifest.xml` + `build.ps1` + 设置页「关于」**三处同改** | **0.10.17 / versionCode 1017** |
 
 - 手机 `versionCode` = `主*100 + 次*10 + 补丁`（0.10.17 → 1017），**必须单调递增**。

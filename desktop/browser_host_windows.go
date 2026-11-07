@@ -282,6 +282,7 @@ func browserLocalState() map[string]any {
 		"extToken":     browserExtToken(),
 		"extConnected": extConnected(),
 		"extDir":       browserExtDir(),
+		"engine":       browserEngineInfo(),
 	}
 	if p := currentBuiltin(); p != nil {
 		if res, err := p.call("status", nil); err == nil {

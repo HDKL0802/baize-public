@@ -62,6 +62,55 @@ async function testConn() {
   }
 }
 
+/* ---- 桌面端更新：走 Go 壳的 /api/local/update/*，不依赖后端连接 ---- */
+const dupd = ref({ current: '', latest: '', hasUpdate: false, notes: '', sizeBytes: 0, releasedAt: '' });
+const dupdBusy = ref(false);
+const dupdMsg = ref('');
+const dupdChecked = ref(false);
+
+async function checkDesktopUpdate(silent) {
+  dupdBusy.value = true;
+  if (!silent) dupdMsg.value = '正在从 GitHub / Gitee 检查桌面端版本…';
+  try {
+    const r = await API.localGet('/update/check');
+    dupdChecked.value = true;
+    if (r && r.ok !== false && r.current) {
+      dupd.value = r;
+      dupdMsg.value = `当前 ${r.current} · 最新 ${r.latest || '—'}${r.releasedAt ? '（' + r.releasedAt + '）' : ''}`;
+      if (!silent) toast(r.hasUpdate ? '发现桌面端新版本：' + r.latest : '桌面端已是最新版本', r.hasUpdate ? 'warn' : 'ok');
+    } else {
+      dupdMsg.value = '检查失败：' + ((r && r.error) || '本机服务没有返回版本信息');
+      if (!silent) toast(dupdMsg.value, 'err');
+    }
+  } catch (e) {
+    dupdMsg.value = '检查失败：' + e.message;
+    if (!silent) toast(dupdMsg.value, 'err');
+  } finally {
+    dupdBusy.value = false;
+  }
+}
+
+async function applyDesktopUpdate() {
+  if (!window.confirm('将下载新安装包并替换当前程序，完成后白泽会自动重启。现在继续？')) return;
+  dupdBusy.value = true;
+  dupdMsg.value = '正在下载并校验更新包…（完成后会自动重启）';
+  try {
+    const r = await API.localPost('/update/apply', {});
+    if (r && r.ok !== false) {
+      dupdMsg.value = '更新已应用，程序即将重启；若没有自动打开，请手动启动白泽。';
+      toast('桌面端更新完成', 'ok');
+    } else {
+      dupdMsg.value = '更新失败：' + ((r && r.error) || '未知');
+      toast(dupdMsg.value, 'err');
+    }
+  } catch (e) {
+    dupdMsg.value = '更新失败：' + e.message;
+    toast(dupdMsg.value, 'err');
+  } finally {
+    dupdBusy.value = false;
+  }
+}
+
 /* ---- 后端更新：由后端自己从 Gitee / GitHub 拉新二进制，重启容器后生效 ---- */
 const upd = ref({ current: '', latest: '', mirror: '', hasUpdate: false, inDocker: false });
 const updBusy = ref(false);
@@ -111,7 +160,7 @@ async function applyBackendUpdate() {
   }
 }
 
-onMounted(() => checkBackendUpdate(true));
+onMounted(() => { checkDesktopUpdate(true); checkBackendUpdate(true); });
 </script>
 
 <template>
@@ -163,6 +212,37 @@ onMounted(() => checkBackendUpdate(true));
           </span>
         </div>
       </div>
+    </section>
+
+    <section class="bz-card set-sec">
+      <div class="set-sec-head">
+        <h2 class="set-sec-title">桌面端更新</h2>
+        <p class="set-sec-desc">直接走本机 Go 壳，从 GitHub / Gitee 检查并安装新版本——<b>后端连不上也能用</b>。下载后会校验 sha256，再替换程序并自动重启。</p>
+      </div>
+      <div class="set-rows">
+        <div class="set-row">
+          <span class="set-row-label">当前版本</span>
+          <span class="set-row-value set-mono">{{ dupd.current || '—' }}</span>
+        </div>
+        <div class="set-row">
+          <span class="set-row-label">最新版本</span>
+          <span class="set-row-value set-mono">{{ dupd.latest || '—' }}</span>
+        </div>
+        <div class="set-row">
+          <span class="set-row-label">发布时间</span>
+          <span class="set-row-value">{{ dupd.releasedAt || '—' }}</span>
+        </div>
+        <div class="set-row">
+          <span class="set-row-label">包大小</span>
+          <span class="set-row-value set-mono">{{ dupd.sizeBytes ? (dupd.sizeBytes / 1048576).toFixed(1) + ' MB' : '—' }}</span>
+        </div>
+      </div>
+      <p v-if="dupdMsg" class="set-sec-desc">{{ dupdMsg }}</p>
+      <div class="set-actions">
+        <NButton :loading="dupdBusy" @click="checkDesktopUpdate(false)">检查桌面端更新</NButton>
+        <NButton type="primary" :disabled="!dupd.hasUpdate || dupdBusy" @click="applyDesktopUpdate">下载并安装</NButton>
+      </div>
+      <p class="set-sec-desc">后端未连接时：这里仍可完成全流程；另外也可手动从 GitHub Releases 下载安装包覆盖安装。</p>
     </section>
 
     <section class="bz-card set-sec">

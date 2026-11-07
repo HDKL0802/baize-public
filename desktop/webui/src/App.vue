@@ -135,20 +135,6 @@ function iconPaths(id) { return ICON_PATHS[id] || ['M12 4.5a7.5 7.5 0 1 0 0 15 7
     <div class="bz-layout" :class="{ mini: conn.mini }">
       <aside class="bz-sidebar">
         <div class="bz-brand">
-          <div class="bz-mark" aria-hidden="true">
-            <!-- 白泽：独角瑞兽侧脸线描（与安装包 / 官网 / NAS 面板同一枚图标） -->
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4.6 13C4.8 11.4 5.8 10.2 7.2 9.7C7.5 8.4 8.3 7.3 9.5 6.9C10.4 6.6 11.4 6.6 12.3 6.9C14.5 7.4 16.2 9.2 16.5 11.5C16.7 13.1 16.1 14.7 15 15.9C13.2 17.4 10.9 17.9 8.9 17.3C7 16.7 5.4 15.2 4.6 13Z" />
-              <path d="M5.2 14.6C6.6 15.1 8.2 15.2 9.4 14.8" />
-              <path d="M9.2 9C10.1 8.6 11.1 8.8" />
-              <path d="M12.9 7.2C13.4 5.4 14.5 4.5 15.9 4.7C15.8 6.1 15 7.2 13.9 7.9" />
-              <path d="M16.4 9.4C17.9 9.7 19 10.7 19.4 12" />
-              <path d="M16.4 11.6C17.9 12.3 18.8 13.6 19 15.1" />
-              <path d="M10.6 6.9C10.9 5 11.6 3.2 12.9 2C13 4.2 12.6 5.8 11.8 6.9Z" />
-              <path d="M9.3 10.5C9.9 9.8 10.9 9.8 11.5 10.4C10.9 11 9.9 11 9.3 10.5Z" fill="currentColor" stroke="none" />
-            </svg>
-          </div>
           <div class="bz-brand-text"><b>白泽</b><span>个人智能体</span></div>
         </div>
 
@@ -250,13 +236,7 @@ body {
   width: 236px; min-width: 236px; display: flex; flex-direction: column;
   background: var(--bg-elev); border-right: 1px solid var(--line);
 }
-.bz-brand { height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 16px; }
-.bz-mark {
-  width: 30px; height: 30px; flex: none; border-radius: 2px;
-  display: grid; place-items: center;
-  background: var(--accent-soft); color: var(--accent);
-}
-.bz-mark svg { width: 23px; height: 23px; display: block; }
+.bz-brand { height: 64px; display: flex; align-items: center; padding: 0 16px; }
 .bz-brand-text b { display: block; font-size: 14px; font-weight: 600; line-height: 1.35; }
 .bz-brand-text span { font-size: 11px; color: var(--fg-3); letter-spacing: .08em; }
 

@@ -13,7 +13,7 @@ export const NAV = [
 // 各页面的标题（与旧 window.APPS 对齐）
 export const VIEW_META = {
   chat: '对话', devices: '设备', files: '电脑文件', browser: '浏览器',
-  settings: '设置', tasks: '任务与审批', kb: '知识库', memory: '记忆星图',
+  settings: '设置', tasks: '任务与审批', kb: '独立知识库', memory: '记忆星图',
   providers: '模型通道', mcp: 'MCP 服务', external: '外部 Agent',
   channels: '频道', skills: '技能', plugins: '插件市场', persona: '人设',
   cron: '定时任务', backup: '备份与恢复', activity: '活动追踪', observe: '可观测性',
@@ -27,13 +27,33 @@ import SettingsView from './views/SettingsView.vue';
 import TasksView from './views/TasksView.vue';
 import MemoryView from './views/MemoryView.vue';
 import CronView from './views/CronView.vue';
+import MCPView from './views/MCPView.vue';
+import ActivityView from './views/ActivityView.vue';
+import AccountsView from './views/AccountsView.vue';
+import ConflictsView from './views/ConflictsView.vue';
+import ProvidersView from './views/ProvidersView.vue';
+import ExternalView from './views/ExternalView.vue';
+import ChannelsView from './views/ChannelsView.vue';
+import SkillsView from './views/SkillsView.vue';
+import PluginsView from './views/PluginsView.vue';
+import PersonaView from './views/PersonaView.vue';
+import BackupView from './views/BackupView.vue';
+import ObservabilityView from './views/ObservabilityView.vue';
+import FilesView from './views/FilesView.vue';
+import KnowledgeView from './views/KnowledgeView.vue';
+import BrowserView from './views/BrowserView.vue';
 import PlaceholderView from './views/PlaceholderView.vue';
 
 function lazyView(name) {
   // 已实装的用组件，未实装的回退占位（懒加载不报错）
   const map = {
     chat: ChatView, devices: DevicesView, settings: SettingsView, tasks: TasksView,
-    memory: MemoryView, cron: CronView,
+    memory: MemoryView, cron: CronView, mcp: MCPView, activity: ActivityView,
+    accounts: AccountsView, conflicts: ConflictsView,
+    providers: ProvidersView, external: ExternalView, channels: ChannelsView,
+    skills: SkillsView, plugins: PluginsView, persona: PersonaView,
+    backup: BackupView, observe: ObservabilityView, files: FilesView, kb: KnowledgeView,
+    browser: BrowserView,
   };
   return map[name] || PlaceholderView;
 }

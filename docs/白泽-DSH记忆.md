@@ -9,7 +9,8 @@
 ## 0. 结论：本机原地接续（方案 C，用户 2026-10-31 拍板）
 
 这台机器 `DESKTOP-3IM4KHB` **就是白泽的源机，不搬家**：
-- 仓库在 `D:\xm\白泽智能体`（git，`origin`=HDKL0802/baize，`public`=HDKL0802/baize-public，分支 `main`，HEAD `f7ff1ca`）
+- 仓库在 `D:\xm\白泽智能体`（git，`origin`=HDKL0802/baize，`public`=HDKL0802/baize-public，分支 `main`，2026-10-31 结论时 HEAD `f7ff1ca`）
+- 后续演进（截至 2026-11-08）：HEAD 已到 `e4888c1`；0.8.0 打包 + GitHub/Gitee 双源发布（Release 资产 + GHCR 镜像 + 手机 APK）全部完成，详见 `docs/交接文档-2026-11-07-白泽0.8.0-打包与双源发布.md` §七
 - WSL 后端正在跑：`baize-backend.service` = **active + enabled**，监听 8787，`/api/health` → `ok:true`
 - 工具链齐全，无需重装
 

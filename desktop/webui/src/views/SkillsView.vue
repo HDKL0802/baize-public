@@ -1,6 +1,7 @@
-<!-- 技能页：接 /api/agent/skills（清单 / 新建 / 改写 / 删除）。
-     后端只返回去掉 front-matter 的正文（body），没有"读原始 SKILL.md"的接口，
-     所以编辑时用 name / description / 正文重建整篇 —— 保存会整篇重写，界面上明说这一点。 -->
+<!-- 技能页：接 /api/agent/skills（清单 / 新建 / 改写 / 删除 / 原文读取）。
+     编辑走 GET /api/agent/skills/raw?name= 拉磁盘上的 SKILL.md 原文（含完整 front-matter），
+     保存按原文整篇写回，不再用 name/description/body 重组，避免丢 front-matter 字段。
+     原文读取失败时明确报错并停止编辑，不静默降级伪装成功。 -->
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { NButton, NInput } from 'naive-ui';
@@ -69,12 +70,19 @@ function openNew() {
   };
 }
 
-function openEdit(s) {
-  // 后端没给原始 front-matter，只能按这三个字段重建
-  const content = `---\nname: ${s.name}\ndescription: ${s.description}\n---\n\n${s.body || ''}\n`;
+async function openEdit(s) {
+  // 先拉磁盘上的 SKILL.md 原文（含完整 front-matter），避免编辑保存时丢字段。
+  // 后端没有原文接口 / 或读取失败时，明确报错并说明原因，不用重组内容静默伪装成功。
+  const r = await API.get('/api/agent/skills/raw?name=' + encodeURIComponent(s.slug));
+  if (!r.ok) {
+    toast('读取原始 SKILL.md 失败：' + (r.error || '未知原因') + '（已停止编辑，不会重组内容以免丢 front-matter）', 'err');
+    return;
+  }
+  const raw = (r.data && r.data.content) || '';
+  if (!raw) { toast('原始 SKILL.md 为空，已停止编辑', 'err'); return; }
   editor.value = {
-    mode: 'edit', name: s.name, slug: s.slug, category: s.category || '', content,
-    note: '此编辑器只保留 name / description / 正文；如果原 SKILL.md 还有其它 front-matter 字段，保存后会丢。',
+    mode: 'edit', name: s.name, slug: s.slug, category: s.category || '', content: raw,
+    note: '已读取磁盘上的 SKILL.md 原文（含完整 front-matter），保存时按原文整篇写回，不会丢字段。',
   };
 }
 

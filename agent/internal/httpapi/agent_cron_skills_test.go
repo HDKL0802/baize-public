@@ -310,3 +310,52 @@ func TestCronSkillsAbsentWithoutAgent(t *testing.T) {
 		t.Fatalf("没挂 Agent 时 /api/agent/skills 不该可用，实际 %d", code)
 	}
 }
+
+/* 技能原文读取接口：验证 front-matter 里的自定义字段能被原样读出（编辑不再丢字段）。 */
+type skillRawResp struct {
+	Name    string `json:"name"`
+	Slug    string `json:"slug"`
+	Content string `json:"content"`
+	Bytes   int    `json:"bytes"`
+}
+
+func TestSkillRawRead(t *testing.T) {
+	e, _ := newAgentEnv(t)
+
+	// 新建一份带额外 front-matter 字段（triggers / version）的 SKILL.md，
+	// 这些字段经 GET /api/agent/skills 解析后不会出现在列表里，正是原文接口要救回来的。
+	const slug = "raw-read-probe"
+	const md = "---\nname: 原文探针\ndescription: 验证原文读取\ntriggers: [探针, 原文]\nversion: 9\n---\n\n正文：保留全部 front-matter。\n"
+	if code := e.do("POST", "/api/agent/skills",
+		map[string]any{"action": "create", "name": slug, "content": md}, true, &skillsResp{}); code != 200 {
+		t.Fatalf("新建技能期望 200，实际 %d", code)
+	}
+	t.Cleanup(func() {
+		e.do("POST", "/api/agent/skills", map[string]any{"action": "delete", "name": slug}, true, &skillsResp{})
+	})
+
+	// 缺 name 必须 400，不静默返回空内容。
+	if code := e.do("GET", "/api/agent/skills/raw", nil, true, &skillRawResp{}); code != 400 {
+		t.Fatalf("缺 name 期望 400，实际 %d", code)
+	}
+	// 不存在的技能必须 404。
+	if code := e.do("GET", "/api/agent/skills/raw?name=not-exist-xyz", nil, true, &skillRawResp{}); code != 404 {
+		t.Fatalf("不存在技能期望 404，实际 %d", code)
+	}
+
+	var raw skillRawResp
+	if code := e.do("GET", "/api/agent/skills/raw?name="+slug, nil, true, &raw); code != 200 {
+		t.Fatalf("读原文期望 200，实际 %d", code)
+	}
+	if raw.Slug != slug {
+		t.Fatalf("slug 期望 %q，实际 %q", slug, raw.Slug)
+	}
+	if raw.Bytes != len(md) {
+		t.Fatalf("bytes 期望 %d，实际 %d", len(md), raw.Bytes)
+	}
+	for _, want := range []string{"triggers: [探针, 原文]", "version: 9", "正文：保留全部 front-matter。"} {
+		if !strings.Contains(raw.Content, want) {
+			t.Errorf("原文接口丢了内容 %q；实际返回：%q", want, raw.Content)
+		}
+	}
+}

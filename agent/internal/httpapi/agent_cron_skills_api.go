@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -183,6 +184,40 @@ func (s *Server) registerCronSkills(mux *http.ServeMux) {
 
 	// action=create|edit|patch|writeFile|delete|import，另有 save = 有则改写、无则新建
 	// 复用 Agent 的 skill_manage / skill_delete：校验、路径、归档语义完全一致
+	// 读取技能的原始 SKILL.md 全文（含 front-matter）。
+	//
+	// 为什么单独给一个接口：GET /api/agent/skills 只回解析后的 name/description/body，
+	// 界面按这三个字段重建整篇，会把原文件里其它 front-matter 字段（triggers / version /
+	// 自定义键）悄悄丢掉 —— 正是「看着能用其实不能用」。这里按目录名/展示名定位后直接读
+	// 磁盘正本，一个字节不重组，编辑保存时就能保住全部 front-matter。
+	mux.HandleFunc("GET /api/agent/skills/raw", s.api(func(w http.ResponseWriter, r *http.Request) {
+		name := s.resolveSkillName(r.URL.Query().Get("name"))
+		if name == "" {
+			writeErr(w, http.StatusBadRequest, "需要技能名（name）")
+			return
+		}
+		var found *skills.Skill
+		for _, sk := range a.Skills() {
+			if skillSlug(sk) == name {
+				cp := sk
+				found = &cp
+				break
+			}
+		}
+		if found == nil {
+			writeErr(w, http.StatusNotFound, "找不到技能："+name)
+			return
+		}
+		raw, err := os.ReadFile(found.Path)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "读取 SKILL.md 失败："+err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"name": found.Name, "slug": name, "content": string(raw), "bytes": len(raw),
+		})
+	}))
+
 	mux.HandleFunc("POST /api/agent/skills", s.api(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Action      string `json:"action"`

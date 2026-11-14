@@ -19,7 +19,7 @@ import (
 
 // Version 客户端版本（给 MCP 服务看的 clientInfo.version）。
 // 默认值可被 SetVersion 覆盖，由 cmd/backend 在启动时对齐到后端版本号。
-var Version = "0.8.1"
+var Version = "0.8.2"
 
 // SetVersion 让 MCP 客户端版本与后端版本保持一致。
 func SetVersion(v string) {

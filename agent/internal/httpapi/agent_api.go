@@ -958,6 +958,8 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 
 	// 定时任务与技能的增删改（原来只有"新增/只读"，见该文件里的说明）
 	s.registerCronSkills(mux)
+	// 生态插件源（把别的 Agent 生态的插件市场接进来）
+	s.registerEcology(mux)
 	// 人设文件的管理（QwenPaw 人设机制的 Go 版）
 	s.registerPersona(mux)
 	// 心跳任务的管理（配置 / HEARTBEAT.md / 手动触发）

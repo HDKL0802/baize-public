@@ -799,6 +799,10 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 				"provider": cfg.Search.Provider, "baseUrl": cfg.Search.BaseURL,
 				"hasApiKey": cfg.Search.APIKey != "", "maxResults": cfg.Search.MaxResults,
 			},
+			// Trae 生态适配器：只回显开关与自备索引地址（不回显任何密钥）。
+			// 桌面端「插件市场 → 生态适配器设置」写完会 GET 回读核对这两个字段。
+			"traeAdapterEnabled":  cfg.TraeAdapterEnabled,
+			"traeAdapterIndexURL": cfg.TraeAdapterIndexURL,
 		})
 	}))
 
@@ -838,6 +842,10 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 			SearchBaseURL    *string `json:"searchBaseUrl"`
 			SearchAPIKey     *string `json:"searchApiKey"`
 			SearchMaxResults *int    `json:"searchMaxResults"`
+			// Trae 生态适配器（可选）。索引地址必须是白泽格式 index.json；
+			// 格式未逆向确认前只是挂载钩子，填错由插件市场明确报错，不造假数据。
+			TraeAdapterEnabled  *bool   `json:"traeAdapterEnabled"`
+			TraeAdapterIndexURL *string `json:"traeAdapterIndexURL"`
 		}
 		if err := decodeBody(r, &patch); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
@@ -927,6 +935,13 @@ func (s *Server) registerAgent(mux *http.ServeMux) {
 		}
 		if patch.SearchMaxResults != nil && *patch.SearchMaxResults > 0 {
 			cfg.Search.MaxResults = *patch.SearchMaxResults
+		}
+		// Trae 适配器：开关与地址分开写，地址去空白；只有两者都就绪，pluginSources() 才挂源。
+		if patch.TraeAdapterEnabled != nil {
+			cfg.TraeAdapterEnabled = *patch.TraeAdapterEnabled
+		}
+		if patch.TraeAdapterIndexURL != nil {
+			cfg.TraeAdapterIndexURL = strings.TrimSpace(*patch.TraeAdapterIndexURL)
 		}
 		if err := a.SaveConfig(cfg); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())

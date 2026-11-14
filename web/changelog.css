@@ -1,0 +1,328 @@
+/* 更新日志页样式 —— 只复用 app.css 的设计变量，不改动 app.css 本身 */
+/* 颜色、字体、圆角、容器宽度全部来自 :root，保持与首页 / 文档页一致 */
+
+.cl-page {
+  display: block;
+  padding-top: 64px;
+  padding-bottom: 96px;
+}
+
+.cl-shell {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+/* 顶部标题区（对齐 docs.css 的 .doc-head 视觉） */
+.cl-head {
+  padding: 56px 0 40px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 40px;
+}
+.cl-eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 18px;
+}
+.cl-head h1 {
+  font-family: var(--font-display);
+  font-size: 44px;
+  line-height: 1.2;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 16px;
+  letter-spacing: -.01em;
+}
+.cl-lead {
+  font-size: 16px;
+  line-height: 1.9;
+  color: var(--text-2);
+  max-width: 680px;
+  margin: 0;
+}
+.cl-lead code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 1px 6px;
+  border-radius: var(--r-btn);
+  color: var(--text);
+}
+
+/* 状态工具条：来源 / 同步时间 / 刷新 / 状态文字 */
+.cl-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 14px 16px;
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  margin-bottom: 20px;
+}
+.cl-toolbar .cl-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+  min-height: 34px;
+}
+.cl-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+  flex: 0 0 auto;
+}
+.cl-dot.ok { background: var(--accent); box-shadow: 0 0 0 3px rgba(59,224,196,.12); }
+.cl-dot.warn { background: var(--err); box-shadow: 0 0 0 3px rgba(200,85,61,.12); }
+.cl-dot.busy { background: var(--paper); animation: cl-pulse 1s ease-in-out infinite; }
+@keyframes cl-pulse { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
+.cl-toolbar .cl-sync {
+  font-size: 12px;
+  color: var(--text-3);
+  font-family: var(--mono);
+}
+.cl-toolbar .cl-sync b { color: var(--text-2); font-weight: 500; }
+.cl-spacer { flex: 1 1 auto; }
+.cl-refresh {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-btn);
+  padding: 8px 16px;
+  min-height: 36px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.cl-refresh:hover { opacity: .86; }
+.cl-refresh:active { transform: translateY(1px); }
+.cl-refresh:disabled { opacity: .45; cursor: not-allowed; }
+.cl-refresh svg { width: 14px; height: 14px; }
+.cl-refresh.spin svg { animation: cl-spin .9s linear infinite; }
+@keyframes cl-spin { to { transform: rotate(360deg) } }
+
+/* 状态提示行 */
+.cl-status {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-2);
+  margin: 0 0 24px;
+  min-height: 22px;
+}
+.cl-status .cl-ok { color: var(--accent); }
+.cl-status .cl-warn { color: var(--err); }
+
+/* 明确错误横幅（失败绝不静默） */
+.cl-error {
+  display: none;
+  border: 1px solid var(--err);
+  background: rgba(200,85,61,.08);
+  border-radius: var(--r-card);
+  padding: 16px 18px;
+  margin-bottom: 24px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.cl-error.show { display: block; }
+.cl-error .cl-err-title {
+  font-weight: 600;
+  color: var(--err);
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cl-error .cl-err-title svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.cl-error p { margin: 4px 0; color: var(--text-2); }
+.cl-error code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 1px 6px;
+  border-radius: var(--r-btn);
+  color: var(--text);
+}
+
+/* 兜底说明 */
+.cl-fallback-note {
+  display: none;
+  border-left: 3px solid var(--accent);
+  background: var(--ink-2);
+  padding: 10px 16px;
+  margin: 0 0 28px;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.8;
+}
+.cl-fallback-note.show { display: block; }
+
+/* 版本时间线 */
+.cl-list {
+  display: block;
+  position: relative;
+}
+.cl-entry {
+  position: relative;
+  padding: 0 0 40px 32px;
+  border-left: 1px solid var(--line);
+  margin-left: 8px;
+}
+.cl-entry:last-child { border-left-color: transparent; }
+.cl-entry::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 1px solid var(--line-strong);
+}
+.cl-entry.cl-latest::before {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(59,224,196,.10);
+}
+
+.cl-entry-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+  margin-bottom: 14px;
+}
+.cl-tag {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .02em;
+  color: var(--ink);
+  background: var(--accent);
+  padding: 3px 10px;
+  border-radius: var(--r-btn);
+  white-space: nowrap;
+}
+.cl-entry.cl-not-latest .cl-tag {
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+}
+.cl-entry-name {
+  font-size: 15px;
+  color: var(--text);
+  font-weight: 600;
+}
+.cl-date {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-3);
+  margin-left: auto;
+  white-space: nowrap;
+}
+.cl-gh-link {
+  font-size: 12px;
+  color: var(--text-3);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.cl-gh-link:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+.cl-body {
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 24px 26px;
+}
+
+/* ======= 轻量 Markdown 渲染样式 ======= */
+.cl-md > :first-child { margin-top: 0; }
+.cl-md > :last-child { margin-bottom: 0; }
+.cl-md h1, .cl-md h2, .cl-md h3 {
+  font-family: var(--font-display);
+  color: var(--text);
+  line-height: 1.4;
+  font-weight: 600;
+}
+.cl-md h1 { font-size: 24px; margin: 0 0 16px; }
+.cl-md h2 { font-size: 19px; margin: 26px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line-soft); }
+.cl-md h3 { font-size: 16px; margin: 20px 0 10px; }
+.cl-md p { margin: 10px 0; color: var(--text-2); font-size: 14px; line-height: 1.85; }
+.cl-md ul, .cl-md ol {
+  margin: 10px 0;
+  padding-left: 22px;
+  color: var(--text-2);
+}
+.cl-md li { font-size: 14px; line-height: 1.85; margin: 4px 0; }
+.cl-md li::marker { color: var(--accent); }
+.cl-md ul ul, .cl-md ol ol, .cl-md ul ol, .cl-md ol ul { margin: 4px 0 4px; }
+.cl-md blockquote {
+  margin: 14px 0;
+  padding: 8px 16px;
+  border-left: 3px solid var(--accent);
+  background: var(--ink-3);
+  color: var(--text-2);
+}
+.cl-md blockquote p { margin: 4px 0; }
+.cl-md hr { border: 0; border-top: 1px solid var(--line); margin: 22px 0; }
+.cl-md strong { color: var(--text); font-weight: 600; }
+.cl-md a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.cl-md a:hover { color: var(--text); }
+.cl-md code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 1px 6px;
+  border-radius: var(--r-btn);
+  color: var(--jade);
+}
+.cl-md pre {
+  margin: 14px 0;
+  padding: 14px 16px;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-btn);
+  overflow-x: auto;
+}
+.cl-md pre code {
+  display: block;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre;
+}
+
+/* 加载骨架 */
+.cl-loading { color: var(--text-3); font-size: 14px; padding: 40px 0; }
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .cl-page { padding-top: 40px; padding-bottom: 64px; }
+  .cl-head { padding: 36px 0 28px; }
+  .cl-head h1 { font-size: 32px; }
+  .cl-lead { font-size: 15px; }
+  .cl-toolbar { gap: 10px 12px; }
+  .cl-spacer { flex-basis: 100%; }
+  .cl-date { margin-left: 0; }
+  .cl-entry { padding-left: 22px; }
+  .cl-body { padding: 18px 16px; }
+}

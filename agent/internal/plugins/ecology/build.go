@@ -61,7 +61,7 @@ func Build(cat *Catalog, opt BuildOptions) (*BuildResult, error) {
 		return nil, err
 	}
 	res := &BuildResult{IndexPath: filepath.Join(opt.OutDir, "index.json")}
-	idx := plugins.Index{Schema: plugins.SchemaVersion, Name: firstNonEmpty(opt.SourceName, cat.Title, "生态源")}
+	idx := plugins.Index{Schema: plugins.SchemaVersion, Name: firstNonEmpty(opt.SourceName, cat.Title, "生态源"), Plugins: []plugins.Meta{}}
 	for _, e := range cat.Entries {
 		if !e.Installable {
 			res.Skipped++

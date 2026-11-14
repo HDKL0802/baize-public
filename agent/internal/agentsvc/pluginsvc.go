@@ -59,17 +59,35 @@ func (s *Service) PluginSources() []config.PluginSource {
 	return append([]config.PluginSource{}, s.Config().PluginSources...)
 }
 
-// pluginSources 把配置里的源转成 plugins 包认识的形状，并在**末尾**接上内置官方源。
+// pluginSources 把配置里的源转成 plugins 包认识的形状，并在**末尾**接上内置源。
 //
-// 为什么放末尾：取插件时按顺序找，先命中先用 —— 用户自己加的源优先于官方源，
-// 与"插件的优先级永远低于用户自己那摊"这条口径一致；官方源只是**兜底**（开箱有内容、离线可用）。
+// 为什么放末尾：取插件时按顺序找，先命中先用 —— 用户自己加的源优先于内置源，
+// 与"插件的优先级永远低于用户自己那摊"这条口径一致；内置源只是**兜底**。
+// 两个内置源（官方 + DSH 生态市场）都随二进制分发：默认启用、不写进 config.json、
+// 换数据目录也不会失效。
 func (s *Service) pluginSources() []plugins.Source {
-	cfg := s.PluginSources()
-	out := make([]plugins.Source, 0, len(cfg)+1)
-	for _, c := range cfg {
+	cfg := s.Config()
+	out := make([]plugins.Source, 0, len(cfg.PluginSources)+3)
+	for _, c := range cfg.PluginSources {
 		out = append(out, plugins.Source{Name: c.Name, URL: c.URL, Enabled: c.Enabled})
 	}
 	out = append(out, plugins.Source{Name: plugins.BuiltinSourceName, URL: plugins.BuiltinSourceURL, Enabled: true})
+	// DSH 生态市场（内置）：桌面端开箱即可浏览，不用让用户自己装 DSH market 插件。
+	// 注意它只提供货架信息（npm / cordis 形态），点「安装」会被 readDshMarket 明确拒绝。
+	out = append(out, plugins.Source{Name: plugins.DshMarketSourceName, URL: plugins.DshMarketSourceURL, Enabled: true})
+	// Trae 生态适配器：可选的「自带索引地址」挂载钩子。
+	//
+	// Trae 的索引格式尚未拿到 —— 用户明确要求先由他更新 Trae 并交给其他人逆向，
+	// 本轮不做任何逆向、也不写格式转换。这里只留一个开关 + 一个地址：
+	// 填进来的地址必须是**白泽格式**的 index.json；不是的话插件市场在拉索引时会
+	// 明确报错（挂在该源自己的 SourceView.Error 上），不会假装能用。
+	if cfg.TraeAdapterEnabled && strings.TrimSpace(cfg.TraeAdapterIndexURL) != "" {
+		out = append(out, plugins.Source{
+			Name:    "Trae 生态适配器",
+			URL:     strings.TrimSpace(cfg.TraeAdapterIndexURL),
+			Enabled: true,
+		})
+	}
 	return out
 }
 

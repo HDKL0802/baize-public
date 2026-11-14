@@ -29,12 +29,24 @@ const maxIndexBytes = 32 << 20
 // Fetch 拉一份 DSH 市场索引并解析成目录条目。
 //
 // indexURL 可以是 http(s) 地址，也可以是本机路径（离线用）。
+// probe == nil = 纯目录模式（不联网探测）；传 ProbeRepo = 联网逐仓库探测内容形态。
 // 返回的 Catalog 里每个条目都带 Kind 与 Installable —— 不能装的如实标出来。
+//
+// 探测阶段走有界 worker pool（默认 8 并发）+ 同仓库结果缓存 + 双超时，
+// 但输出顺序与串行版一致：按 Kind 再 ID 排序；错误排序后截断前 50 条。
 func Fetch(indexURL string, probe Probe) (*Catalog, error) {
+	return FetchWithOptions(indexURL, FetchOptions{
+		Probe:        probe,
+		Concurrency:  DefaultProbeConcurrency,
+		ProbeTimeout: DefaultProbeTimeout,
+		TotalTimeout: DefaultProbeTotalTimeout,
+	})
+}
+
+// FetchWithOptions 同 Fetch，但允许配置并发数、单条/整轮超时与探测函数（测试用）。
+// 零值 FetchOptions = 纯目录模式（不联网）+ 默认并发/超时。
+func FetchWithOptions(indexURL string, opt FetchOptions) (*Catalog, error) {
 	cat := &Catalog{Source: indexURL}
-	if probe == nil {
-		probe = ProbeRepo
-	}
 	raw, err := fetchBytes(indexURL)
 	if err != nil {
 		return nil, err
@@ -48,21 +60,29 @@ func Fetch(indexURL string, probe Probe) (*Catalog, error) {
 	}
 	cat.Title = idx.Title.String()
 	cat.Updated = time.Now().UTC().Format(time.RFC3339)
+
+	pp, cancel := newProbePool(opt.Probe, opt.Concurrency, opt.ProbeTimeout, opt.TotalTimeout)
+	defer cancel()
+	outcomes := pp.convertAll(idx.Plugins)
+
 	seen := map[string]bool{}
-	for _, p := range idx.Plugins {
-		e, err := convert(p, probe)
-		if err != nil {
-			if len(cat.Errors) < 50 {
-				cat.Errors = append(cat.Errors, err.Error())
-			}
+	var errs []fetchError
+	for i, o := range outcomes {
+		if o.err != nil {
+			errs = append(errs, fetchError{
+				id:  EcosystemID(strings.TrimSpace(idx.Plugins[i].Name)),
+				msg: o.err.Error(),
+			})
 			continue
 		}
+		e := o.entry
 		if e == nil || e.ID == "" || seen[e.ID] {
 			continue
 		}
 		seen[e.ID] = true
 		cat.Entries = append(cat.Entries, *e)
 	}
+	cat.Errors = sortedErrors(errs)
 	sort.Slice(cat.Entries, func(i, j int) bool {
 		if cat.Entries[i].Kind != cat.Entries[j].Kind {
 			return cat.Entries[i].Kind < cat.Entries[j].Kind
@@ -141,8 +161,7 @@ func convert(p dshPlugin, probe Probe) (*Entry, error) {
 	if probe == nil {
 		// 没开探测：只按索引元数据列目录，不猜形态。
 		e.Reason = "没有探测内容形态（这次是纯目录模式）。开探测后会去仓库里看有没有 SKILL.md 或 MCP 配置，再判断能不能装。"
-	}
-	if probe != nil {
+	} else {
 		info, err := probe(name, v, e.Repository)
 		if err != nil {
 			// 探测失败 ≠ 确认不能装。这两种情况在界面上必须说得清，
@@ -159,6 +178,9 @@ func convert(p dshPlugin, probe Probe) (*Entry, error) {
 			} else if info.Kind == KindUnknown {
 				e.Reason = "看不出这个插件的内容形态（既没有技能，也没有可注册的 MCP 工具），这里只作目录展示。"
 			}
+		} else {
+			// 探测函数返回 (nil, nil)：既没报错也没给出形态，如实说明，不猜。
+			e.Reason = "探测没给出内容形态（探测函数返回空结果）。这不代表它一定装不了 —— 只是现在还说不准；要确认请到它的仓库里看有没有 SKILL.md 或 MCP 配置。"
 		}
 	}
 	e.Installable = e.Kind == KindSkill || e.Kind == KindTool

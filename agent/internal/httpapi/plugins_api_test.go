@@ -105,19 +105,22 @@ func TestPluginsMarketFlow(t *testing.T) {
 		t.Fatalf("插件源没加上：%+v", add.Sources)
 	}
 
-	// 逛市场：用户源在前、内置官方源在后
+	// 逛市场：用户源在前，内置官方源与 DSH 生态市场（内置）在后
 	var m marketResp
 	if code := e.do("GET", "/api/agent/plugins", nil, true, &m); code != 200 {
 		t.Fatalf("读市场失败：HTTP %d", code)
 	}
-	if len(m.Sources) != 2 {
-		t.Fatalf("应当有 2 个源（用户源 + 内置官方源），实际 %d：%+v", len(m.Sources), m.Sources)
+	if len(m.Sources) != 3 {
+		t.Fatalf("应当有 3 个源（用户源 + 内置官方源 + DSH 生态市场），实际 %d：%+v", len(m.Sources), m.Sources)
 	}
 	if m.Sources[0].Error != "" || m.Sources[0].Count != 1 || m.Sources[0].Builtin {
 		t.Fatalf("用户源状态不对：%+v", m.Sources[0])
 	}
 	if !m.Sources[1].Builtin || m.Sources[1].Error != "" || m.Sources[1].Count == 0 {
 		t.Fatalf("内置官方源状态不对：%+v", m.Sources[1])
+	}
+	if !m.Sources[2].Builtin || m.Sources[2].Error != "" || m.Sources[2].Count == 0 {
+		t.Fatalf("DSH 生态市场（内置）状态不对：%+v", m.Sources[2])
 	}
 	if demo := findAvail(m, "demo"); demo == nil || demo.Installed || demo.Builtin {
 		t.Fatalf("用户源里那格货架不对：%+v", demo)
@@ -221,13 +224,13 @@ func findAvail(m marketResp, id string) *plugins.Available {
 func TestPluginsBuiltinSourceAndDirectInstall(t *testing.T) {
 	e, svc := newAgentEnv(t)
 
-	// 没配任何用户源时，市场里也一定有内置官方源（随后端分发，开箱有内容、离线可用）
+	// 没配任何用户源时，市场里也一定有内置官方源与 DSH 生态市场（内置）（随后端分发，开箱有内容、离线可用）
 	var m marketResp
 	if code := e.do("GET", "/api/agent/plugins", nil, true, &m); code != 200 {
 		t.Fatalf("读市场失败：HTTP %d", code)
 	}
-	if len(m.Sources) != 1 || !m.Sources[0].Builtin || m.Sources[0].Error != "" {
-		t.Fatalf("应当只有内置官方源且不报错：%+v", m.Sources)
+	if len(m.Sources) != 2 || !m.Sources[0].Builtin || m.Sources[0].Error != "" || !m.Sources[1].Builtin || m.Sources[1].Error != "" {
+		t.Fatalf("应当有内置官方源与 DSH 生态市场（内置）且不报错：%+v", m.Sources)
 	}
 	if len(m.Available) == 0 {
 		t.Fatal("内置官方源的货架是空的")

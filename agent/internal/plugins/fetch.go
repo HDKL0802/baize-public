@@ -63,14 +63,22 @@ func isRemote(ref string) bool {
 // readRef 读一个地址：内置源走内嵌内容，http(s) 走网络，其余当本地文件。
 // 返回内容和"最终解析到的地址"。
 func readRef(ctx context.Context, hc *http.Client, ref, base string, limit int64) ([]byte, string, error) {
-	// 内置官方源：索引与插件包都在内存里现场生成，不走网络也不走磁盘
+	// 内置源：索引与插件包都随二进制分发，不走网络也不走磁盘。
+	// DSH 生态市场是「只读展示」源（没有可安装的 zip），单独分流到 readDshMarket：
+	// 索引地址返回内嵌字节，包地址返回明确错误，绝不伪造一个能装的包。
 	if IsBuiltinSource(ref) {
+		if isDshMarketRef(ref) {
+			return readDshMarket(ref)
+		}
 		return readBuiltin(ref)
 	}
 	if IsBuiltinSource(base) {
 		target := strings.TrimSpace(base)
 		if r := strings.TrimSpace(ref); r != "" && !IsBuiltinSource(r) {
 			target = strings.TrimSuffix(target, "/") + "/" + r
+		}
+		if isDshMarketRef(target) {
+			return readDshMarket(target)
 		}
 		return readBuiltin(target)
 	}

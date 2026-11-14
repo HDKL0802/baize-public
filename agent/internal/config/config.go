@@ -211,7 +211,7 @@ type PluginSource struct {
 
 // Config 后端 Agent 配置
 type Config struct {
-	AllowRemote bool       `json:"allowRemote"` // 是否允许非本机模型地址 / 远端 MCP 服务
+	AllowRemote bool `json:"allowRemote"` // 是否允许非本机模型地址 / 远端 MCP 服务
 	// ActiveProvider 用户在界面上选的默认模型通道名（空=按 Router 自动路由）。
 	// 界面切换模型时写这里；Agent 运行时如果没有显式指定 provider，优先用它。
 	ActiveProvider string     `json:"activeProvider,omitempty"`
@@ -250,6 +250,15 @@ type Config struct {
 	Browser        Browser            `json:"browser"`                 // 浏览器工具（打开网页 / 跑 JS / 截图）
 	Search         Search             `json:"search"`                  // 联网搜索通道（web_search 工具）
 	PluginSources  []PluginSource     `json:"pluginSources,omitempty"` // 插件源（插件市场）
+	// TraeAdapterEnabled / TraeAdapterIndexURL：Trae 生态适配器的**可选挂载钩子**。
+	//
+	// Trae 的索引格式尚未拿到（用户明确要求先由他更新 Trae 并交给其他人逆向，本轮不做逆向），
+	// 因此这里只提供「自带索引地址」的挂载钩子，不做任何格式适配：填进来的地址必须是
+	// 白泽格式的 index.json（schema/plugins 那套）。不是的话插件市场拉索引时会明确报错
+	// （挂在该源自己的 SourceView.Error 上），不会假装能用。
+	// 默认关闭、地址为空；只有开关打开且地址非空时 pluginSources() 才追加该源。
+	TraeAdapterEnabled  bool   `json:"traeAdapterEnabled,omitempty"`
+	TraeAdapterIndexURL string `json:"traeAdapterIndexURL,omitempty"`
 	// ExternalAgents 外部 Agent（委托执行）：白泽可以把一段独立的活派给它，只把结论拿回来。
 	// 只做"清理/去重"，**不自动新建**——没配就是没配（agent_call 会明确报"还没有外部 Agent"）。
 	ExternalAgents []ExternalAgent `json:"externalAgents,omitempty"`
@@ -293,6 +302,9 @@ func Default() Config {
 			MaxBytes:   256 * 1024,
 		},
 		Search: Search{TimeoutSec: 20, MaxResults: 8},
+		// Trae 适配器默认关闭、地址为空：本轮不做 Trae 索引格式逆向，只留挂载钩子。
+		TraeAdapterEnabled:  false,
+		TraeAdapterIndexURL: "",
 	}
 }
 

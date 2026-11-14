@@ -11,7 +11,8 @@
 这台机器 `DESKTOP-3IM4KHB` **就是白泽的源机，不搬家**：
 - 仓库在 `D:\xm\白泽智能体`（git，`origin`=HDKL0802/baize，`public`=HDKL0802/baize-public，分支 `main`，2026-10-31 结论时 HEAD `f7ff1ca`）
 - 后续演进（截至 2026-11-08）：HEAD 已到 `e4888c1`；0.8.0 打包 + GitHub/Gitee 双源发布（Release 资产 + GHCR 镜像 + 手机 APK）全部完成，详见 `docs/交接文档-2026-11-07-白泽0.8.0-打包与双源发布.md` §七
-- WSL 后端正在跑：`baize-backend.service` = **active + enabled**，监听 8787，`/api/health` → `ok:true`
+- 后续演进（截至 2026-11-13）：HEAD `8bcdc7a`；0.8.0 真机 UI 端到端点击回归（A 八页 / B 文件预览 / C 星图 / D 打开·移交）全部实测通过，详见 `docs/交接文档-2026-11-13-白泽0.8.0-真机UI回归.md`
+- ⚠ 2026-11-13 复核订正：原文此处曾记「`baize-backend.service` active + enabled / 8787 正常」，那是 2026-10-31 历史结论、现不成立 —— 该 systemd 服务实为 `inactive`，8787 上是 Docker 容器 `baize-backend:0.7.1` 反复重启；本轮回归改用 18787 独立 0.8.0 实例（`-no-token` + 临时数据目录），生产后端未改动。
 - 工具链齐全，无需重装
 
 **没有**把项目搬到 `G:\DeepSeek Harness`（G 盘仅剩 19.6 GB，且会导致 WSL 服务路径失配）。

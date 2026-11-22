@@ -51,12 +51,13 @@ func main() {
 		showVer    = flag.Bool("version", false, "打印版本后退出")
 
 		// 跨端调度：连到白泽后端，注册成一台设备
-		server     = flag.String("server", "", "白泽后端地址（http://host:port）；留空则只做本地内核，不连后端")
-		pairToken  = flag.String("pair-token", "", "后端配对令牌（见后端数据目录的 token 文件）")
-		deviceID   = flag.String("device-id", "", "设备 id；留空则用 <数据目录>/device-id（首次自动生成，保证重启不变）")
-		deviceName = flag.String("device-name", "", "设备显示名；留空按平台给个默认名")
-		platform   = flag.String("platform", "", "对外声明的平台名（交叉编译成 linux 跑在安卓上时建议传 android）；留空用 runtime.GOOS")
-		heartbeat  = flag.Duration("heartbeat", 15*time.Second, "心跳间隔")
+		server      = flag.String("server", "", "白泽后端地址（http://host:port）；留空则只做本地内核，不连后端")
+		pairToken   = flag.String("pair-token", "", "后端配对令牌（见后端数据目录的 token 文件）")
+		deviceID    = flag.String("device-id", "", "设备 id；留空则用 <数据目录>/device-id（首次自动生成，保证重启不变）")
+		deviceName  = flag.String("device-name", "", "设备显示名；留空按平台给个默认名")
+		platform    = flag.String("platform", "", "对外声明的平台名（交叉编译成 linux 跑在安卓上时建议传 android）；留空用 runtime.GOOS")
+		heartbeat   = flag.Duration("heartbeat", 15*time.Second, "心跳间隔")
+		serverPaths = flag.String("server-paths", "", "候选后端地址（逗号分隔，按优先级；LAN 直连在前，公网/中继兜底）")
 	)
 	flag.Parse()
 
@@ -142,6 +143,7 @@ func main() {
 		go runDeviceClient(ctx, svc, deviceConfig{
 			Server: *server, Token: *pairToken, DataDir: *dataDir,
 			DeviceID: *deviceID, Name: *deviceName, Platform: *platform, Heartbeat: *heartbeat,
+			Paths: csvPaths(*serverPaths),
 		}, devState)
 	}
 
@@ -163,19 +165,21 @@ type deviceState struct {
 	connected bool
 	since     int64
 	lastError string
+	path      string // 本次实际命中的候选地址
 }
 
 func (d *deviceState) begin(server, id string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.enabled, d.server, d.deviceID = true, server, id
-	d.connected, d.since, d.lastError = false, 0, ""
+	d.connected, d.since, d.lastError, d.path = false, 0, "", ""
 }
 
-func (d *deviceState) online() {
+func (d *deviceState) online(path string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.connected, d.since, d.lastError = true, time.Now().UnixMilli(), ""
+	d.path = path
 }
 
 // offline 记下断开与原因（原因空着表示只是正常断开，保留上一次的错误信息）
@@ -193,7 +197,7 @@ func (d *deviceState) snapshot() map[string]any {
 	defer d.mu.Unlock()
 	return map[string]any{
 		"enabled": d.enabled, "server": d.server, "deviceId": d.deviceID,
-		"connected": d.connected, "connectedAt": d.since, "lastError": d.lastError,
+		"connected": d.connected, "connectedAt": d.since, "lastError": d.lastError, "path": d.path,
 		"actions": core.DeviceActionList(), "caps": core.DeviceCaps(),
 	}
 }
@@ -289,13 +293,13 @@ func remoteStatusHandler(token string, svc *core.Service, r *core.Remote) http.H
 		}
 		snap, err := svc.Snapshot()
 		out := map[string]any{
-			"enabled": r != nil,
-			"remote":  snap.Remote,
-			"stale":   snap.Stale,
-			"reason":  snap.StaleReason,
+			"enabled":  r != nil,
+			"remote":   snap.Remote,
+			"stale":    snap.Stale,
+			"reason":   snap.StaleReason,
 			"cachedAt": snap.CachedAt,
-			"todos":   len(snap.Todos),
-			"vault":   len(snap.Vault),
+			"todos":    len(snap.Todos),
+			"vault":    len(snap.Vault),
 		}
 		if r != nil {
 			out["server"] = r.Server()
@@ -353,6 +357,7 @@ type deviceConfig struct {
 	Name      string
 	Platform  string
 	Heartbeat time.Duration
+	Paths     []string // 候选后端地址（按优先级），空 = 只用 Server
 }
 
 // runDeviceClient 常驻后台：连后端 → 注册 → 收指令 → 执行 → 回执，断了自动重连
@@ -376,10 +381,11 @@ func runDeviceClient(ctx context.Context, svc *core.Service, dc deviceConfig, st
 	st.begin(dc.Server, id)
 
 	cfg := client.Config{
-		URL:   dc.Server,
-		Token: dc.Token,
+		URL:       dc.Server,
+		Paths:     dc.Paths,
+		Token:     dc.Token,
 		Heartbeat: dc.Heartbeat,
-		Logger: lg,
+		Logger:    lg,
 		Info: proto.Hello{
 			DeviceID:  id,
 			Name:      name,
@@ -393,7 +399,8 @@ func runDeviceClient(ctx context.Context, svc *core.Service, dc deviceConfig, st
 	}
 	lg.Info("以设备身份连接白泽后端", "device", id, "server", dc.Server, "caps", cfg.Info.Caps)
 	err = client.RunForever(ctx, cfg, deviceCommandHandler(svc, lg), func(sess *client.Session) {
-		st.online()
+		st.online(sess.Path())
+		lg.Info("已注册到后端", "ackServer", sess.Ack().Server, "queued", sess.Ack().QueuedTasks, "via", sess.Path())
 		// 这次会话一断就标记成未连接，界面上立刻能看到「掉了」
 		go func() {
 			<-sess.Done()
@@ -418,6 +425,17 @@ func deviceCommandHandler(svc *core.Service, lg *slog.Logger) client.CommandHand
 	}
 }
 
+// csvPaths 逗号分隔的候选地址 → 顺序列表（空段丢弃）
+func csvPaths(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // resolveDeviceID 设备 id 的取法：命令行 > <数据目录>/device-id > 新生成并落盘
 // （落盘是为了重启/升级后仍是同一台设备，不会在后端多出一堆幽灵设备）
 func resolveDeviceID(dataDir, flagID string) (string, error) {
@@ -440,7 +458,6 @@ func resolveDeviceID(dataDir, flagID string) (string, error) {
 	}
 	return id, nil
 }
-
 
 // resolveToken 决定接口令牌：命令行指定 > 数据目录里的 token 文件 > 新生成
 func resolveToken(dataDir, flagToken string) (string, error) {

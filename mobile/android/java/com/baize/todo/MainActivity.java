@@ -431,6 +431,13 @@ public class MainActivity extends Activity {
             return st;
         }
 
+        /** 设置候选后端地址（逗号分隔，LAN 在前、公网/中继兜底；留空 = 只用 bzCoreConfigure 的单地址） */
+        @JavascriptInterface
+        public String bzCoreConfigurePaths(String csv) {
+            if (coreBridge == null) return "{\"error\":\"本机没有内核管理器\"}";
+            return coreBridge.configurePaths(csv);
+        }
+
         /** 代界面调内核的本机接口（走原生层绕开跨源限制），返回内核原始 JSON */
         @JavascriptInterface
         public String bzCoreCall(String path, String method, String body) {

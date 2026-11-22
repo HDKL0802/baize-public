@@ -47,6 +47,7 @@ public class CoreBridge {
 
     private boolean enabled = false;
     private String server = "";
+    private String serverPaths = "";   // 候选后端地址（逗号分隔，LAN 在前，公网/中继兜底）；空 = 只用 server
     private String pairToken = "";
 
     private Process proc;
@@ -80,6 +81,7 @@ public class CoreBridge {
             JSONObject o = new JSONObject(new String(raw, "UTF-8"));
             enabled = o.optBoolean("enabled", false);
             server = o.optString("server", "");
+            serverPaths = o.optString("serverPaths", "");
             pairToken = o.optString("pairToken", "");
         } catch (Throwable ignored) {
             // 没有配置文件 = 还没开过跨端，用默认值即可
@@ -91,6 +93,7 @@ public class CoreBridge {
             JSONObject o = new JSONObject();
             o.put("enabled", enabled);
             o.put("server", server);
+            o.put("serverPaths", serverPaths);
             o.put("pairToken", pairToken);
             out.write(o.toString().getBytes("UTF-8"));
         } catch (Throwable t) {
@@ -131,6 +134,9 @@ public class CoreBridge {
         cmd.add("--platform");    cmd.add("android");
         cmd.add("--device-name"); cmd.add(deviceName());
         cmd.add("--server");      cmd.add(server);
+        if (!serverPaths.isEmpty()) {
+            cmd.add("--server-paths"); cmd.add(serverPaths);
+        }
         cmd.add("--pair-token");  cmd.add(pairToken);
 
         try {
@@ -247,6 +253,7 @@ public class CoreBridge {
             o.put("supported", binFile().isFile());
             o.put("enabled", enabled);
             o.put("server", server);
+            o.put("serverPaths", serverPaths);
             o.put("pairTokenSet", !pairToken.isEmpty());
             o.put("running", alive(proc));
             o.put("port", port);
@@ -267,6 +274,15 @@ public class CoreBridge {
         } else {
             lastError = "";
         }
+        saveConfig();
+        stop();
+        if (enabled) start();
+        return status().toString();
+    }
+
+    /** 单独设置候选后端地址（逗号分隔，按优先级）；留空 = 退回单地址 server。 */
+    synchronized String configurePaths(String csv) {
+        serverPaths = csv == null ? "" : csv.trim();
         saveConfig();
         stop();
         if (enabled) start();

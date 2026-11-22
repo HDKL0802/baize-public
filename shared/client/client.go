@@ -32,6 +32,13 @@ const (
 // ErrFatal 不可重试的错误（如配对令牌不对、服务端拒绝注册）
 var ErrFatal = errors.New("不可重试的连接错误")
 
+// Dialer 抽象「拨出一条到后端 /ws/device 的 WebSocket 通道」。
+// 默认 nil = gorilla 直连；之后加 P2P / Relay 只需新增实现，
+// 上层注册 / 心跳 / 指令 / 回执语义一律不动。
+type Dialer interface {
+	DialContext(ctx context.Context, urlStr string, requestHeader http.Header) (*websocket.Conn, *http.Response, error)
+}
+
 // Config 连接配置
 type Config struct {
 	URL          string // http(s)://host:port 或 ws(s)://host:port/ws/device
@@ -41,6 +48,9 @@ type Config struct {
 	Heartbeat    time.Duration
 	HelloTimeout time.Duration
 	Busy         func() bool // 供心跳上报忙闲
+
+	Paths  []string // 候选后端地址（按优先级，LAN 直连在前，公网/中继兜底）；为空时只用 URL
+	Dialer Dialer   // 传输实现；nil = gorilla 直连（行为与旧版一致）
 }
 
 // CommandHandler 收到指令后的处理函数（返回回执）
@@ -50,6 +60,7 @@ type CommandHandler func(cmd proto.Command) proto.Receipt
 type Session struct {
 	c    *wsConn
 	ack  proto.HelloAck
+	path string // 实际命中的候选地址（多路径协商后排障/上报用）
 	done chan struct{}
 	once sync.Once
 }
@@ -62,6 +73,9 @@ func (s *Session) Done() <-chan struct{} { return s.done }
 
 // Ack 注册确认
 func (s *Session) Ack() proto.HelloAck { return s.ack }
+
+// Path 本次连接实际命中的地址（多路径协商后告诉调用方走的是哪条）
+func (s *Session) Path() string { return s.path }
 
 type wsConn struct {
 	ws *websocket.Conn
@@ -93,24 +107,50 @@ func Run(ctx context.Context, cfg Config, onCommand CommandHandler, onReady func
 		cfg.Heartbeat = 10 * time.Second
 	}
 
-	wsURL, err := normalizeURL(cfg.URL, cfg.Token)
-	if err != nil {
-		return fmt.Errorf("%w：%v", ErrFatal, err)
-	}
-
-	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
-	ws, resp, err := dialer.DialContext(ctx, wsURL, http.Header{})
-	if err != nil {
-		if resp != nil {
-			return fmt.Errorf("连接后端失败（HTTP %d）：%w", resp.StatusCode, err)
+	// 多路径协商：按 Paths 顺序逐条试，第一条成功就用它；
+	// 单条路径（或只配了 URL）时与旧版完全一致。
+	// 401/403 是令牌/权限问题，换地址也一样被拒，直接按不可重试处理。
+	var (
+		ws     *websocket.Conn
+		resp   *http.Response
+		wsURL  string
+		fails  []string
+		cands  = cfg.paths()
+		dialer = cfg.dialer()
+	)
+	for _, cand := range cands {
+		u, err := normalizeURL(cand, cfg.Token)
+		if err != nil {
+			return fmt.Errorf("%w：%v", ErrFatal, err)
 		}
-		return fmt.Errorf("连接后端失败：%w", err)
+		ws, resp, err = dialer.DialContext(ctx, u, http.Header{})
+		if err == nil {
+			wsURL = u
+			break
+		}
+		if resp != nil && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
+			return fmt.Errorf("连接后端失败（HTTP %d）：%w", resp.StatusCode, ErrFatal)
+		}
+		if len(cands) == 1 {
+			if resp != nil {
+				return fmt.Errorf("连接后端失败（HTTP %d）：%w", resp.StatusCode, err)
+			}
+			return fmt.Errorf("连接后端失败：%w", err)
+		}
+		if resp != nil {
+			fails = append(fails, fmt.Sprintf("%s：HTTP %d", cand, resp.StatusCode))
+		} else {
+			fails = append(fails, fmt.Sprintf("%s：%v", cand, err))
+		}
+	}
+	if ws == nil {
+		return fmt.Errorf("所有候选后端地址都连不上：%s", strings.Join(fails, "；"))
 	}
 	defer ws.Close()
 	ws.SetReadLimit(maxMsgSize)
 
 	c := &wsConn{ws: ws}
-	sess := &Session{c: c, done: make(chan struct{})}
+	sess := &Session{c: c, done: make(chan struct{}), path: wsURL}
 	sessCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer sess.once.Do(func() { close(sess.done) })
@@ -309,6 +349,28 @@ func handleCommand(lg *slog.Logger, sess *Session, cmd proto.Command, onCommand 
 	default:
 		lg.Warn("指令被拒绝，回执已发送", "task", cmd.TaskID, "action", cmd.Action, "reason", rc.Error)
 	}
+}
+
+// paths 候选地址：配了 Paths 就用它（保持顺序），否则退回 URL 单条。
+func (c *Config) paths() []string {
+	out := make([]string, 0, len(c.Paths)+1)
+	for _, p := range c.Paths {
+		if s := strings.TrimSpace(p); s != "" {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return []string{c.URL}
+	}
+	return out
+}
+
+// dialer 传输实现；未指定就走 gorilla 直连。
+func (c *Config) dialer() Dialer {
+	if c.Dialer != nil {
+		return c.Dialer
+	}
+	return &websocket.Dialer{HandshakeTimeout: 10 * time.Second}
 }
 
 // normalizeURL 把 http(s):// 地址转换成 ws(s)://.../ws/device

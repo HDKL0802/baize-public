@@ -6,7 +6,7 @@ import ChatMode from './components/ChatMode.vue';
 import TextMode from './components/TextMode.vue';
 import DictateMode from './components/DictateMode.vue';
 import SubtitleMode from './components/SubtitleMode.vue';
-import CallMode from './components/CallMode.vue';
+// CallMode 已移除：两人通话入口按用户要求关闭
 
 /* ---------- 全局 CSS 变量：墨玉 · 东方蓝图（四端统一） ---------- */
 const globalCSS = `
@@ -200,7 +200,6 @@ async function boot() {
 
   // 5. 启动轮询
   startRevPoll();
-  if (mode.value === 'call') startCtxPoll();
 
   await nextTick();
 }
@@ -258,7 +257,6 @@ onBeforeUnmount(() => {
     <TextMode    v-else-if="mode === 'translate'" :mode="'translate'" />
     <DictateMode v-else-if="mode === 'dictate'" />
     <SubtitleMode v-else-if="mode === 'subtitle'" />
-    <CallMode    v-else-if="mode === 'call'" />
   </main>
 </template>
 

@@ -353,6 +353,53 @@ window.More = (function () {
     },
 
     /* ---- 配置 · 语音 ---- */
+    // 打开语音配置表单：让用户按自己的账号填 Key / 协议 / 地址 / 模型；不填就没法用。
+    function openVoiceForm(r) {
+      var protocols = (Array.isArray(r.protocols) && r.protocols.length) ? r.protocols : ['openai', 'dashscope'];
+      var protoOpts = protocols.map(function (x) { return '<option value="' + esc(x) + '"' + (x === r.protocol ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('');
+      var html = ''
+        + '<div class="f-block"><label class="f-label">协议</label>'
+        + '<select class="f-input" id="vf-protocol">' + protoOpts + '</select>'
+        + '<div class="f-note">openai = OpenAI 兼容接口；dashscope = 阿里云百炼（地址可留空走官方）</div></div>'
+        + '<div class="f-block"><label class="f-label">Base URL（可留空走官方默认）</label>'
+        + '<input class="f-input" id="vf-base" value="' + esc(r.baseUrl || '') + '" placeholder="如 https://dashscope.aliyuncs.com 或 OpenAI 兼容地址"></div>'
+        + '<div class="f-block"><label class="f-label">API Key' + (r.hasApiKey ? '（已配置，留空 = 不改）' : '') + '</label>'
+        + '<input class="f-input" id="vf-key" type="password" placeholder="' + (r.hasApiKey ? '留空 = 不改原来的 Key' : 'sk-...') + '"></div>'
+        + '<div class="f-block"><label class="f-label">合成模型 TTS</label>'
+        + '<input class="f-input" id="vf-tts" value="' + esc(r.ttsModel || '') + '" placeholder="如 tts-1 / qwen-tts"></div>'
+        + '<div class="f-block"><label class="f-label">听写模型 STT</label>'
+        + '<input class="f-input" id="vf-stt" value="' + esc(r.sttModel || '') + '" placeholder="如 whisper-1 / paraformer-realtime-v2"></div>'
+        + '<div class="f-block"><label class="f-label">默认音色（可选）</label>'
+        + '<input class="f-input" id="vf-voice" value="' + esc(r.voice || '') + '" placeholder="如 nova / Cherry"></div>'
+        + '<div class="f-block"><label class="f-label">语速（0–4，留空 = 默认）</label>'
+        + '<input class="f-input" id="vf-speed" type="number" min="0.1" max="4" step="0.1" value="' + esc(r.speed || '') + '"></div>'
+        + '<div class="f-block"><div class="switch-row"><div class="sr-main"><div class="sr-name">启用语音</div><div class="sr-desc">关掉则所有端都不朗读 / 不听写</div></div>'
+        + '<button class="toggle ' + (r.enabled ? 'on' : '') + '" id="vf-enabled"><span></span></button></div></div>'
+        + '<div class="f-block"><div class="switch-row"><div class="sr-main"><div class="sr-name">回复自动朗读</div><div class="sr-desc">白泽回完话自动念出来</div></div>'
+        + '<button class="toggle ' + (r.autoSpeak ? 'on' : '') + '" id="vf-auto"><span></span></button></div></div>'
+        + '<button class="btn-block" id="vf-save">保存配置</button>';
+      UI.openTool('语音配置', html, function () {
+        var enabled = !!r.enabled, auto = !!r.autoSpeak;
+        var togE = document.getElementById('vf-enabled'), togA = document.getElementById('vf-auto');
+        togE.addEventListener('click', function () { enabled = !enabled; togE.classList.toggle('on', enabled); });
+        togA.addEventListener('click', function () { auto = !auto; togA.classList.toggle('on', auto); });
+        document.getElementById('vf-save').addEventListener('click', function () {
+          var val = function (id) { var e = document.getElementById(id); return (e && e.value ? e.value : '').trim(); };
+          var payload = { enabled: enabled, autoSpeak: auto, protocol: val('vf-protocol'), baseUrl: val('vf-base'),
+            ttsModel: val('vf-tts'), sttModel: val('vf-stt'), voice: val('vf-voice') };
+          var key = val('vf-key');
+          if (key) payload.apiKey = key;
+          var spd = val('vf-speed');
+          if (spd && Number(spd) > 0 && Number(spd) <= 4) payload.speed = Number(spd);
+          var rr = call('/api/agent/voice/config', 'POST', JSON.stringify(payload));
+          var w = errOf(rr);
+          if (w) { toast('没保存成：' + w, 4200); return; }
+          UI.closePage('toolPage');
+          toast('语音配置已保存');
+          open('voice', '语音');
+        });
+      });
+    }
     voice: async (body) => {
       const r = call('/api/agent/voice', 'GET');
       const why = errOf(r);
@@ -368,7 +415,13 @@ window.More = (function () {
         <div class="vc-line">音色 ${esc(r.voice || '—')} · API Key ${r.hasApiKey ? '已配置' : '未配置'}</div>
         ${r.note ? `<div class="vc-line" style="color:var(--rose)">${esc(r.note)}</div>` : ''}`));
 
-      // 音色：点一下试听（真的合成一句念出来）
+             // 填写/修改语音配置：Key / 协议 / 地址 / 模型都让用户自己填，不填就没法用
+       var edit = card(''
+         + '<div class="vc-sub">API Key、协议、模型按你自己的账号填；不填就没法用。填完点「保存配置」，再跑自检。</div>'
+         + '<div class="vc-actions" style="margin-top:8px"><button class="btn ghost sm" data-edit style="flex:1">填写/修改语音配置</button></div>');
+       edit.querySelector('[data-edit]').addEventListener('click', function () { openVoiceForm(r); });
+       body.appendChild(edit);
+// 音色：点一下试听（真的合成一句念出来）
       const vs = document.createElement('h3');
       vs.className = 'group-title';
       vs.style.margin = '16px 0 10px';

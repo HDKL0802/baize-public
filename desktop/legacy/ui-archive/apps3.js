@@ -24,7 +24,6 @@ async function renderAccounts(root) {
         <button data-tab="users">用户</button>
         <button data-tab="groups">用户组</button>
         <button data-tab="docs">共享文档</button>
-        <button data-tab="calls">通话</button>
       </div>
       <div id="uaBody"></div>
     </div>`;
@@ -38,7 +37,6 @@ async function renderAccounts(root) {
       if (tab === 'me') await drawMe();
       else if (tab === 'users') await drawUsers();
       else if (tab === 'groups') await drawGroups();
-      else if (tab === 'calls') await drawCalls();
       else await drawDocs();
     } catch (e) {
       body.innerHTML = `<div class="empty err">渲染失败：${esc(e && e.message ? e.message : e)}</div>`;

@@ -44,8 +44,7 @@ const (
 	// 语音线（B1）：语音转写（录音→文字→存笔记）与实时双语字幕（贴屏幕底部的置顶横条）
 	floatModeDictate  = "dictate"
 	floatModeSubtitle = "subtitle"
-	// 两人通话（B1 · 通话线）：组内互发消息 + WebRTC 音视频（信令走后端）
-	floatModeCall = "call"
+	// 两人通话入口已按用户要求关闭：floatModeCall 移除（旧 call 会话自然失效）
 
 	floatEdgeGap = 12       // 浮窗靠边时离屏幕边缘留的缝
 	floatImgMax  = 64 << 20 // 推图上限（一张截图远到不了）
@@ -219,8 +218,6 @@ func floatWindowTitle(mode string) string {
 		return "白泽 · 语音转写"
 	case floatModeSubtitle:
 		return "白泽 · 实时字幕"
-	case floatModeCall:
-		return "白泽 · 两人通话"
 	default:
 		return "白泽 · 对话浮窗"
 	}
@@ -236,8 +233,6 @@ func floatSize(mode string) (int, int) {
 		return 380, 560
 	case floatModeDictate:
 		return 420, 540
-	case floatModeCall:
-		return 520, 640
 	case floatModeSubtitle:
 		sw, _, _ := pGetSystemMetrics.Call(smCxScreen)
 		w := int(sw) - 2*floatEdgeGap
@@ -554,7 +549,7 @@ func floatSnapToEdge(hwnd uintptr) {
 // 放行任意字符串等于给本机接口开了一条路径穿越（`../` 就能写到目录外）。
 func floatModeKnown(mode string) bool {
 	switch mode {
-	case floatModeChat, floatModeExtract, floatModeTranslate, floatModeDictate, floatModeSubtitle, floatModeCall:
+	case floatModeChat, floatModeExtract, floatModeTranslate, floatModeDictate, floatModeSubtitle:
 		return true
 	}
 	return false
@@ -578,7 +573,7 @@ func registerFloatRoutes(mux *http.ServeMux) {
 		mode := strings.TrimSpace(req.Mode)
 		if !floatModeKnown(mode) {
 			writeJSON(w, http.StatusOK, map[string]any{
-				"ok": false, "error": "不认识的浮窗模式：" + mode + "（可用 chat / extract / translate / dictate / subtitle / call）"})
+				"ok": false, "error": "不认识的浮窗模式：" + mode + "（可用 chat / extract / translate / dictate / subtitle）"})
 			return
 		}
 		if mode == floatModeSubtitle {
